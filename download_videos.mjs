@@ -9,6 +9,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -53,9 +55,11 @@ async function downloadFile(url, destPath) {
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} ${res.statusText}`);
   }
-  const buf = Buffer.from(await res.arrayBuffer());
-  fs.writeFileSync(destPath, buf);
-  return buf.length;
+  // Ghi thẳng xuống đĩa (không giữ cả video trong RAM) qua file .part: tải dở không bị coi là đã xong.
+  const partPath = destPath + ".part";
+  await pipeline(Readable.fromWeb(res.body), fs.createWriteStream(partPath));
+  fs.renameSync(partPath, destPath);
+  return fs.statSync(destPath).size;
 }
 
 async function main() {

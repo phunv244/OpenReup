@@ -1,5 +1,6 @@
 /* =========================================================
-   Reup Studio — Ứng dụng 1 trang, nhiều trang con (hash router)
+   OpenReup Studio — ứng dụng 1 trang (hash router)
+   Dự án → Video & Lồng tiếng · Kho Douyin · Nhật ký
    ========================================================= */
 "use strict";
 
@@ -19,10 +20,10 @@ const state = {
   activeProjectId: "",
   sources: [],
   sys: { free_gb: 0, total_gb: 0 },
-  task: { running: false, task_type: "", logs: [] },
+  task: { running: false, task_type: "", logs: [], progress: {} },
   loaded: false,
   vf: { season: "all", q: "", sort: "time_desc", status: "all", view: "grid", page: 1 },
-  bf: { q: "" },
+  wf: { q: "", filter: "all" },
 };
 
 const SEASON_LABEL = { p1: "Phần 1", p2: "Phần 2", other: "Khác" };
@@ -31,18 +32,67 @@ const STATUS_TONE = { pending: "gray", downloaded: "green", reupped: "amber" };
 const TASK_NAMES = {
   scan_web: "Quét kênh Douyin",
   download: "Tải video Douyin",
-  bilibili_download: "Tải video Bilibili",
-  bilibili_delogo: "Xóa logo video Bilibili",
-  dub_video: "Dịch & Lồng tiếng Việt",
+  bilibili_download: "Tải video Bilibili / YouTube",
+  bilibili_delogo: "Xóa logo",
+  dub_video: "Dịch & lồng tiếng",
   dub_rerender: "Xuất lại bản lồng tiếng",
   login_chrome: "Đăng nhập Chrome",
 };
-const DELOGO_LABEL = {
-  "top-right": "Đã xóa logo góc phải",
-  "top-left": "Đã xóa logo góc trái",
-  "both-top": "Đã xóa logo 2 góc",
-  none: "Giữ nguyên",
+const DUB_STAGES = ["Nhận diện", "Dịch", "Giọng đọc", "Xuất video", "Ghép tiếng"];
+const VOICES = [
+  ["vi-VN-NamMinhNeural", "Nam Minh — nam trầm, kể chuyện"],
+  ["vi-VN-HoaiMyNeural", "Hoài My — nữ, tự nhiên"],
+];
+const DELOGO_OPTIONS = [
+  ["none", "Không xóa logo"],
+  ["top-right", "Góc trên bên phải"],
+  ["top-left", "Góc trên bên trái"],
+  ["both-top", "Cả 2 góc trên"],
+];
+
+/* ------------------------- Icon (SVG nét mảnh, dùng chung 1 bộ) ------------------------- */
+const ICONS = {
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  film: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
+  grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+  download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
+  sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h.01"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+  terminal: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 3.6 2.3c-.7.4-1.1 1-1.1 1.8M12 17h.01"/>',
+  play: '<path d="M7 4.5v15l12-7.5z"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/>',
+  refresh: '<path d="M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4"/>',
+  sparkles: '<path d="M11 3l1.9 5.1L18 10l-5.1 1.9L11 17l-1.9-5.1L4 10l5.1-1.9zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  back: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
+  chevron: '<path d="M9 6l6 6-6 6"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+  disk: '<rect x="3" y="13" width="18" height="7" rx="2"/><path d="M5.5 13L8 5h8l2.5 8M7 16.5h.01M11 16.5h.01"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
+  book: '<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11"/>',
+  copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+  external: '<path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',
+  key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  alert: '<path d="M12 4l9 16H3zM12 10v4M12 17h.01"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  cc: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15h4M13 15h4M7 11h2M11 11h6"/>',
+  scan: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M4 12h16"/>',
+  more: '<path d="M5 12h.01M12 12h.01M19 12h.01"/>',
+  brain: '<path d="M12 5a3 3 0 0 0-5.6-1.5A3 3 0 0 0 4 8.5a3 3 0 0 0 0 5 3 3 0 0 0 2.4 4.5A3 3 0 0 0 12 19zM12 5a3 3 0 0 1 5.6-1.5A3 3 0 0 1 20 8.5a3 3 0 0 1 0 5 3 3 0 0 1-2.4 4.5A3 3 0 0 1 12 19z"/>',
 };
+function icon(name, size = 18) {
+  return `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
+}
 
 /* ------------------------- Helpers ------------------------- */
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -52,6 +102,14 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[c]));
+}
+
+/** Chỉ ghi innerHTML khi nội dung đổi — tránh nháy và giữ hiệu ứng thanh tiến độ khi poll 2,5s/lần. */
+function setHtml(el, html) {
+  if (el && el._html !== html) {
+    el.innerHTML = html;
+    el._html = html;
+  }
 }
 
 function fmtDur(sec) {
@@ -65,9 +123,24 @@ function fmtDur(sec) {
     : `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** Thời lượng dạng chữ cho số liệu tổng: "92 giờ 15 phút". */
+function fmtHours(sec) {
+  sec = Math.round(Number(sec || 0));
+  const h = Math.floor(sec / 3600);
+  const m = Math.round((sec % 3600) / 60);
+  if (h && m) return `${h} giờ ${m} phút`;
+  if (h) return `${h} giờ`;
+  return `${Math.max(sec ? 1 : 0, m)} phút`;
+}
+
+function fmtEta(sec) {
+  if (sec == null) return "";
+  return sec < 60 ? "còn dưới 1 phút" : `còn ~${fmtHours(sec)}`;
+}
+
 function fmtSize(mb) {
   mb = Number(mb || 0);
-  return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
+  return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(mb >= 100 ? 0 : 1)} MB`;
 }
 
 function dateOnly(s) {
@@ -94,12 +167,10 @@ function normalizeVideo(v) {
   // Sửa các tiêu đề thiếu chữ "集" (vd: 第一百零三：...)
   if (out.episode_num == null) {
     const m = (out.title || "").match(/^\s*(?:【[^】]*】)?\s*第([零〇一二两三四五六七八九十百千]+)[：:]/);
-    if (m) {
-      const n = cnToInt(m[1]);
-      if (n) {
-        out.episode_num = n;
-        out.episode_label = String(n);
-      }
+    const n = m && cnToInt(m[1]);
+    if (n) {
+      out.episode_num = n;
+      out.episode_label = String(n);
     }
   }
   if (out.episode_num == null) out._season = "other";
@@ -111,9 +182,7 @@ function normalizeVideo(v) {
   return out;
 }
 
-function videoKey(v) {
-  return v.aweme_id || `${v.title}|${v.publish_date || ""}`;
-}
+const videoKey = (v) => v.aweme_id || `${v.title}|${v.publish_date || ""}`;
 
 function epText(v) {
   if (!v.episode_label) return v._season === "other" ? "Video phụ" : "—";
@@ -126,22 +195,19 @@ function seasonBadge(v) {
   return `<span class="badge gray">Khác</span>`;
 }
 
-function statusBadge(v) {
-  return `<span class="badge ${STATUS_TONE[v._status]}">${STATUS_LABEL[v._status]}</span>`;
-}
+const statusBadge = (v) => `<span class="badge ${STATUS_TONE[v._status]}">${STATUS_LABEL[v._status]}</span>`;
 
 function toast(msg, type = "info") {
-  const box = $("#toasts");
   const el = document.createElement("div");
   el.className = `toast ${type}`;
   el.textContent = msg;
-  box.appendChild(el);
-  setTimeout(() => el.classList.add("hide"), 3400);
-  setTimeout(() => el.remove(), 3800);
+  $("#toasts").appendChild(el);
+  setTimeout(() => el.classList.add("hide"), 3800);
+  setTimeout(() => el.remove(), 4200);
 }
 
 async function getJSON(url) {
-  const res = await fetch(url + (url.includes("?") ? "&" : "?") + "t=" + Date.now());
+  const res = await fetch(url, { cache: "no-store" });
   return res.json();
 }
 
@@ -162,48 +228,55 @@ async function postJSON(url, body = {}) {
 function copyText(text) {
   navigator.clipboard
     .writeText(text)
-    .then(() => toast("Đã sao chép vào bộ nhớ tạm", "success"))
+    .then(() => toast("Đã sao chép", "success"))
     .catch(() => toast("Không sao chép được, hãy copy thủ công", "error"));
 }
 
+const fileUrl = (rel) => "/" + rel.split("/").map(encodeURIComponent).join("/");
+const douyinFileUrl = (file) => fileUrl(`downloads/${file}`);
+const dubFileUrl = (file) => fileUrl(`downloads/dubbed/${file}`);
+const projLink = (sub) => `#/project/${encodeURIComponent(state.activeProjectId)}/${sub}`;
+const getActiveProject = () => state.projects.find((p) => p.id === state.activeProjectId) || null;
+
 /* ------------------------- Data loading ------------------------- */
-async function loadVideos() {
-  const d = await getJSON("/api/videos");
-  state.videos = (d.videos || []).map(normalizeVideo);
-  state.meta = d.channel_meta || {};
-  state.source = d.source || "";
-  state.updatedAt = d.updated_at || "";
-}
-
-async function loadBili() {
-  const d = await getJSON("/api/bilibili");
-  state.bili = d.videos || [];
-}
-
-async function loadSys() {
-  try {
-    state.sys = await getJSON("/api/system");
-  } catch {}
-}
-
-async function loadDubs() {
-  try {
-    const [d1, d2, d3] = await Promise.all([getJSON("/api/dubbed"), getJSON("/api/sources"), getJSON("/api/projects")]);
-    state.dubbed = d1.videos || [];
-    state.sources = d2.sources || [];
-    state.projects = d3.projects || [];
-    if (!state.activeProjectId && state.projects.length) {
-      state.activeProjectId = state.projects[0].id;
-    }
-  } catch {}
-}
+let dataSig = "";
 
 async function loadAll(showToast = false) {
   try {
-    await Promise.all([loadVideos(), loadBili(), loadDubs(), loadSys()]);
+    const raw = await Promise.all([
+      getJSON("/api/videos"),
+      getJSON("/api/bilibili"),
+      getJSON("/api/dubbed"),
+      getJSON("/api/sources"),
+      getJSON("/api/projects"),
+      getJSON("/api/system"),
+    ]);
+    // Tiến độ job (pct/label) và dung lượng ổ đổi liên tục khi đang chạy: không tính là "dữ liệu đổi",
+    // để danh sách không bị vẽ lại mỗi lần poll (thanh tiến độ được cập nhật riêng).
+    const sig = JSON.stringify(raw, (k, v) => (k === "pct" || k === "label" || k === "updated_at" || k === "free_gb" ? undefined : v));
+    const [vd, bili, dubbed, sources, projects, sys] = raw;
+    state.sys = sys;
+    if (sig === dataSig && state.loaded) {
+      if (showToast) toast("Dữ liệu đã là mới nhất", "success");
+      return;
+    }
+    dataSig = sig;
+    state.videos = (vd.videos || []).map(normalizeVideo);
+    state.meta = vd.channel_meta || {};
+    state.source = vd.source || "";
+    state.updatedAt = vd.updated_at || "";
+    state.bili = bili.videos || [];
+    state.dubbed = dubbed.videos || [];
+    state.sources = sources.sources || [];
+    state.projects = projects.projects || [];
+    const firstLoad = !state.loaded;
     state.loaded = true;
-    updateSidebarCounts();
-    currentPage?.update?.();
+    if (firstLoad) router();
+    else {
+      renderSidebar();
+      currentPage?.update?.();
+      renderTaskWidgets();
+    }
     if (showToast) toast("Đã làm mới dữ liệu", "success");
   } catch (err) {
     console.error(err);
@@ -211,85 +284,39 @@ async function loadAll(showToast = false) {
   }
 }
 
-function updateSidebarCounts() {
-  renderSidebar();
-}
-
-function getActiveProject() {
-  return state.projects.find((p) => p.id === state.activeProjectId) || null;
+/* ------------------------- Sidebar ------------------------- */
+function navLink(href, ico, label, active, count) {
+  return `<a class="nav-link ${active ? "active" : ""}" href="${href}" ${active ? 'aria-current="page"' : ""}>
+    ${icon(ico)}<span>${label}</span>${count != null ? `<span class="nav-count">${count}</span>` : ""}</a>`;
 }
 
 function renderSidebar() {
   const nav = $("#sidebar-nav");
-  if (!nav) return;
-  const hash = location.hash.replace(/^#/, "") || "/projects";
-  const projMatch = hash.match(/^\/project\/([^/]+)(?:\/(.*))?$/);
-  const proj = projMatch ? state.projects.find((p) => p.id === projMatch[1]) || getActiveProject() : null;
-  const sub = projMatch ? projMatch[2] || "dubbing" : "";
+  const { pid, sub } = parseRoute();
+  const proj = pid ? state.projects.find((p) => p.id === pid) : null;
 
-  if (projMatch && proj) {
-    const base = `#/project/${proj.id}`;
-    const projDubCount = (proj.videos || []).length;
-    const dyDlCount = state.videos.filter((v) => v.local_file).length;
+  if (proj) {
+    const base = `#/project/${encodeURIComponent(proj.id)}`;
     nav.innerHTML = `
-      <a class="sb-back" href="#/projects">← Tất cả dự án</a>
-      <div class="sb-proj-box">
-        <div class="sb-proj-label">Dự án đang mở</div>
-        <div class="sb-proj-name" title="${esc(proj.name)}">📁 ${esc(proj.name)}</div>
+      <a class="sb-back" href="#/projects">${icon("back", 15)} Tất cả dự án</a>
+      <div class="sb-proj">
+        <div class="sb-proj-label">Dự án</div>
+        <div class="sb-proj-name" title="${esc(proj.name)}">${esc(proj.name)}</div>
       </div>
-
-      <div class="nav-group">Dịch & Lồng tiếng AI</div>
-      <a class="nav-link ${sub === "dubbing" ? "active" : ""}" href="${base}/dubbing">
-        <span class="ico">🎙️</span><span>Dịch & Lồng tiếng</span>
-        <span class="nav-count">${projDubCount}</span>
-      </a>
-
-      <div class="nav-group">Tải video Bilibili / YT</div>
-      <a class="nav-link ${sub === "bilibili-new" ? "active" : ""}" href="${base}/bilibili-new">
-        <span class="ico">➕</span><span>Tải video mới</span>
-      </a>
-      <a class="nav-link ${sub === "bilibili-library" ? "active" : ""}" href="${base}/bilibili-library">
-        <span class="ico">🎬</span><span>Thư viện đã tải</span>
-        <span class="nav-count">${state.bili.length}</span>
-      </a>
-
-      <div class="nav-group">Tải video Douyin</div>
-      <a class="nav-link ${sub === "douyin-scan" ? "active" : ""}" href="${base}/douyin-scan">
-        <span class="ico">🔍</span><span>Quét kênh</span>
-      </a>
-      <a class="nav-link ${sub === "douyin-videos" ? "active" : ""}" href="${base}/douyin-videos">
-        <span class="ico">📋</span><span>Danh sách video</span>
-        <span class="nav-count">${state.videos.length}</span>
-      </a>
-      <a class="nav-link ${sub === "douyin-downloads" ? "active" : ""}" href="${base}/douyin-downloads">
-        <span class="ico">⬇️</span><span>Tải video</span>
-        <span class="nav-count">${dyDlCount}</span>
-      </a>
-
-      <div class="nav-group">Cài đặt & Nhật ký</div>
-      <a class="nav-link" href="javascript:void(0)" onclick="openProjectDrawer('${esc(proj.id)}')">
-        <span class="ico">⚙️</span><span>Cài đặt dự án</span>
-      </a>
-      <a class="nav-link ${sub === "logs" ? "active" : ""}" href="${base}/logs">
-        <span class="ico">📜</span><span>Nhật ký tiến trình</span>
-      </a>`;
+      ${navLink(`${base}/videos`, "film", "Video & Lồng tiếng", sub === "videos", state.sources.length)}
+      ${navLink(`${base}/douyin/list`, "list", "Kho Douyin", sub.startsWith("douyin"), state.videos.length)}
+      <button class="nav-link" type="button" data-drawer="${esc(proj.id)}">${icon("brain")}<span>Ngữ cảnh AI</span>
+        <span class="nav-count">${(proj.characters || []).length + (proj.glossary || []).length}</span></button>
+      ${navLink(`${base}/logs`, "terminal", "Nhật ký", sub === "logs")}`;
   } else {
+    const hash = location.hash.replace(/^#/, "") || "/projects";
     nav.innerHTML = `
-      <div class="nav-group">Không gian làm việc</div>
-      <a class="nav-link ${hash === "/projects" ? "active" : ""}" href="#/projects">
-        <span class="ico">📁</span><span>Tất cả dự án</span>
-        <span class="nav-count">${state.projects.length}</span>
-      </a>
-      <a class="nav-link ${hash === "/logs" ? "active" : ""}" href="#/logs">
-        <span class="ico">📜</span><span>Nhật ký tiến trình</span>
-      </a>
-      <a class="nav-link ${hash === "/help" ? "active" : ""}" href="#/help">
-        <span class="ico">❓</span><span>Hướng dẫn</span>
-      </a>`;
+      ${navLink("#/projects", "folder", "Dự án", hash === "/projects", state.projects.length)}
+      ${navLink("#/logs", "terminal", "Nhật ký", hash === "/logs")}`;
   }
 }
 
-/* ------------------------- Task polling ------------------------- */
+/* ------------------------- Task polling & widgets ------------------------- */
 let lastRunning = false;
 let pollTick = 0;
 
@@ -299,83 +326,106 @@ async function pollTask() {
   } catch {
     return;
   }
+  const t = state.task;
   renderTaskWidgets();
   pollTick++;
-  if (state.task.running && pollTick % 2 === 0) loadAll();
-  if (lastRunning && !state.task.running) {
+  if (t.running && pollTick % 4 === 0) loadAll();
+  if (lastRunning && !t.running) {
     loadAll();
-    toast("Tiến trình đã kết thúc. Xem nhật ký để biết kết quả.", "success");
+    const name = TASK_NAMES[t.last_type] || "Tiến trình";
+    if (t.exit_code === 0) toast(`${name}: hoàn tất`, "success");
+    else if (t.exit_code === 130 || t.exit_code == null) toast(`${name}: đã dừng, tiến độ được lưu lại`);
+    else toast(`${name}: gặp lỗi — mở Nhật ký để xem chi tiết`, "error");
   }
-  lastRunning = state.task.running;
+  lastRunning = t.running;
+}
+
+function progressHtml(t, { steps = true } = {}) {
+  const p = t.progress || {};
+  const pct = Math.max(0, Math.min(100, Number(p.pct || 0)));
+  const isDub = t.task_type === "dub_video" || t.task_type === "dub_rerender";
+  const stepsHtml =
+    steps && isDub && p.stage
+      ? `<ol class="stages">${DUB_STAGES.map((s, i) => `<li class="${i + 1 < p.stage ? "done" : i + 1 === p.stage ? "active" : ""}">${s}</li>`).join("")}</ol>`
+      : "";
+  const eta = fmtEta(p.eta);
+  return `${stepsHtml}
+    <div class="progress ${pct < 0.5 ? "indet" : ""}"><div style="width:${pct}%"></div></div>
+    <div class="prog-meta">
+      <span class="prog-label">${esc(p.label || "Đang xử lý...")}</span>
+      <span class="prog-pct">${pct >= 0.5 ? `${pct.toFixed(pct < 10 ? 1 : 0)}%` : ""}${eta ? ` · ${eta}` : ""}</span>
+    </div>`;
 }
 
 function renderTaskWidgets() {
   const t = state.task || {};
-  const name = TASK_NAMES[t.task_type] || t.task_type || "";
+  const name = TASK_NAMES[t.running ? t.task_type : t.last_type] || "";
+  const logsHref = state.activeProjectId && parseRoute().pid ? projLink("logs") : "#/logs";
 
-  $$(".js-task-status").forEach((el) => {
-    el.classList.toggle("busy", !!t.running);
-    el.classList.toggle("idle", !t.running);
-    el.innerHTML = t.running
-      ? `<span class="dot"></span><span>Đang chạy: <b>${esc(name)}</b></span>`
-      : `<span class="dot"></span><span>Không có tiến trình nào đang chạy</span>`;
+  // Khung tiến trình ở chân sidebar + đầu trang Nhật ký
+  $$(".js-task").forEach((el) => {
+    let html;
+    if (t.running) {
+      html = `
+        <div class="task-card busy">
+          <div class="task-head"><span class="dot"></span><b>${esc(name)}</b></div>
+          ${progressHtml(t, { steps: el.dataset.variant !== "sidebar" })}
+          <div class="task-actions">
+            ${el.dataset.variant === "sidebar" ? `<a class="btn btn-quiet btn-sm" href="${logsHref}">Nhật ký</a>` : ""}
+            <button class="btn btn-danger btn-sm" type="button" data-stop>${icon("stop", 14)} Dừng</button>
+          </div>
+        </div>`;
+    } else if (t.last_type) {
+      const ok = t.exit_code === 0;
+      const stopped = t.exit_code === 130 || t.exit_code == null;
+      html = `
+        <div class="task-card ${ok ? "ok" : stopped ? "" : "err"}">
+          <div class="task-head"><span class="dot"></span><b>${esc(name)}</b></div>
+          <div class="task-result">${ok ? "Đã hoàn tất" : stopped ? "Đã dừng — tiến độ được lưu" : `Gặp lỗi — <a href="${logsHref}">xem nhật ký</a>`}</div>
+        </div>`;
+    } else {
+      html = `<div class="task-card"><div class="task-head"><span class="dot"></span><span>Sẵn sàng</span></div></div>`;
+    }
+    setHtml(el, html);
   });
+
+  const chip = $("#task-chip");
+  chip.hidden = !t.running;
+  if (t.running) {
+    chip.href = logsHref;
+    setHtml(chip, `<span class="dot"></span><span class="chip-name">${esc(name)} ·</span> ${Math.round(Number(t.progress?.pct || 0))}%`);
+  }
 
   $$(".js-log").forEach((el) => {
     const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 40;
-    const lines = t.logs || [];
-    const limit = Number(el.dataset.limit || 0);
-    const shown = limit ? lines.slice(-limit) : lines;
-    el.textContent = shown.length
-      ? shown.join("\n")
-      : "Chưa có nhật ký. Khi bạn bấm quét hoặc tải, tiến trình sẽ hiện ở đây.";
-    if (atBottom) el.scrollTop = el.scrollHeight;
+    const text = (t.logs || []).join("\n") || "Chưa có nhật ký. Khi bạn bấm tải, quét hoặc lồng tiếng, tiến trình sẽ hiện ở đây.";
+    if (el._text !== text) {
+      el.textContent = text;
+      el._text = text;
+      if (atBottom) el.scrollTop = el.scrollHeight;
+    }
   });
 
   $$(".js-busy-disable").forEach((el) => (el.disabled = !!t.running));
-  $$(".js-stop").forEach((el) => (el.disabled = !t.running));
 
-  // Update inline per-video progress bars right under the active video card
+  // Tiến độ hiện ngay tại dòng video đang được xử lý
   $$(".js-vid-prog").forEach((box) => {
-    const target = box.dataset.target || "";
-    const job = box.dataset.job || "";
-    const match = t.running && ((target && t.target === target) || (job && t.target === job));
-    if (match) {
-      const pct = Math.max(5, Math.min(100, Number(t.progress?.pct || 10)));
-      const lbl = t.progress?.label || "Đang xử lý...";
-      box.style.display = "block";
-      box.innerHTML = `
-        <div class="progress" style="height:7px"><div style="width:${pct}%"></div></div>
-        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--primary);margin-top:4px;font-weight:600">
-          <span>⏳ ${esc(lbl)}</span><span>${pct}%</span>
-        </div>`;
-    } else {
-      box.style.display = "none";
-      box.innerHTML = "";
-    }
+    const match = t.running && t.target && (t.target === box.dataset.target || t.target === box.dataset.job);
+    box.closest(".vrow")?.classList.toggle("is-running", !!match);
+    setHtml(box, match ? progressHtml(t) : "");
   });
 
-  // Inline download progress bar in the Bilibili quick-download card
-  const dlBox = $("#ws-dl-prog");
-  if (dlBox) {
-    if (t.running && t.task_type === "bilibili_download") {
-      const pct = Math.max(5, Math.min(100, Number(t.progress?.pct || 10)));
-      const lbl = t.progress?.label || "Đang tải video...";
-      dlBox.style.display = "block";
-      dlBox.innerHTML = `
-        <div class="progress" style="height:8px"><div style="width:${pct}%"></div></div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--pink);margin-top:5px;font-weight:600">
-          <span>⬇ ${esc(lbl)}</span><span>${pct}%</span>
-        </div>`;
-    } else {
-      dlBox.style.display = "none";
-    }
-  }
+  // Tiến độ tải video mới (chưa có dòng nào trong danh sách để gắn vào)
+  $$(".js-task-inline").forEach((box) => {
+    const match = t.running && t.task_type === box.dataset.type;
+    box.hidden = !match;
+    setHtml(box, match ? `<div class="inline-task"><b>${icon("download", 16)} ${esc(name)}</b>${progressHtml(t)}</div>` : "");
+  });
 }
 
 async function stopTask() {
   await postJSON("/api/task/stop");
-  toast("Đã gửi lệnh dừng tiến trình");
+  toast("Đang dừng tiến trình...");
   pollTask();
 }
 
@@ -387,28 +437,27 @@ async function startTask(url, body, okMsg) {
   }
   toast(okMsg, "success");
   lastRunning = true;
-  pollTask();
+  await pollTask();
   return true;
 }
 
 /* ------------------------- Modal ------------------------- */
-function openModal(title, bodyHtml, { wide = false } = {}) {
+function openModal(title, bodyHtml, { size = "", sticky = false, beforeClose = null } = {}) {
   const root = $("#modal-root");
   root.innerHTML = `
     <div class="modal-bg">
-      <div class="modal ${wide ? "wide" : ""}">
+      <div class="modal ${size}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
         <div class="modal-head">
           <h3 title="${esc(title)}">${esc(title)}</h3>
-          <button class="btn btn-light btn-sm" data-close>✕ Đóng</button>
+          <button class="icon-btn" type="button" data-close aria-label="Đóng">${icon("x")}</button>
         </div>
         <div class="modal-body">${bodyHtml}</div>
       </div>
     </div>`;
   const bg = root.firstElementChild;
-  const onKey = (e) => {
-    if (e.key === "Escape") close();
-  };
-  function close() {
+  const onKey = (e) => e.key === "Escape" && close();
+  function close(force = false) {
+    if (!force && beforeClose && !beforeClose()) return;
     $$("video", root).forEach((v) => {
       v.pause();
       v.removeAttribute("src");
@@ -418,61 +467,42 @@ function openModal(title, bodyHtml, { wide = false } = {}) {
     document.removeEventListener("keydown", onKey);
   }
   bg.addEventListener("click", (e) => {
-    if (e.target === bg || e.target.closest("[data-close]")) close();
+    if ((e.target === bg && !sticky) || e.target.closest("[data-close]")) close();
   });
   document.addEventListener("keydown", onKey);
+  renderTaskWidgets();
   return { el: bg, close };
 }
 
-function douyinFileUrl(file) {
-  return "/downloads/" + encodeURIComponent(file);
-}
-function biliFileUrl(file) {
-  return "/downloads/bilibili/" + encodeURIComponent(file);
-}
-function dubFileUrl(file) {
-  return "/downloads/dubbed/" + encodeURIComponent(file);
-}
-
 function openPlayer(src, title) {
-  openModal(title, `<video class="player" src="${esc(src)}" controls autoplay></video>`, { wide: true });
+  openModal(title, `<video class="player" src="${esc(src)}" controls autoplay></video>`, { size: "wide" });
 }
 
 /* ------------------------- Shared UI pieces ------------------------- */
-function statCard(icon, label, value, sub, tone = "") {
+function metric(ico, label, value, sub = "", tone = "") {
   return `
-    <div class="stat ${tone}">
-      <div class="stat-ico">${icon}</div>
-      <div>
-        <div class="stat-label">${label}</div>
-        <div class="stat-val">${value}</div>
-        <div class="stat-sub">${sub}</div>
+    <div class="metric ${tone}">
+      <div class="metric-ico">${icon(ico, 20)}</div>
+      <div class="metric-body">
+        <div class="metric-label">${label}</div>
+        <div class="metric-val">${value}</div>
+        ${sub ? `<div class="metric-sub">${sub}</div>` : ""}
       </div>
     </div>`;
 }
 
-function logCard(title = "Nhật ký tiến trình", limit = 40, height = "") {
-  return `
-    <section class="card">
-      <header class="card-head">
-        <h3>📜 ${title}</h3>
-        <button class="btn btn-danger btn-sm js-stop" onclick="stopTask()" disabled>⏹ Dừng</button>
-      </header>
-      <div class="card-body">
-        <div class="task-status js-task-status idle"><span class="dot"></span> Đang kiểm tra...</div>
-        <pre class="console js-log" data-limit="${limit}" ${height ? `style="height:${height}"` : ""}></pre>
-      </div>
-    </section>`;
-}
-
-function emptyState(icon, title, desc, actionHtml = "") {
+function emptyState(ico, title, desc, actionHtml = "") {
   return `
     <div class="empty">
-      <div class="e-ico">${icon}</div>
+      <div class="empty-ico">${icon(ico, 26)}</div>
       <h4>${title}</h4>
       <p>${desc}</p>
       ${actionHtml}
     </div>`;
+}
+
+function callout(tone, ico, html) {
+  return `<div class="callout ${tone}">${icon(ico, 17)}<div>${html}</div></div>`;
 }
 
 function thumbImg(url, alt = "") {
@@ -481,975 +511,43 @@ function thumbImg(url, alt = "") {
     : "";
 }
 
-/* =========================================================
-   TRANG 1: TỔNG QUAN
-   ========================================================= */
-function PageDashboard() {
-  return {
-    render: () => `
-      <div class="stats" id="dash-stats"></div>
-
-      <div class="cols cols-2">
-        <section class="card">
-          <header class="card-head"><h3>🧭 Quy trình làm việc</h3><span class="hint">Làm lần lượt từ trên xuống</span></header>
-          <div class="card-body">
-            <ol class="steps">
-              <li>
-                <div class="step-num">1</div>
-                <div>
-                  <b>Quét kênh Douyin</b>
-                  <p>Lấy danh sách toàn bộ video của kênh, kèm ảnh bìa và link tải.</p>
-                  <a class="btn btn-light btn-sm" href="#/douyin/scan">Mở trang Quét kênh →</a>
-                </div>
-              </li>
-              <li>
-                <div class="step-num">2</div>
-                <div>
-                  <b>Xem & chọn video cần reup</b>
-                  <p>Lọc theo Phần 1 / Phần 2, tìm theo số tập, đánh dấu trạng thái.</p>
-                  <a class="btn btn-light btn-sm" href="#/douyin/videos">Mở Danh sách video →</a>
-                </div>
-              </li>
-              <li>
-                <div class="step-num">3</div>
-                <div>
-                  <b>Tải video Douyin về máy</b>
-                  <p>Chọn phần và khoảng tập (vd: Tập 1 → 10) rồi tải hàng loạt.</p>
-                  <a class="btn btn-light btn-sm" href="#/douyin/downloads">Mở trang Tải video →</a>
-                </div>
-              </li>
-              <li>
-                <div class="step-num pink">4</div>
-                <div>
-                  <b>Bổ sung tập thiếu từ Bilibili</b>
-                  <p>Tập 138–314 không có trên Douyin: tải từ Bilibili và tự xóa logo.</p>
-                  <a class="btn btn-light btn-sm" href="#/bilibili/new">Mở trang Bilibili →</a>
-                </div>
-              </li>
-            </ol>
-          </div>
-        </section>
-
-        <section class="card">
-          <header class="card-head">
-            <h3>⚙️ Tiến trình hiện tại</h3>
-            <a href="#/logs">Xem nhật ký đầy đủ →</a>
-          </header>
-          <div class="card-body">
-            <div class="task-status js-task-status idle"><span class="dot"></span> Đang kiểm tra...</div>
-            <pre class="console js-log" data-limit="14" style="height:300px"></pre>
-          </div>
-        </section>
-      </div>
-
-      <section class="card">
-        <header class="card-head">
-          <h3>🆕 Tập mới nhất trên kênh Douyin</h3>
-          <a href="#/douyin/videos">Xem tất cả →</a>
-        </header>
-        <div class="card-body p0" id="dash-latest"></div>
-      </section>`,
-
-    update() {
-      const vids = state.videos;
-      const total = state.meta.total_works || vids.length;
-      const dl = vids.filter((v) => v.local_file).length;
-      const reup = vids.filter((v) => v._status === "reupped").length;
-      const biliSize = state.bili.reduce((a, v) => a + Number(v.size_mb || 0), 0);
-
-      $("#dash-stats").innerHTML = [
-        statCard("📋", "Video Douyin đã quét", `${vids.length}<span class="muted" style="font-size:15px"> / ${total}</span>`, `Cập nhật: ${esc(state.updatedAt || "chưa có")}`),
-        statCard("⬇️", "Đã tải về (Douyin)", dl, "File MP4 trong thư mục downloads/", "green"),
-        statCard("🎬", "Video Bilibili / YouTube", state.bili.length, `Tổng dung lượng ${fmtSize(biliSize)}`, "pink"),
-        statCard("✅", "Đã reup", reup, `Còn ${vids.length - reup} video chưa reup`, "amber"),
-      ].join("");
-
-      const latest = [...vids]
-        .filter((v) => v._season !== "other")
-        .sort((a, b) => (b.publish_time || 0) - (a.publish_time || 0))
-        .slice(0, 6);
-
-      $("#dash-latest").innerHTML = latest.length
-        ? `<div class="table-wrap"><table class="tbl">
-            <thead><tr><th>Ảnh</th><th>Phần / Tập</th><th>Tiêu đề</th><th>Ngày đăng</th><th>Thời lượng</th><th>Trạng thái</th></tr></thead>
-            <tbody>${latest.map((v) => `
-              <tr class="clickable" data-id="${esc(v.aweme_id)}">
-                <td>${v.cover_url ? `<img class="thumb" src="${esc(v.cover_url)}" referrerpolicy="no-referrer" loading="lazy" />` : ""}</td>
-                <td class="nowrap">${seasonBadge(v)} <b>Tập ${esc(v.episode_label)}</b></td>
-                <td class="title-cell">${esc(v.title)}</td>
-                <td class="nowrap">${dateOnly(v.publish_date)}</td>
-                <td>${fmtDur(v.duration_sec) || "—"}</td>
-                <td>${statusBadge(v)}</td>
-              </tr>`).join("")}
-            </tbody></table></div>`
-        : `<div style="padding:18px">${emptyState("📭", "Chưa có dữ liệu", "Hãy quét kênh Douyin trước.", `<a class="btn btn-primary" href="#/douyin/scan">Quét kênh ngay</a>`)}</div>`;
-    },
-
-    mount() {
-      $("#dash-latest").addEventListener("click", (e) => {
-        const row = e.target.closest("[data-id]");
-        if (row) openVideoDetail(row.dataset.id);
-      });
-    },
-  };
-}
+const options = (list, selected) =>
+  list.map(([v, label]) => `<option value="${esc(v)}" ${String(v) === String(selected) ? "selected" : ""}>${esc(label)}</option>`).join("");
 
 /* =========================================================
-   TRANG 2: QUÉT KÊNH DOUYIN
-   ========================================================= */
-function PageScan() {
-  return {
-    render: () => `
-      <div class="cols cols-main-side">
-        <div>
-          <section class="card">
-            <header class="card-head">
-              <h3><span class="step-badge">Bước 1</span> Đăng nhập Douyin</h3>
-              <span class="hint">Chỉ cần làm 1 lần</span>
-            </header>
-            <div class="card-body">
-              <p style="margin:0 0 14px;color:var(--text-2)">
-                Douyin Web cần đăng nhập mới cho xem danh sách video. Bấm nút dưới để mở cửa sổ Chrome,
-                đăng nhập bằng mã QR, sau đó <b>đóng cửa sổ Chrome</b> để lưu phiên.
-              </p>
-              <button class="btn btn-light js-busy-disable" id="btn-login">🔑 Mở Chrome để đăng nhập</button>
-              <div class="callout ok"><span class="ci">✅</span><span>Phiên đăng nhập được lưu trong thư mục <code>chrome_profile/</code>. Nếu bạn đã đăng nhập trước đó thì có thể bỏ qua bước này.</span></div>
-            </div>
-          </section>
-
-          <section class="card">
-            <header class="card-head">
-              <h3><span class="step-badge">Bước 2</span> Quét danh sách video</h3>
-            </header>
-            <div class="card-body">
-              <div class="field">
-                <label for="scan-url">Link kênh Douyin</label>
-                <input id="scan-url" class="input" type="text" value="${esc(DEFAULT_CHANNEL_URL)}" />
-                <div class="help">Dạng <code>https://www.douyin.com/user/...</code> — mặc định là kênh 楚新钓.</div>
-              </div>
-              <div class="actions">
-                <button class="btn btn-primary js-busy-disable" id="btn-scan-resume">➕ Quét nối tiếp (giữ dữ liệu cũ)</button>
-                <button class="btn btn-light js-busy-disable" id="btn-scan-new">🔄 Quét lại từ đầu</button>
-              </div>
-              <div class="callout info">
-                <span class="ci">💡</span>
-                <span><b>Nên dùng "Quét nối tiếp"</b>: giữ lại trạng thái reup đã đánh dấu, chỉ bổ sung video mới và làm mới link tải.
-                Một cửa sổ Chrome sẽ tự mở và cuộn trang — <b>đừng đóng nó</b> cho tới khi quét xong. Mạng chậm thì sẽ lâu hơn, cứ để tool chạy.</span>
-              </div>
-            </div>
-          </section>
-
-          ${logCard("Nhật ký quét", 60)}
-        </div>
-
-        <aside>
-          <section class="card">
-            <header class="card-head"><h3>📺 Thông tin kênh</h3></header>
-            <div class="card-body" id="scan-channel"></div>
-          </section>
-          <section class="card">
-            <header class="card-head"><h3>📊 Tiến độ quét</h3></header>
-            <div class="card-body" id="scan-progress"></div>
-          </section>
-          <section class="card">
-            <header class="card-head"><h3>🗂️ Phân loại nội dung</h3></header>
-            <div class="card-body" id="scan-breakdown"></div>
-          </section>
-        </aside>
-      </div>`,
-
-    mount() {
-      $("#btn-login").onclick = () =>
-        startTask("/api/login", { url: $("#scan-url").value.trim() }, "Đang mở Chrome để đăng nhập...");
-      $("#btn-scan-resume").onclick = () =>
-        startTask("/api/scan", { url: $("#scan-url").value.trim(), resume: true }, "Bắt đầu quét nối tiếp...");
-      $("#btn-scan-new").onclick = () => {
-        if (!confirm("Quét lại từ đầu sẽ ghi đè dữ liệu cũ (kể cả trạng thái reup đã đánh dấu). Tiếp tục?")) return;
-        startTask("/api/scan", { url: $("#scan-url").value.trim(), resume: false }, "Bắt đầu quét lại từ đầu...");
-      };
-    },
-
-    update() {
-      const m = state.meta;
-      const total = Number(m.total_works || 0);
-      const got = state.videos.length;
-      $("#scan-channel").innerHTML = `
-        <dl class="kv">
-          <dt>Tên kênh</dt><dd>${esc(m.channel_name || "—")}</dd>
-          <dt>Douyin ID</dt><dd>${esc(m.douyin_id || "—")}</dd>
-          <dt>Tổng tác phẩm</dt><dd>${esc(m.total_works || "—")}</dd>
-          <dt>Nguồn dữ liệu</dt><dd>${esc(state.source || "—")}</dd>
-          <dt>Cập nhật lúc</dt><dd>${esc(state.updatedAt || "—")}</dd>
-          <dt>Link kênh</dt><dd>${m.channel_url || m.share_url ? `<a href="${esc(m.channel_url || m.share_url)}" target="_blank">Mở trên Douyin ↗</a>` : "—"}</dd>
-        </dl>`;
-
-      const pct = total ? Math.min(100, Math.round((got / total) * 100)) : 0;
-      $("#scan-progress").innerHTML = `
-        <div class="progress"><div style="width:${pct}%"></div></div>
-        <div class="progress-meta"><span><b>${got}</b> / ${total || "?"} video</span><span>${pct}%</span></div>
-        ${pct >= 100 ? `<div class="callout ok"><span class="ci">🎉</span><span>Đã quét đủ toàn bộ video của kênh.</span></div>` : ""}`;
-
-      const c = { p1: 0, p2: 0, other: 0 };
-      state.videos.forEach((v) => c[v._season]++);
-      $("#scan-breakdown").innerHTML = `
-        <dl class="kv">
-          <dt>${seasonBadge({ _season: "p2" })}</dt><dd>${c.p2} video <span class="muted">(Tập 1 → 275, liền mạch)</span></dd>
-          <dt>${seasonBadge({ _season: "p1" })}</dt><dd>${c.p1} video <span class="muted">(thiếu Tập 138–314)</span></dd>
-          <dt>${seasonBadge({ _season: "other" })}</dt><dd>${c.other} video <span class="muted">(live, quảng cáo)</span></dd>
-        </dl>`;
-    },
-  };
-}
-
-/* =========================================================
-   TRANG 3: DANH SÁCH VIDEO DOUYIN
-   ========================================================= */
-function PageVideos() {
-  function filtered() {
-    const f = state.vf;
-    const q = f.q.trim().toLowerCase();
-    const list = state.videos.filter((v) => {
-      if (f.season !== "all" && v._season !== f.season) return false;
-      if (f.status !== "all" && v._status !== f.status) return false;
-      if (!q) return true;
-      return (
-        (v.title || "").toLowerCase().includes(q) ||
-        String(v.episode_label || "") === q ||
-        (v.publish_date || "").includes(q) ||
-        (v.aweme_id || "").includes(q)
-      );
-    });
-    const byTime = (a, b) => (a.publish_time || 0) - (b.publish_time || 0);
-    const sorters = {
-      time_desc: (a, b) => -byTime(a, b),
-      time_asc: byTime,
-      ep_asc: (a, b) => (a.episode_num ?? 1e9) - (b.episode_num ?? 1e9) || byTime(a, b),
-      ep_desc: (a, b) => (b.episode_num ?? -1) - (a.episode_num ?? -1) || -byTime(a, b),
-      likes_desc: (a, b) => (b.likes || 0) - (a.likes || 0),
-    };
-    return list.sort(sorters[f.sort] || sorters.time_desc);
-  }
-
-  function gridHtml(items) {
-    return `<div class="vgrid">${items.map((v) => `
-      <article class="vcard" data-id="${esc(v.aweme_id)}">
-        <div class="vthumb">
-          ${thumbImg(v.cover_url, v.title) || "Không có ảnh bìa"}
-          <div class="tl">${v.episode_label ? `<span class="ov">Tập ${esc(v.episode_label)}</span>` : ""}</div>
-          <div class="tr">${v._season === "p2" ? `<span class="ov purple">P2</span>` : v._season === "p1" ? `<span class="ov amber">P1</span>` : `<span class="ov">Khác</span>`}</div>
-          <div class="bl">${v.local_file ? `<span class="ov green">✓ Đã tải</span>` : ""}</div>
-          <div class="br">${v.duration_sec ? `<span class="ov">${fmtDur(v.duration_sec)}</span>` : ""}</div>
-        </div>
-        <div class="vbody">
-          <div class="vtitle" title="${esc(v.title)}">${esc(v.title)}</div>
-          <div class="vmeta">
-            <span>📅 ${dateOnly(v.publish_date)}</span>
-            <span>♥ ${esc(v.likes_raw || v.likes || 0)}</span>
-          </div>
-          <div class="vmeta">${statusBadge(v)}<span class="muted">Bấm để xem chi tiết</span></div>
-        </div>
-      </article>`).join("")}</div>`;
-  }
-
-  function tableHtml(items, offset) {
-    return `<section class="card"><div class="table-wrap"><table class="tbl">
-      <thead><tr><th>#</th><th>Ảnh</th><th>Phần / Tập</th><th>Tiêu đề</th><th>Ngày đăng</th><th>Thời lượng</th><th>Thích</th><th>Trạng thái</th></tr></thead>
-      <tbody>${items.map((v, i) => `
-        <tr class="clickable" data-id="${esc(v.aweme_id)}">
-          <td class="muted">${offset + i + 1}</td>
-          <td>${v.cover_url ? `<img class="thumb" src="${esc(v.cover_url)}" referrerpolicy="no-referrer" loading="lazy" />` : ""}</td>
-          <td class="nowrap">${seasonBadge(v)} ${v.episode_label ? `<b>Tập ${esc(v.episode_label)}</b>` : ""}</td>
-          <td class="title-cell">${esc(v.title)}</td>
-          <td class="nowrap">${dateOnly(v.publish_date)}</td>
-          <td>${fmtDur(v.duration_sec) || "—"}</td>
-          <td class="nowrap">${esc(v.likes_raw || v.likes || 0)}</td>
-          <td>${statusBadge(v)}</td>
-        </tr>`).join("")}
-      </tbody></table></div></section>`;
-  }
-
-  function pagerHtml(page, pages) {
-    if (pages <= 1) return "";
-    const nums = new Set([1, pages, page - 1, page, page + 1, page - 2, page + 2]);
-    const list = [...nums].filter((n) => n >= 1 && n <= pages).sort((a, b) => a - b);
-    let html = `<button data-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>‹ Trước</button>`;
-    let prev = 0;
-    for (const n of list) {
-      if (n - prev > 1) html += `<span class="gap">…</span>`;
-      html += `<button data-page="${n}" class="${n === page ? "active" : ""}">${n}</button>`;
-      prev = n;
-    }
-    html += `<button data-page="${page + 1}" ${page >= pages ? "disabled" : ""}>Sau ›</button>`;
-    return html;
-  }
-
-  function draw() {
-    const items = filtered();
-    const pages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
-    if (state.vf.page > pages) state.vf.page = pages;
-    const page = state.vf.page;
-    const start = (page - 1) * PAGE_SIZE;
-    const slice = items.slice(start, start + PAGE_SIZE);
-
-    $("#vf-meta").innerHTML = `
-      <span>Hiển thị <b>${items.length ? start + 1 : 0}–${start + slice.length}</b> trong <b>${items.length}</b> video</span>
-      <span class="muted">Trang ${page} / ${pages}</span>`;
-
-    $("#vf-list").innerHTML = !state.videos.length
-      ? emptyState("📭", "Chưa có video nào", "Bạn cần quét kênh Douyin trước.", `<a class="btn btn-primary" href="#/douyin/scan">Đi tới Quét kênh</a>`)
-      : !items.length
-        ? emptyState("🔎", "Không tìm thấy video phù hợp", "Thử đổi bộ lọc hoặc từ khóa tìm kiếm.")
-        : state.vf.view === "grid"
-          ? gridHtml(slice)
-          : tableHtml(slice, start);
-
-    $("#vf-pager").innerHTML = pagerHtml(page, pages);
-
-    const c = { all: state.videos.length, p1: 0, p2: 0, other: 0 };
-    state.videos.forEach((v) => c[v._season]++);
-    Object.entries(c).forEach(([k, n]) => {
-      const el = $(`#vf-season [data-v="${k}"] .cnt`);
-      if (el) el.textContent = n;
-    });
-  }
-
-  function setSeg(id, val) {
-    $$(`#${id} button`).forEach((b) => b.classList.toggle("active", b.dataset.v === val));
-  }
-
-  return {
-    render: () => `
-      <section class="card">
-        <div class="card-body">
-          <div class="toolbar">
-            <span class="label" style="margin:0 6px 0 0">Phần:</span>
-            <div class="seg" id="vf-season">
-              <button data-v="all">Tất cả <span class="cnt">0</span></button>
-              <button data-v="p2">🔥 Phần 2 <span class="cnt">0</span></button>
-              <button data-v="p1">📜 Phần 1 <span class="cnt">0</span></button>
-              <button data-v="other">📢 Video phụ <span class="cnt">0</span></button>
-            </div>
-          </div>
-          <div class="toolbar">
-            <input id="vf-q" class="input" type="search" placeholder="🔍  Tìm theo tên, số tập (vd: 25), ngày (vd: 2026-03)..." />
-            <select id="vf-sort" class="select">
-              <option value="time_desc">Mới đăng nhất trước</option>
-              <option value="time_asc">Cũ nhất trước (đúng mạch truyện)</option>
-              <option value="ep_asc">Số tập: nhỏ → lớn</option>
-              <option value="ep_desc">Số tập: lớn → nhỏ</option>
-              <option value="likes_desc">Nhiều lượt thích nhất</option>
-            </select>
-            <select id="vf-status" class="select">
-              <option value="all">Mọi trạng thái</option>
-              <option value="pending">Chưa reup</option>
-              <option value="downloaded">Đã tải</option>
-              <option value="reupped">Đã reup</option>
-            </select>
-            <div class="seg" id="vf-view">
-              <button data-v="grid">▦ Thẻ</button>
-              <button data-v="table">☰ Bảng</button>
-            </div>
-          </div>
-        </div>
-      </section>
-      <div class="list-meta" id="vf-meta"></div>
-      <div id="vf-list"></div>
-      <div class="pager" id="vf-pager"></div>`,
-
-    mount() {
-      const f = state.vf;
-      $("#vf-q").value = f.q;
-      $("#vf-sort").value = f.sort;
-      $("#vf-status").value = f.status;
-      setSeg("vf-season", f.season);
-      setSeg("vf-view", f.view);
-
-      $("#vf-season").onclick = (e) => {
-        const b = e.target.closest("button");
-        if (!b) return;
-        f.season = b.dataset.v;
-        f.page = 1;
-        setSeg("vf-season", f.season);
-        draw();
-      };
-      $("#vf-view").onclick = (e) => {
-        const b = e.target.closest("button");
-        if (!b) return;
-        f.view = b.dataset.v;
-        setSeg("vf-view", f.view);
-        draw();
-      };
-      let qTimer;
-      $("#vf-q").oninput = (e) => {
-        clearTimeout(qTimer);
-        qTimer = setTimeout(() => {
-          f.q = e.target.value;
-          f.page = 1;
-          draw();
-        }, 200);
-      };
-      $("#vf-sort").onchange = (e) => {
-        f.sort = e.target.value;
-        f.page = 1;
-        draw();
-      };
-      $("#vf-status").onchange = (e) => {
-        f.status = e.target.value;
-        f.page = 1;
-        draw();
-      };
-      $("#vf-list").onclick = (e) => {
-        const el = e.target.closest("[data-id]");
-        if (el) openVideoDetail(el.dataset.id);
-      };
-      $("#vf-pager").onclick = (e) => {
-        const b = e.target.closest("button[data-page]");
-        if (!b || b.disabled) return;
-        f.page = Number(b.dataset.page);
-        draw();
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      };
-    },
-
-    update: draw,
-  };
-}
-
-/* ---------- Popup chi tiết 1 video Douyin ---------- */
-function openVideoDetail(awemeId) {
-  const v = state.videos.find((x) => String(x.aweme_id) === String(awemeId));
-  if (!v) return;
-  const media = v.local_file
-    ? `<video src="${esc(douyinFileUrl(v.local_file))}" controls></video>`
-    : thumbImg(v.cover_url, v.title) || "Không có ảnh bìa";
-
-  const html = `
-    <div class="detail">
-      <div>
-        <div class="detail-media">${media}</div>
-        <div class="actions" style="margin-top:14px">
-          ${v.local_file
-            ? `<a class="btn btn-success" href="${esc(douyinFileUrl(v.local_file))}" download>💾 Lưu file MP4</a>`
-            : v.download_url
-              ? `<button class="btn btn-primary js-busy-disable" id="dt-download">⬇ Tải MP4 về máy</button>`
-              : ""}
-          ${v.video_url ? `<a class="btn btn-light" href="${esc(v.video_url)}" target="_blank">Mở trên Douyin ↗</a>` : ""}
-          ${v.video_url ? `<button class="btn btn-ghost" id="dt-copy">📋 Sao chép link</button>` : ""}
-        </div>
-      </div>
-      <div>
-        <h4>${esc(v.title)}</h4>
-        <dl class="kv">
-          <dt>Phần / Tập</dt><dd>${seasonBadge(v)} ${v.episode_label ? `Tập ${esc(v.episode_label)}` : ""}</dd>
-          <dt>Ngày đăng</dt><dd>${esc(v.publish_date || "—")}</dd>
-          <dt>Thời lượng</dt><dd>${fmtDur(v.duration_sec) || "—"}</dd>
-          <dt>Lượt thích</dt><dd>${esc(v.likes_raw || v.likes || 0)}</dd>
-          <dt>Bình luận</dt><dd>${esc(v.comments_raw || v.comments || 0)}</dd>
-          <dt>Lượt lưu</dt><dd>${esc(v.collects_raw || v.collects || 0)}</dd>
-          <dt>Chia sẻ</dt><dd>${esc(v.shares_raw || v.shares || 0)}</dd>
-          <dt>Mã video</dt><dd><code>${esc(v.aweme_id)}</code></dd>
-          <dt>File đã tải</dt><dd>${v.local_file ? `<code>downloads/${esc(v.local_file)}</code>` : `<span class="muted">Chưa tải</span>`}</dd>
-        </dl>
-        <div class="field" style="margin-top:18px">
-          <label for="dt-status">Trạng thái reup</label>
-          <select id="dt-status" class="select">
-            <option value="pending">Chưa reup</option>
-            <option value="downloaded">Đã tải</option>
-            <option value="reupped">Đã reup</option>
-          </select>
-          <div class="help">Đánh dấu để dễ theo dõi tập nào đã đăng lại.</div>
-        </div>
-      </div>
-    </div>`;
-
-  const { el } = openModal(epText(v), html, { wide: true });
-  renderTaskWidgets();
-
-  const sel = $("#dt-status", el);
-  sel.value = v.reup_status === "reupped" ? "reupped" : v.reup_status === "downloaded" ? "downloaded" : "pending";
-  sel.onchange = async () => {
-    const d = await postJSON("/api/status", { key: videoKey(v), status: sel.value });
-    if (d.ok) {
-      toast(`Đã chuyển sang "${STATUS_LABEL[sel.value]}"`, "success");
-      loadAll();
-    } else toast(d.error || "Không lưu được trạng thái", "error");
-  };
-  const dlBtn = $("#dt-download", el);
-  if (dlBtn) dlBtn.onclick = () => startTask("/api/download", { ids: v.aweme_id }, "Đang tải video, xem tiến trình ở thanh bên trái");
-  const cpBtn = $("#dt-copy", el);
-  if (cpBtn) cpBtn.onclick = () => copyText(v.video_url);
-}
-
-/* =========================================================
-   TRANG 4: TẢI VIDEO DOUYIN
-   ========================================================= */
-function PageDouyinDownloads() {
-  function selection() {
-    const season = $("#dl-season").value;
-    const from = Number($("#dl-from").value || 0);
-    const to = Number($("#dl-to").value || 0);
-    const skip = $("#dl-skip").checked;
-    return state.videos
-      .filter((v) => (season === "all" ? v._season !== "other" : v._season === season))
-      .filter((v) => v.episode_num != null && v.episode_num >= from && v.episode_num <= to)
-      .filter((v) => v.download_url)
-      .filter((v) => !(skip && v.local_file))
-      .sort((a, b) => (a.publish_time || 0) - (b.publish_time || 0));
-  }
-
-  function drawPreview() {
-    const sel = selection();
-    const dur = sel.reduce((a, v) => a + Number(v.duration_sec || 0), 0);
-    $("#dl-preview").innerHTML = sel.length
-      ? `<span class="ci">📦</span><span>Sẽ tải <b>${sel.length} video</b> (tổng thời lượng khoảng <b>${fmtDur(dur)}</b>).
-         Từ "<i>${esc(sel[0].title.slice(0, 40))}…</i>" đến "<i>${esc(sel[sel.length - 1].title.slice(0, 40))}…</i>"</span>`
-      : `<span class="ci">ℹ️</span><span>Không có video nào khớp. Hãy kiểm tra lại phần và khoảng tập.</span>`;
-    $("#dl-preview").className = "callout " + (sel.length ? "info" : "warn");
-    $("#dl-start").disabled = !sel.length || state.task.running;
-  }
-
-  function drawDone() {
-    const done = state.videos
-      .filter((v) => v.local_file)
-      .sort((a, b) => (a.publish_time || 0) - (b.publish_time || 0));
-    $("#dl-done-count").textContent = done.length;
-    $("#dl-done").innerHTML = done.length
-      ? `<div class="table-wrap"><table class="tbl">
-          <thead><tr><th>Phần / Tập</th><th>Tiêu đề</th><th>Thời lượng</th><th>File</th><th></th></tr></thead>
-          <tbody>${done.map((v) => `
-            <tr>
-              <td class="nowrap">${seasonBadge(v)} ${v.episode_label ? `<b>Tập ${esc(v.episode_label)}</b>` : ""}</td>
-              <td class="title-cell">${esc(v.title)}</td>
-              <td>${fmtDur(v.duration_sec) || "—"}</td>
-              <td><code style="font-size:11.5px">${esc(v.local_file.slice(0, 32))}…</code></td>
-              <td class="nowrap">
-                <button class="btn btn-success btn-sm" data-play="${esc(v.local_file)}" data-title="${esc(v.title)}">▶ Xem</button>
-                <a class="btn btn-light btn-sm" href="${esc(douyinFileUrl(v.local_file))}" download>💾 Lưu</a>
-              </td>
-            </tr>`).join("")}
-          </tbody></table></div>`
-      : `<div style="padding:18px">${emptyState("📂", "Chưa tải video nào", "Chọn phần và khoảng tập ở trên rồi bấm Bắt đầu tải.")}</div>`;
-  }
-
-  return {
-    render: () => `
-      <div class="cols cols-main-side">
-        <div>
-          <section class="card">
-            <header class="card-head"><h3>⬇️ Tải hàng loạt theo tập</h3><span class="hint">Video MP4 gốc từ Douyin</span></header>
-            <div class="card-body">
-              <div class="field">
-                <label for="dl-season">1. Chọn phần</label>
-                <select id="dl-season" class="select">
-                  <option value="p2">🔥 Phần 2 — Tập 1 đến 275 (liền mạch, khuyên dùng)</option>
-                  <option value="p1">📜 Phần 1 — Tập 1 đến 467 (thiếu Tập 138–314)</option>
-                  <option value="all">Cả 2 phần</option>
-                </select>
-              </div>
-              <div class="field">
-                <span class="label">2. Chọn khoảng tập</span>
-                <div class="row">
-                  <div class="w-sm"><input id="dl-from" class="input" type="number" min="1" value="1" /><div class="help">Từ tập</div></div>
-                  <div class="w-sm"><input id="dl-to" class="input" type="number" min="1" value="10" /><div class="help">Đến tập</div></div>
-                  <div class="grow" style="padding-bottom:22px">
-                    <label class="check"><input id="dl-skip" type="checkbox" checked /> Bỏ qua các tập đã tải</label>
-                  </div>
-                </div>
-              </div>
-              <div id="dl-preview" class="callout info"></div>
-            </div>
-            <div class="card-foot">
-              <button class="btn btn-primary btn-lg js-busy-disable" id="dl-start">⬇ Bắt đầu tải</button>
-              <span class="muted" style="font-size:12.5px">Theo dõi tiến trình ở khung nhật ký bên phải.</span>
-            </div>
-          </section>
-
-          <section class="card">
-            <header class="card-head"><h3>📂 Video đã tải về máy <span class="badge green" id="dl-done-count">0</span></h3></header>
-            <div class="card-body p0" id="dl-done"></div>
-          </section>
-        </div>
-
-        <aside>
-          ${logCard("Nhật ký tải", 40, "320px")}
-          <section class="card">
-            <header class="card-head"><h3>ℹ️ Lưu ý</h3></header>
-            <div class="card-body prose">
-              <p>📁 File được lưu tại <code>downloads/</code> với tên dạng <code>Ep001_&lt;mã&gt;_&lt;tiêu đề&gt;.mp4</code>.</p>
-              <p>⏰ Link tải của Douyin <b>có hạn sử dụng</b>. Nếu bị lỗi <code>403</code>, hãy vào
-                <a href="#/douyin/scan">Quét kênh</a> và bấm <b>Quét nối tiếp</b> để làm mới link, rồi tải lại.</p>
-            </div>
-          </section>
-        </aside>
-      </div>`,
-
-    mount() {
-      ["dl-season", "dl-from", "dl-to", "dl-skip"].forEach((id) => {
-        $("#" + id).addEventListener("input", drawPreview);
-        $("#" + id).addEventListener("change", drawPreview);
-      });
-      $("#dl-start").onclick = () => {
-        const sel = selection();
-        if (!sel.length) return;
-        startTask("/api/download", { ids: sel.map((v) => v.aweme_id).join(",") }, `Bắt đầu tải ${sel.length} video...`);
-      };
-      $("#dl-done").onclick = (e) => {
-        const b = e.target.closest("[data-play]");
-        if (b) openPlayer(douyinFileUrl(b.dataset.play), b.dataset.title);
-      };
-    },
-
-    update() {
-      drawPreview();
-      drawDone();
-    },
-  };
-}
-
-/* =========================================================
-   TRANG 5: TẢI VIDEO BILIBILI / YOUTUBE
-   ========================================================= */
-function PageBiliNew() {
-  const presets = [
-    { label: "Tập 151–200 (hợp tuyển Full HD, ~5 tiếng)", url: "https://www.bilibili.com/video/BV1teKEzeEfZ/" },
-    { label: "Tập lẻ 楚新钓 (84 giây, test nhanh)", url: "https://www.bilibili.com/video/BV1nHW3z3EhH/" },
-  ];
-  const options = [
-    { v: "top-right", title: "Góc trên bên phải", desc: "Thường gặp ở video ngang", marks: ["r"] },
-    { v: "top-left", title: "Góc trên bên trái", desc: "Thường gặp ở video dọc", marks: ["l"] },
-    { v: "both-top", title: "Cả 2 góc trên", desc: "Khi không chắc vị trí logo", marks: ["l", "r"] },
-    { v: "none", title: "Tải trước, xóa sau", desc: "Nhẹ máy nhất cho video dài", marks: [] },
-  ];
-
-  function drawRecent() {
-    const diskEl = $("#bl-disk");
-    if (diskEl && state.sys.free_gb) {
-      diskEl.innerHTML = `💾 Ổ cứng trống: <b>${state.sys.free_gb} GB</b> / ${state.sys.total_gb} GB`;
-    }
-    const recent = state.bili.slice(0, 4);
-    $("#bl-recent").innerHTML = recent.length
-      ? `<div class="mini-list">${recent.map((v) => `
-          <div class="mini-item">
-            <video class="ph" src="${esc(biliFileUrl(v.local_file))}#t=2" preload="metadata" muted playsinline style="object-fit:cover"></video>
-            <div class="mi-body">
-              <div class="mi-title" title="${esc(v.title)}">${esc(v.title)}</div>
-              <div class="mi-sub">${esc(v.resolution || "")} · ${fmtDur(v.duration_sec)} · ${fmtSize(v.size_mb)}</div>
-            </div>
-            <button class="btn btn-success btn-sm" data-play="${esc(v.local_file)}" data-title="${esc(v.title)}">▶</button>
-          </div>`).join("")}</div>`
-      : `<div style="padding:18px" class="muted">Chưa có video nào.</div>`;
-  }
-
-  return {
-    render: () => `
-      <div class="cols cols-main-side">
-        <div>
-          <section class="card">
-            <header class="card-head">
-              <h3><span class="step-badge pink">1</span> Dán link & chọn đoạn cần tải</h3>
-              <span class="hint" id="bl-disk"></span>
-            </header>
-            <div class="card-body">
-              <div class="field">
-                <label for="bl-url">Link Bilibili hoặc YouTube</label>
-                <input id="bl-url" class="input" type="text" placeholder="https://www.bilibili.com/video/BV..." />
-                <div class="help">Tự động nối tiếp khi rớt mạng (<code>--continue</code>) & kiểm tra dung lượng ổ cứng trước khi tải.</div>
-              </div>
-              <div class="label" style="margin-top:4px">Link có sẵn (bấm để điền):</div>
-              <div class="chips" style="margin-bottom:16px">
-                ${presets.map((p) => `<button class="chip" type="button" data-url="${esc(p.url)}">⚡ ${esc(p.label)}</button>`).join("")}
-              </div>
-
-              <div class="cols cols-2" style="gap:14px">
-                <div class="field" style="margin:0;padding:12px;border:1px solid var(--border);border-radius:10px;background:#fafbfd">
-                  <label>✂️ Cắt theo khung giờ (cho video gộp dài 5h–90h)</label>
-                  <div class="row" style="gap:8px;align-items:center">
-                    <input id="bl-from" class="input" style="width:115px" type="text" placeholder="00:00:00" />
-                    <span class="muted">→</span>
-                    <input id="bl-to" class="input" style="width:115px" type="text" placeholder="01:00:00" />
-                  </div>
-                  <div class="chips" style="margin-top:8px">
-                    <button class="chip" type="button" data-sec="00:00:00,00:15:00">15 phút đầu</button>
-                    <button class="chip" type="button" data-sec="00:00:00,01:00:00">Giờ thứ 1</button>
-                    <button class="chip" type="button" data-sec="01:00:00,02:00:00">Giờ thứ 2</button>
-                    <button class="chip" type="button" data-sec=",">Lấy trọn video</button>
-                  </div>
-                  <div class="help">Để trống nếu muốn tải trọn vẹn cả video.</div>
-                </div>
-
-                <div class="field" style="margin:0;padding:12px;border:1px solid var(--border);border-radius:10px;background:#fafbfd">
-                  <label for="bl-pitems">📑 Chọn Part (cho link nhiều phần P1, P2...)</label>
-                  <input id="bl-pitems" class="input" type="text" placeholder="Ví dụ: 1-5 hoặc 1,3,5" />
-                  <div style="margin-top:10px">
-                    <label class="check"><input id="bl-playlist" type="checkbox" /> Tải toàn bộ mọi Part trong playlist</label>
-                  </div>
-                  <div class="help">Nên tải từng đợt 5–10 Part để tránh đầy ổ cứng.</div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section class="card">
-            <header class="card-head">
-              <h3><span class="step-badge pink">2</span> Chọn cách xử lý logo</h3>
-              <span class="hint">Có thể tải trước rồi xóa logo sau trong Thư viện</span>
-            </header>
-            <div class="card-body">
-              <div class="opt-grid" id="bl-delogo">
-                ${options.map((o, i) => `
-                  <label class="opt ${i === 0 ? "checked" : ""}">
-                    <input type="radio" name="delogo" value="${o.v}" ${i === 0 ? "checked" : ""} />
-                    <div class="screen">${o.marks.map((m) => `<span class="mark ${m}"></span>`).join("")}</div>
-                    <div class="opt-title">${o.title}</div>
-                    <div class="opt-desc">${o.desc}</div>
-                  </label>`).join("")}
-              </div>
-              <div class="callout info"><span class="ci">💡</span><span><b>Mẹo giảm tải:</b> Với video dài hàng chục tiếng, hãy chọn <b>"Tải trước, xóa sau"</b> (CPU chỉ ~5%). Sau khi tải xong bạn vào <b>Thư viện đã tải</b> bấm <b>✨ Xóa logo</b> lúc nào cũng được!</span></div>
-            </div>
-          </section>
-
-          <section class="card">
-            <header class="card-head"><h3><span class="step-badge pink">3</span> Chất lượng & Mức tải hệ thống</h3></header>
-            <div class="card-body">
-              <div class="cols cols-2" style="gap:14px">
-                <div class="field" style="margin:0">
-                  <label for="bl-quality">Độ phân giải</label>
-                  <select id="bl-quality" class="select">
-                    <option value="best">Cao nhất (1080p trở lên)</option>
-                    <option value="720p">Tối đa 720p (giảm 50% dung lượng, rất hợp hoạt hình)</option>
-                  </select>
-                </div>
-                <div class="field" style="margin:0">
-                  <label for="bl-perf">Chế độ hiệu năng khi xóa logo</label>
-                  <select id="bl-perf" class="select">
-                    <option value="balanced">⚖️ Cân bằng — Tự nhận GPU / giới hạn 50% CPU (khuyên dùng)</option>
-                    <option value="eco">🌿 Mát máy — Chỉ dùng 30% CPU, chạy nền êm</option>
-                    <option value="fast">🚀 Tốc độ tối đa — Bung hết công suất máy</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div class="card-foot">
-              <button class="btn btn-pink btn-lg js-busy-disable" id="bl-start">⬇ Bắt đầu tải</button>
-              <span class="muted" style="font-size:12.5px">Có thể dừng bất cứ lúc nào — lần sau tải lại sẽ tự nối tiếp.</span>
-            </div>
-          </section>
-        </div>
-
-        <aside>
-          ${logCard("Nhật ký tải", 40, "300px")}
-          <section class="card">
-            <header class="card-head"><h3>🕘 Mới tải gần đây</h3><a href="#/project/${esc(state.activeProjectId)}/bilibili-library">Xem tất cả →</a></header>
-            <div class="card-body p0" id="bl-recent"></div>
-          </section>
-        </aside>
-      </div>`,
-
-    mount() {
-      $$(".chip[data-url]").forEach((c) => (c.onclick = () => {
-        $("#bl-url").value = c.dataset.url;
-        $("#bl-url").focus();
-      }));
-      $$(".chip[data-sec]").forEach((c) => (c.onclick = () => {
-        const [f, t] = c.dataset.sec.split(",");
-        $("#bl-from").value = f || "";
-        $("#bl-to").value = t || "";
-      }));
-      $("#bl-delogo").onchange = () => {
-        $$("#bl-delogo .opt").forEach((o) => o.classList.toggle("checked", $("input", o).checked));
-      };
-      $("#bl-start").onclick = () => {
-        const url = $("#bl-url").value.trim();
-        if (!url) {
-          toast("Vui lòng dán link Bilibili hoặc YouTube", "error");
-          $("#bl-url").focus();
-          return;
-        }
-        const from = $("#bl-from").value.trim();
-        const to = $("#bl-to").value.trim();
-        if ((from && !to) || (!from && to)) {
-          toast("Vui lòng nhập đủ cả giờ bắt đầu và giờ kết thúc (vd: 00:00:00 → 01:00:00)", "error");
-          return;
-        }
-        const section = from && to ? `${from}-${to}` : "";
-        startTask(
-          "/api/bilibili/download",
-          {
-            url,
-            section,
-            playlist_items: $("#bl-pitems").value.trim(),
-            quality: $("#bl-quality").value,
-            playlist: $("#bl-playlist").checked,
-            delogo: ($("#bl-delogo input:checked") || {}).value || "top-right",
-            perf: $("#bl-perf").value,
-          },
-          section ? `Bắt đầu tải đoạn ${section}...` : "Bắt đầu tải video Bilibili..."
-        );
-      };
-      $("#bl-recent").onclick = (e) => {
-        const b = e.target.closest("[data-play]");
-        if (b) openPlayer(biliFileUrl(b.dataset.play), b.dataset.title);
-      };
-    },
-
-    update: drawRecent,
-  };
-}
-
-/* =========================================================
-   TRANG 6: THƯ VIỆN BILIBILI
-   ========================================================= */
-function openBiliDelogoModal(localFile, title) {
-  const html = `
-    <div class="field">
-      <label for="md-delogo">Vị trí logo cần xóa</label>
-      <select id="md-delogo" class="select">
-        <option value="top-right">Góc trên bên phải (video ngang)</option>
-        <option value="top-left">Góc trên bên trái (video dọc)</option>
-        <option value="both-top">Cả 2 góc trên</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="md-perf">Chế độ hiệu năng</label>
-      <select id="md-perf" class="select">
-        <option value="balanced">⚖️ Cân bằng (50% CPU, mát máy)</option>
-        <option value="eco">🌿 Tiết kiệm (30% CPU, chạy nền êm)</option>
-        <option value="fast">🚀 Tốc độ tối đa</option>
-      </select>
-      <div class="help">Xóa logo độc lập trực tiếp trên file đã tải (không cần tải lại từ mạng).</div>
-    </div>
-    <div class="actions" style="margin-top:16px">
-      <button class="btn btn-pink js-busy-disable" id="md-run">✨ Bắt đầu xóa logo</button>
-      <button class="btn btn-light" data-close>Hủy</button>
-    </div>`;
-  const { el, close } = openModal(`Xóa logo: ${title}`, html);
-  renderTaskWidgets();
-  $("#md-run", el).onclick = async () => {
-    const ok = await startTask(
-      "/api/bilibili/delogo",
-      { local_file: localFile, delogo: $("#md-delogo", el).value, perf: $("#md-perf", el).value },
-      "Đang xóa logo video..."
-    );
-    if (ok) close();
-  };
-}
-
-function PageBiliLibrary() {
-  function draw() {
-    const q = state.bf.q.trim().toLowerCase();
-    const items = state.bili.filter((v) => !q || (v.title || "").toLowerCase().includes(q) || (v.id || "").toLowerCase().includes(q));
-    const totalMb = state.bili.reduce((a, v) => a + Number(v.size_mb || 0), 0);
-    const totalSec = state.bili.reduce((a, v) => a + Number(v.duration_sec || 0), 0);
-
-    $("#bf-stats").innerHTML = [
-      statCard("🎬", "Số video", state.bili.length, "Đã tải từ Bilibili / YouTube", "pink"),
-      statCard("💾", "Dung lượng", fmtSize(totalMb), "Trong downloads/bilibili/", "green"),
-      statCard("⏱️", "Tổng thời lượng", fmtDur(totalSec) || "0:00", "Cộng dồn tất cả video", "purple"),
-    ].join("");
-
-    $("#bf-list").innerHTML = !state.bili.length
-      ? emptyState("🎬", "Thư viện đang trống", "Hãy tải video đầu tiên từ Bilibili hoặc YouTube.", `<a class="btn btn-pink" href="#/bilibili/new">➕ Tải video mới</a>`)
-      : !items.length
-        ? emptyState("🔎", "Không tìm thấy video", "Thử từ khóa khác.")
-        : `<div class="vgrid">${items.map((v) => `
-            <article class="vcard" style="cursor:default">
-              <div class="vthumb">
-                <video src="${esc(biliFileUrl(v.local_file))}#t=2" preload="metadata" muted playsinline></video>
-                <div class="tl"><span class="ov">${esc(v.resolution || "MP4")}</span></div>
-                <div class="tr">${v.delogo && v.delogo !== "none" ? `<span class="ov pink">✨ Đã xóa logo</span>` : ""}</div>
-                <div class="bl"><span class="ov green">${fmtSize(v.size_mb)}</span></div>
-                <div class="br">${v.duration_sec ? `<span class="ov">${fmtDur(v.duration_sec)}</span>` : ""}</div>
-              </div>
-              <div class="vbody">
-                <div class="vtitle" title="${esc(v.title)}">${esc(v.title)}</div>
-                <div class="vmeta"><span>🆔 ${esc(v.id)}</span><span>${esc(DELOGO_LABEL[v.delogo] || "")}</span></div>
-                <div class="vmeta"><span>👤 ${esc(v.uploader || "—")}</span><span>${dateOnly(v.downloaded_at)}</span></div>
-                <div class="vactions">
-                  <button class="btn btn-success btn-sm" data-act="play" data-file="${esc(v.local_file)}" data-title="${esc(v.title)}">▶ Xem</button>
-                  <button class="btn btn-light btn-sm js-busy-disable" data-act="delogo" data-file="${esc(v.local_file)}" data-title="${esc(v.title)}">✨ Logo</button>
-                  <a class="btn btn-light btn-sm" href="${esc(biliFileUrl(v.local_file))}" download>💾 Lưu</a>
-                  <button class="btn btn-ghost btn-sm" style="margin-left:auto;color:var(--red)" data-act="delete" data-file="${esc(v.local_file)}" data-title="${esc(v.title)}">🗑</button>
-                </div>
-              </div>
-            </article>`).join("")}</div>`;
-  }
-
-  return {
-    render: () => `
-      <div class="stats" id="bf-stats"></div>
-      <section class="card">
-        <div class="card-body">
-          <div class="toolbar">
-            <input id="bf-q" class="input" type="search" placeholder="🔍  Tìm theo tiêu đề hoặc mã video (BV...)" />
-            <a class="btn btn-pink" href="#/project/${esc(state.activeProjectId)}/bilibili-new">➕ Tải video mới</a>
-          </div>
-        </div>
-      </section>
-      <div id="bf-list"></div>`,
-
-    mount() {
-      $("#bf-q").value = state.bf.q;
-      $("#bf-q").oninput = (e) => {
-        state.bf.q = e.target.value;
-        draw();
-      };
-      $("#bf-list").onclick = async (e) => {
-        const b = e.target.closest("[data-act]");
-        if (!b) return;
-        if (b.dataset.act === "play") openPlayer(biliFileUrl(b.dataset.file), b.dataset.title);
-        if (b.dataset.act === "delogo") openBiliDelogoModal(b.dataset.file, b.dataset.title);
-        if (b.dataset.act === "delete") {
-          if (!confirm(`Xóa vĩnh viễn video này khỏi máy?\n\n${b.dataset.title}`)) return;
-          const d = await postJSON("/api/bilibili/delete", { local_file: b.dataset.file });
-          if (d.ok) {
-            toast("Đã xóa video", "success");
-            loadAll();
-          } else toast(d.error || "Không xóa được", "error");
-        }
-      };
-    },
-
-    update: draw,
-  };
-}
-
-/* =========================================================
-   TRANG 6A: DỰ ÁN TRUYỆN / PHIM (NGỮ CẢNH AI — 1 DỰ ÁN NHIỀU VIDEO)
+   TRANG: DỰ ÁN
    ========================================================= */
 function openNewProjectModal() {
   const html = `
     <div class="field">
       <label for="np-name">Tên dự án (tên bộ truyện / phim)</label>
-      <input id="np-name" class="input" type="text" placeholder="Ví dụ: Đấu Phá Thương Khung, Phim Kiếm Hiệp..." />
+      <input id="np-name" class="input" type="text" placeholder="Ví dụ: Đấu Phá Thương Khung" />
     </div>
-    <div class="cols cols-2" style="gap:12px">
-      <div class="field" style="margin:0">
+    <div class="form-grid">
+      <div class="field">
         <label for="np-type">Thể loại</label>
         <select id="np-type" class="select">
-          <option value="Truyện / Hoạt hình">Truyện / Hoạt hình</option>
-          <option value="Phim bộ">Phim bộ</option>
-          <option value="Phim lẻ">Phim lẻ</option>
-          <option value="Review / Tài liệu">Review / Tài liệu</option>
+          ${options(["Truyện / Hoạt hình", "Phim bộ", "Phim lẻ", "Review / Tài liệu"].map((t) => [t, t]))}
         </select>
       </div>
-      <div class="field" style="margin:0">
+      <div class="field">
         <label for="np-style">Phong cách dịch</label>
         <input id="np-style" class="input" type="text" value="Tự nhiên, gần gũi, giữ đúng xưng hô" />
       </div>
     </div>
-    <div class="field" style="margin-top:12px">
-      <label for="np-syn">Tóm tắt bối cảnh / cốt truyện (để AI hiểu ngữ cảnh)</label>
-      <textarea id="np-syn" class="input" rows="4" placeholder="Mô tả ngắn nhân vật chính, bối cảnh truyện/phim, mối quan hệ nhân vật..."></textarea>
+    <div class="field">
+      <label for="np-syn">Bối cảnh / cốt truyện</label>
+      <textarea id="np-syn" class="input" rows="4" placeholder="Nhân vật chính, bối cảnh, quan hệ giữa các nhân vật... AI đọc phần này mỗi lần dịch."></textarea>
     </div>
-    <div class="actions" style="margin-top:14px">
-      <button class="btn btn-primary" id="np-create">➕ Tạo dự án</button>
-      <button class="btn btn-light" data-close>Hủy</button>
+    <div class="modal-foot">
+      <button class="btn btn-light" type="button" data-close>Hủy</button>
+      <button class="btn btn-primary" type="button" id="np-create">${icon("plus", 16)} Tạo dự án</button>
     </div>`;
-  const { el, close } = openModal("Tạo dự án Truyện / Phim mới", html);
+  const { el, close } = openModal("Tạo dự án mới", html);
   $("#np-name", el).focus();
   $("#np-create", el).onclick = async () => {
     const name = $("#np-name", el).value.trim();
-    if (!name) return toast("Vui lòng nhập tên dự án!", "error");
+    if (!name) return toast("Vui lòng nhập tên dự án", "error");
     const d = await postJSON("/api/projects", {
       name,
       type: $("#np-type", el).value,
@@ -1457,22 +555,81 @@ function openNewProjectModal() {
       synopsis: $("#np-syn", el).value.trim(),
     });
     if (!d.ok) return toast(d.error || "Không tạo được dự án", "error");
-    state.activeProjectId = d.project.id;
     toast(`Đã tạo dự án "${name}"`, "success");
-    close();
+    close(true);
     await loadAll();
-    location.hash = `#/project/${d.project.id}/dubbing`;
+    location.hash = `#/project/${encodeURIComponent(d.project.id)}/videos`;
+  };
+}
+
+function PageProjects() {
+  function draw() {
+    const totalSec = state.dubbed.reduce((a, v) => a + Number(v.duration_sec || 0), 0);
+    const totalMem = state.projects.reduce((a, p) => a + (p.characters || []).length + (p.glossary || []).length, 0);
+
+    $("#pj-metrics").innerHTML = [
+      metric("folder", "Dự án", state.projects.length, "", "violet"),
+      metric("mic", "Video đã lồng tiếng", state.dubbed.length, totalSec ? `Tổng ${fmtHours(totalSec)}` : "", "green"),
+      metric("brain", "AI đã ghi nhớ", totalMem, "nhân vật & thuật ngữ", "pink"),
+      metric("disk", "Ổ cứng còn trống", `${state.sys.free_gb || 0} GB`, `trên ${state.sys.total_gb || 0} GB`, "blue"),
+    ].join("");
+
+    const cards = state.projects.map((p) => `
+      <article class="pcard" data-open="${esc(p.id)}" tabindex="0" role="link" aria-label="Mở dự án ${esc(p.name)}">
+        <div class="pcard-top">
+          <div class="pcard-ico">${icon(p.type?.includes("Phim") ? "film" : p.type?.includes("Review") ? "book" : "sparkles", 22)}</div>
+          <div class="pcard-head">
+            <div class="pcard-title">${esc(p.name)}</div>
+            <span class="badge violet">${esc(p.type || "Truyện / Hoạt hình")}</span>
+          </div>
+          <button class="icon-btn" type="button" data-cfg="${esc(p.id)}" title="Ngữ cảnh AI & cài đặt dự án">${icon("sliders")}</button>
+        </div>
+        <p class="pcard-syn">${esc(p.synopsis || "Chưa có mô tả cốt truyện. Thêm bối cảnh để AI dịch đúng mạch truyện hơn.")}</p>
+        <div class="pcard-foot">
+          <span>${icon("mic", 14)} ${p.video_count || 0} video</span>
+          <span>${icon("users", 14)} ${(p.characters || []).length} nhân vật</span>
+          <span>${icon("book", 14)} ${(p.glossary || []).length} thuật ngữ</span>
+          <span class="pcard-go">Mở ${icon("chevron", 15)}</span>
+        </div>
+      </article>`).join("");
+
+    $("#pj-grid").innerHTML = `
+      <div class="proj-grid">
+        ${cards}
+        <button class="pcard pcard-new" type="button" data-new>
+          <span class="plus">${icon("plus", 22)}</span>
+          <b>Tạo dự án mới</b>
+          <span>Mỗi bộ truyện / phim một dự án để AI nhớ nhân vật, xưng hô và mạch truyện</span>
+        </button>
+      </div>`;
+  }
+
+  return {
+    render: () => `<div class="metrics" id="pj-metrics"></div><div id="pj-grid"></div>`,
+    mount() {
+      const open = (id) => (location.hash = `#/project/${encodeURIComponent(id)}/videos`);
+      $("#pj-grid").onclick = (e) => {
+        if (e.target.closest("[data-new]")) return openNewProjectModal();
+        const cfg = e.target.closest("[data-cfg]");
+        if (cfg) return openProjectDrawer(cfg.dataset.cfg);
+        const card = e.target.closest("[data-open]");
+        if (card) open(card.dataset.open);
+      };
+      $("#pj-grid").onkeydown = (e) => {
+        if (e.key === "Enter" && e.target.matches("[data-open]")) open(e.target.dataset.open);
+      };
+    },
+    update: draw,
   };
 }
 
 /* =========================================================
-   NGĂN TRƯỢT BÊN PHẢI: THÔNG TIN & CÀI ĐẶT DỰ ÁN
+   NGĂN TRƯỢT: NGỮ CẢNH AI & CÀI ĐẶT DỰ ÁN
    ========================================================= */
 function openProjectDrawer(projectId, initialTab = "info") {
   const proj = state.projects.find((p) => p.id === projectId) || getActiveProject();
   if (!proj) return toast("Chưa chọn dự án nào", "error");
 
-  // Working copy for live editing across tabs
   const draft = {
     id: proj.id,
     name: proj.name || "",
@@ -1489,128 +646,75 @@ function openProjectDrawer(projectId, initialTab = "info") {
 
   function syncTabInputs() {
     if (activeTab === "info") {
-      if ($("#dr-name", root)) draft.name = $("#dr-name", root).value.trim();
-      if ($("#dr-type", root)) draft.type = $("#dr-type", root).value;
-      if ($("#dr-style", root)) draft.style = $("#dr-style", root).value.trim();
-      if ($("#dr-syn", root)) draft.synopsis = $("#dr-syn", root).value.trim();
+      draft.name = $("#dr-name", root).value.trim();
+      draft.type = $("#dr-type", root).value;
+      draft.style = $("#dr-style", root).value.trim();
+      draft.synopsis = $("#dr-syn", root).value.trim();
     } else if (activeTab === "chars") {
-      draft.characters = $$("#dr-chars tr[data-ci]", root).map((tr) => ({
-        zh: $(".ch-zh", tr).value.trim(),
-        vi: $(".ch-vi", tr).value.trim(),
-        pronouns: $(".ch-pr", tr).value.trim(),
-        role: (draft.characters[Number(tr.dataset.ci)] || {}).role || "",
+      draft.characters = $$("#dr-rows tr[data-i]", root).map((tr) => ({
+        zh: $(".c-zh", tr).value.trim(),
+        vi: $(".c-vi", tr).value.trim(),
+        pronouns: $(".c-pr", tr).value.trim(),
+        role: (draft.characters[Number(tr.dataset.i)] || {}).role || "",
       }));
     } else if (activeTab === "gloss") {
-      draft.glossary = $$("#dr-gloss tr[data-gi]", root).map((tr) => ({
-        zh: $(".gl-zh", tr).value.trim(),
-        vi: $(".gl-vi", tr).value.trim(),
+      draft.glossary = $$("#dr-rows tr[data-i]", root).map((tr) => ({
+        zh: $(".c-zh", tr).value.trim(),
+        vi: $(".c-vi", tr).value.trim(),
       }));
     } else if (activeTab === "notes") {
-      $$(".dr-ep-note", root).forEach((inp) => {
-        draft.episode_notes[inp.dataset.job] = inp.value.trim();
-      });
+      $$(".dr-ep-note", root).forEach((inp) => (draft.episode_notes[inp.dataset.job] = inp.value.trim()));
     }
   }
 
-  function renderDrawerBody() {
+  /** Bảng sửa nhanh dùng chung cho Nhân vật và Từ điển. */
+  function tableTab(key, hint, cols, emptyText, blank) {
+    const rows = draft[key];
+    return `
+      <div class="drawer-bar">
+        <span class="muted">${hint}</span>
+        <button class="btn btn-light btn-sm" type="button" data-add="${key}">${icon("plus", 14)} Thêm</button>
+      </div>
+      <div class="table-wrap bordered">
+        <table class="tbl compact">
+          <thead><tr>${cols.map((c) => `<th>${c[1]}</th>`).join("")}<th></th></tr></thead>
+          <tbody id="dr-rows">
+            ${rows.map((r, i) => `
+              <tr data-i="${i}">
+                ${cols.map((c) => `<td><input class="input input-sm ${c[0]}" value="${esc(r[c[2]] || "")}" aria-label="${c[1]}" /></td>`).join("")}
+                <td><button class="icon-btn danger" type="button" data-rm="${key}:${i}" title="Xóa dòng">${icon("x", 15)}</button></td>
+              </tr>`).join("") || `<tr><td colspan="${cols.length + 1}" class="muted">${emptyText}</td></tr>`}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  function renderBody() {
     const body = $("#dr-body", root);
-    if (!body) return;
-    $$(".drawer-tabs button", root).forEach((b) => b.classList.toggle("active", b.dataset.tab === activeTab));
+    $$(".tabs button", root).forEach((b) => b.classList.toggle("active", b.dataset.tab === activeTab));
 
     if (activeTab === "info") {
       body.innerHTML = `
-        <div class="field">
-          <label>Tên dự án</label>
-          <input id="dr-name" class="input" value="${esc(draft.name)}" />
-        </div>
-        <div class="field">
-          <label>Thể loại</label>
-          <select id="dr-type" class="select">
-            ${["Truyện / Hoạt hình", "Phim bộ", "Phim lẻ", "Review / Tài liệu"]
-              .map((t) => `<option value="${t}" ${draft.type === t ? "selected" : ""}>${t}</option>`)
-              .join("")}
-          </select>
-        </div>
-        <div class="field">
-          <label>Phong cách dịch & giọng văn</label>
-          <input id="dr-style" class="input" value="${esc(draft.style)}" />
-        </div>
-        <div class="field">
-          <label>Tóm tắt cốt truyện chung (Antigravity tự đọc khi dịch)</label>
-          <textarea id="dr-syn" class="input" rows="5">${esc(draft.synopsis)}</textarea>
-        </div>
-        <div class="callout info">
-          <span class="ci">🤖</span>
-          <span>Mỗi khi bạn dịch tập mới trong dự án này, <b>Antigravity</b> sẽ tự đọc phần này, tự bổ sung nhân vật & thuật ngữ mới và lưu lại mạch truyện!</span>
-        </div>`;
+        <div class="field"><label for="dr-name">Tên dự án</label><input id="dr-name" class="input" value="${esc(draft.name)}" /></div>
+        <div class="field"><label for="dr-type">Thể loại</label>
+          <select id="dr-type" class="select">${options(["Truyện / Hoạt hình", "Phim bộ", "Phim lẻ", "Review / Tài liệu"].map((t) => [t, t]), draft.type)}</select></div>
+        <div class="field"><label for="dr-style">Phong cách dịch & giọng văn</label><input id="dr-style" class="input" value="${esc(draft.style)}" /></div>
+        <div class="field"><label for="dr-syn">Cốt truyện chung</label><textarea id="dr-syn" class="input" rows="6">${esc(draft.synopsis)}</textarea></div>
+        ${callout("info", "brain", "Mỗi lần dịch, AI đọc toàn bộ ngữ cảnh này, rồi tự bổ sung nhân vật và thuật ngữ mới gặp vào dự án.")}`;
     } else if (activeTab === "chars") {
-      body.innerHTML = `
-        <div class="actions" style="justify-content:space-between;margin-bottom:12px">
-          <span class="muted" style="font-size:12.5px">AI tự thêm khi gặp nhân vật mới, bạn có thể sửa lại cách xưng hô:</span>
-          <button class="btn btn-light btn-sm" id="dr-add-ch">+ Thêm</button>
-        </div>
-        <div class="table-wrap" style="border:1px solid var(--border);border-radius:10px">
-          <table class="tbl">
-            <thead><tr><th>Gốc</th><th>Tên Việt</th><th>Xưng hô</th><th></th></tr></thead>
-            <tbody id="dr-chars">
-              ${draft.characters.map((c, i) => `
-                <tr data-ci="${i}">
-                  <td><input class="input ch-zh" value="${esc(c.zh)}" style="padding:5px 7px;font-size:12.5px" /></td>
-                  <td><input class="input ch-vi" value="${esc(c.vi)}" style="padding:5px 7px;font-size:12.5px" /></td>
-                  <td><input class="input ch-pr" value="${esc(c.pronouns || "")}" style="padding:5px 7px;font-size:12.5px" /></td>
-                  <td><button class="btn btn-ghost btn-sm" style="color:var(--red)" data-rm-ch="${i}">✕</button></td>
-                </tr>`).join("") || `<tr><td colspan="4" class="muted">Chưa có nhân vật.</td></tr>`}
-            </tbody>
-          </table>
-        </div>`;
-      $("#dr-add-ch", body).onclick = () => {
-        syncTabInputs();
-        draft.characters.push({ zh: "", vi: "", pronouns: "", role: "" });
-        renderDrawerBody();
-      };
-      $$("[data-rm-ch]", body).forEach((b) => (b.onclick = () => {
-        syncTabInputs();
-        draft.characters.splice(Number(b.dataset.rmCh), 1);
-        renderDrawerBody();
-      }));
+      body.innerHTML = tableTab("characters", "AI tự thêm khi gặp nhân vật mới — bạn có thể sửa tên và xưng hô.",
+        [["c-zh", "Tên gốc", "zh"], ["c-vi", "Tên Việt", "vi"], ["c-pr", "Xưng hô", "pronouns"]], "Chưa có nhân vật.");
     } else if (activeTab === "gloss") {
-      body.innerHTML = `
-        <div class="actions" style="justify-content:space-between;margin-bottom:12px">
-          <span class="muted" style="font-size:12.5px">Thuật ngữ, chiêu thức, từ lóng riêng của bộ này:</span>
-          <button class="btn btn-light btn-sm" id="dr-add-gl">+ Thêm</button>
-        </div>
-        <div class="table-wrap" style="border:1px solid var(--border);border-radius:10px">
-          <table class="tbl">
-            <thead><tr><th>Từ gốc</th><th>Dịch tiếng Việt</th><th></th></tr></thead>
-            <tbody id="dr-gloss">
-              ${draft.glossary.map((g, i) => `
-                <tr data-gi="${i}">
-                  <td><input class="input gl-zh" value="${esc(g.zh)}" style="padding:5px 7px;font-size:12.5px" /></td>
-                  <td><input class="input gl-vi" value="${esc(g.vi)}" style="padding:5px 7px;font-size:12.5px" /></td>
-                  <td><button class="btn btn-ghost btn-sm" style="color:var(--red)" data-rm-gl="${i}">✕</button></td>
-                </tr>`).join("") || `<tr><td colspan="3" class="muted">Chưa có thuật ngữ.</td></tr>`}
-            </tbody>
-          </table>
-        </div>`;
-      $("#dr-add-gl", body).onclick = () => {
-        syncTabInputs();
-        draft.glossary.push({ zh: "", vi: "" });
-        renderDrawerBody();
-      };
-      $$("[data-rm-gl]", body).forEach((b) => (b.onclick = () => {
-        syncTabInputs();
-        draft.glossary.splice(Number(b.dataset.rmGl), 1);
-        renderDrawerBody();
-      }));
-    } else if (activeTab === "notes") {
-      const vids = draft.videos || [];
-      body.innerHTML = vids.length
-        ? vids.map((v, i) => `
-            <div class="field" style="padding:12px;border:1px solid var(--border);border-radius:10px;background:#fafbfd">
-              <label style="font-size:12.5px">Tập ${i + 1}: ${esc(v.title)}</label>
-              <textarea class="input dr-ep-note" data-job="${esc(v.job_id)}" rows="2" style="font-size:13px">${esc(draft.episode_notes[v.job_id] || "")}</textarea>
+      body.innerHTML = tableTab("glossary", "Thuật ngữ, chiêu thức, từ lóng riêng của bộ này.",
+        [["c-zh", "Từ gốc", "zh"], ["c-vi", "Dịch tiếng Việt", "vi"]], "Chưa có thuật ngữ.");
+    } else {
+      body.innerHTML = draft.videos.length
+        ? draft.videos.map((v, i) => `
+            <div class="field">
+              <label for="ep-${i}">${i + 1}. ${esc(v.title)}</label>
+              <textarea id="ep-${i}" class="input dr-ep-note" data-job="${esc(v.job_id)}" rows="3">${esc(draft.episode_notes[v.job_id] || "")}</textarea>
             </div>`).join("")
-        : `<div class="muted">Chưa có video nào được lồng tiếng trong dự án này.</div>`;
+        : `<p class="muted">Chưa có video nào được lồng tiếng trong dự án này. Sau mỗi video, AI tự ghi tóm tắt diễn biến ở đây để giữ mạch truyện cho video sau.</p>`;
     }
   }
 
@@ -1618,45 +722,50 @@ function openProjectDrawer(projectId, initialTab = "info") {
     root.innerHTML = "";
     document.removeEventListener("keydown", onEsc);
   }
-  const onEsc = (e) => {
-    if (e.key === "Escape") closeDrawer();
-  };
+  const onEsc = (e) => e.key === "Escape" && closeDrawer();
 
   root.innerHTML = `
     <div class="drawer-bg">
-      <div class="drawer">
+      <div class="drawer" role="dialog" aria-modal="true" aria-label="Ngữ cảnh AI của dự án">
         <div class="drawer-head">
-          <h3>⚙️ Cài đặt dự án</h3>
-          <button class="btn btn-light btn-sm" data-close>✕ Đóng</button>
+          <h3>Ngữ cảnh AI · ${esc(draft.name)}</h3>
+          <button class="icon-btn" type="button" data-close aria-label="Đóng">${icon("x")}</button>
         </div>
-        <div class="drawer-tabs">
-          <button data-tab="info">📖 Thông tin</button>
-          <button data-tab="chars">👥 Nhân vật (${draft.characters.length})</button>
-          <button data-tab="gloss">📚 Từ điển (${draft.glossary.length})</button>
-          <button data-tab="notes">🎬 Mạch truyện (${draft.videos.length})</button>
+        <div class="tabs">
+          <button type="button" data-tab="info">Thông tin</button>
+          <button type="button" data-tab="chars">Nhân vật <span class="cnt">${draft.characters.length}</span></button>
+          <button type="button" data-tab="gloss">Từ điển <span class="cnt">${draft.glossary.length}</span></button>
+          <button type="button" data-tab="notes">Mạch truyện <span class="cnt">${draft.videos.length}</span></button>
         </div>
         <div class="drawer-body" id="dr-body"></div>
         <div class="drawer-foot">
-          <div class="actions" style="gap:6px">
-            <button class="btn btn-light btn-sm" id="dr-copy">📋 Copy ngữ cảnh</button>
-            <button class="btn btn-ghost btn-sm" style="color:var(--red)" id="dr-del">🗑 Xóa</button>
-          </div>
-          <button class="btn btn-primary" id="dr-save">💾 Lưu cài đặt</button>
+          <button class="btn btn-quiet btn-sm danger" type="button" id="dr-del">${icon("trash", 15)} Xóa dự án</button>
+          <span class="grow"></span>
+          <button class="btn btn-light" type="button" id="dr-copy">${icon("copy", 15)} Copy ngữ cảnh</button>
+          <button class="btn btn-primary" type="button" id="dr-save">Lưu</button>
         </div>
       </div>
     </div>`;
 
-  renderDrawerBody();
+  renderBody();
   document.addEventListener("keydown", onEsc);
 
   root.firstElementChild.onclick = (e) => {
-    if (e.target === root.firstElementChild || e.target.closest("[data-close]")) closeDrawer();
-  };
-  $$(".drawer-tabs button", root).forEach((b) => (b.onclick = () => {
+    if (e.target === root.firstElementChild || e.target.closest("[data-close]")) return closeDrawer();
+    const tab = e.target.closest("[data-tab]");
+    const add = e.target.closest("[data-add]");
+    const rm = e.target.closest("[data-rm]");
+    if (!tab && !add && !rm) return;
     syncTabInputs();
-    activeTab = b.dataset.tab;
-    renderDrawerBody();
-  }));
+    if (tab) activeTab = tab.dataset.tab;
+    if (add) draft[add.dataset.add].push({ zh: "", vi: "", pronouns: "", role: "" });
+    if (rm) {
+      const [key, i] = rm.dataset.rm.split(":");
+      draft[key].splice(Number(i), 1);
+    }
+    renderBody();
+    if (add) $("#dr-rows tr:last-child input", root)?.focus();
+  };
   $("#dr-copy", root).onclick = () => {
     syncTabInputs();
     copyText(buildAiContextPrompt(draft));
@@ -1670,19 +779,17 @@ function openProjectDrawer(projectId, initialTab = "info") {
       style: draft.style,
       synopsis: draft.synopsis,
       characters: draft.characters.filter((c) => c.zh || c.vi),
-      glossary: draft.glossary.filter((g) => g.zh || g.vi),
+      glossary: draft.glossary.filter((g) => g.zh || g.vi).map(({ zh, vi }) => ({ zh, vi })),
       episode_notes: draft.episode_notes,
     });
-    if (d.ok) {
-      toast("Đã lưu cài đặt dự án!", "success");
-      await loadAll();
-      closeDrawer();
-    } else toast(d.error || "Lưu thất bại", "error");
+    if (!d.ok) return toast(d.error || "Lưu thất bại", "error");
+    toast("Đã lưu ngữ cảnh dự án", "success");
+    closeDrawer();
+    loadAll();
   };
   $("#dr-del", root).onclick = async () => {
-    if (!confirm(`Xóa dự án "${draft.name}"? (Các file MP4 vẫn được giữ nguyên)`)) return;
+    if (!confirm(`Xóa dự án "${draft.name}"?\n\nCác file video vẫn được giữ nguyên, chỉ mất ngữ cảnh AI của dự án.`)) return;
     await postJSON("/api/projects/delete", { id: draft.id });
-    state.activeProjectId = "";
     toast("Đã xóa dự án", "success");
     closeDrawer();
     await loadAll();
@@ -1716,436 +823,1017 @@ function buildAiContextPrompt(proj) {
   ].join("\n");
 }
 
-function PageProjects() {
-  function draw() {
-    const totalVids = state.projects.reduce((a, p) => a + (p.video_count || 0), 0);
-    const totalChars = state.projects.reduce((a, p) => a + (p.characters || []).length, 0);
-
-    $("#pj-stats").innerHTML = [
-      statCard("📁", "Dự án của bạn", state.projects.length, "Mỗi bộ truyện hoặc phim là 1 dự án riêng", "purple"),
-      statCard("🎬", "Video đã lồng tiếng", totalVids, "Quản lý gọn theo từng dự án", "green"),
-      statCard("🧠", "Nhân vật AI đã nhớ", totalChars, "Tự động đồng nhất xưng hô & thuật ngữ", "pink"),
-    ].join("");
-
-    const cards = state.projects.map((p) => {
-      const ico = p.type?.includes("Phim") ? "🎥" : p.type?.includes("Review") ? "📝" : "🎣";
-      return `
-        <article class="pcard" data-open="${esc(p.id)}">
-          <div class="pcard-top">
-            <div class="pcard-ico">${ico}</div>
-            <div style="min-width:0;flex:1">
-              <div class="pcard-title">${esc(p.name)}</div>
-              <div style="margin-top:4px"><span class="badge purple">${esc(p.type || "Truyện / Hoạt hình")}</span></div>
-            </div>
-            <button class="btn btn-light btn-sm" data-cfg="${esc(p.id)}" title="Cài đặt & Ngữ cảnh dự án">⚙️</button>
-          </div>
-          <div class="pcard-syn">${esc(p.synopsis || "Chưa có mô tả cốt truyện. Bấm ⚙️ để xem hoặc cập nhật.")}</div>
-          <div class="pcard-foot">
-            <span>🎬 <b>${p.video_count || 0}</b> video · 👥 <b>${(p.characters || []).length}</b> nhân vật · 📚 <b>${(p.glossary || []).length}</b> thuật ngữ</span>
-            <span style="color:var(--primary);font-weight:600">Mở →</span>
-          </div>
-        </article>`;
-    }).join("");
-
-    $("#pj-grid").innerHTML = `
-      <div class="proj-grid">
-        ${cards}
-        <div class="pcard pcard-new" onclick="openNewProjectModal()">
-          <div class="plus">＋</div>
-          <div style="font-weight:700;font-size:15px">Tạo dự án mới</div>
-          <div style="font-size:12.5px;margin-top:4px">Thêm 1 bộ truyện, hoạt hình hoặc bộ phim mới</div>
-        </div>
-      </div>`;
-  }
-
-  return {
-    render: () => `
-      <div class="stats" id="pj-stats"></div>
-      <div id="pj-grid"></div>`,
-
-    mount() {
-      $("#pj-grid").onclick = (e) => {
-        const cfg = e.target.closest("[data-cfg]");
-        if (cfg) {
-          e.stopPropagation();
-          openProjectDrawer(cfg.dataset.cfg);
-          return;
-        }
-        const card = e.target.closest("[data-open]");
-        if (card) {
-          state.activeProjectId = card.dataset.open;
-          location.hash = `#/project/${card.dataset.open}/dubbing`;
-        }
-      };
-    },
-
-    update: draw,
-  };
+/* =========================================================
+   TRANG: VIDEO & LỒNG TIẾNG (tải video + thư viện + lồng tiếng trong 1 nơi)
+   ========================================================= */
+function buildWorkspaceItems() {
+  const dubByTitle = new Map(state.dubbed.map((d) => [d.title, d]));
+  const biliByFile = new Map(state.bili.map((b) => [b.local_file, b]));
+  return state.sources.map((s) => {
+    const meta = biliByFile.get(s.name) || {};
+    const dub = dubByTitle.get(s.name) || null;
+    const job = s.job && s.job.status !== "done" ? s.job : null;
+    return {
+      ...s,
+      title: meta.title || s.name,
+      uploader: meta.uploader || "",
+      delogo: meta.delogo || "none",
+      video_src: fileUrl(s.rel_path),
+      dub,
+      job,
+      status: job ? "partial" : dub ? "dubbed" : "new",
+    };
+  });
 }
 
-/* =========================================================
-   TRANG 6B: DỊCH & LỒNG TIẾNG VIỆT (0.5x + Whisper + Edge-TTS)
-   ========================================================= */
-async function openDubEditorModal(jobId) {
-  let proj;
-  try {
-    proj = await getJSON("/api/dub/project?id=" + encodeURIComponent(jobId));
-    if (proj.error) throw new Error(proj.error);
-  } catch (e) {
-    toast(e.message || "Không tải được dữ liệu phụ đề", "error");
-    return;
-  }
-
-  const segs = proj.segments || [];
-  const rowsHtml = segs.map((s, i) => `
-    <tr data-idx="${i}">
-      <td class="nowrap muted" style="font-size:12px">${s.start}s → ${s.end}s</td>
-      <td style="font-size:13px;color:var(--text-2);width:36%">${esc(s.zh)}</td>
-      <td><input class="input seg-vi" type="text" value="${esc(s.vi)}" style="padding:6px 10px;font-size:13.5px" /></td>
-    </tr>`).join("");
-
+function openAddVideoModal() {
+  const presets = [
+    ["Hợp tuyển tập 151–200 (~5 tiếng)", "https://www.bilibili.com/video/BV1teKEzeEfZ/"],
+    ["Tập lẻ 84 giây (thử nhanh)", "https://www.bilibili.com/video/BV1nHW3z3EhH/"],
+  ];
+  const logoOpts = [
+    ["none", "Không xóa lúc tải", "Nhanh nhất. Xóa logo sau, ngay trong bước lồng tiếng", []],
+    ["top-right", "Góc trên phải", "Thường gặp ở video ngang", ["r"]],
+    ["top-left", "Góc trên trái", "Thường gặp ở video dọc", ["l"]],
+    ["both-top", "Cả 2 góc trên", "Khi không chắc vị trí", ["l", "r"]],
+  ];
   const html = `
-    <div class="callout info" style="margin-top:0;margin-bottom:14px">
-      <span class="ci">✏️</span>
-      <span>Chỉnh sửa câu tiếng Việt bất kỳ bên dưới rồi bấm <b>Lưu & Xuất lại lồng tiếng</b> — hệ thống bỏ qua bước nhận diện, đọc lại bằng giọng AI mới chỉ trong vài giây!</span>
+    <div class="field">
+      <label for="av-url">Link Bilibili hoặc YouTube</label>
+      <input id="av-url" class="input" type="url" placeholder="https://www.bilibili.com/video/BV..." />
+      <div class="chips">${presets.map(([l, u]) => `<button class="chip" type="button" data-url="${esc(u)}">${esc(l)}</button>`).join("")}</div>
     </div>
-    <div class="row" style="margin-bottom:14px">
-      <div class="grow">
-        <label class="label" for="ed-voice">Giọng đọc khi xuất lại</label>
-        <select id="ed-voice" class="select">
-          <option value="vi-VN-NamMinhNeural" ${proj.voice === "vi-VN-NamMinhNeural" ? "selected" : ""}>👨 Nam Minh (Nam trầm kể chuyện)</option>
-          <option value="vi-VN-HoaiMyNeural" ${proj.voice === "vi-VN-HoaiMyNeural" ? "selected" : ""}>👩 Hoài My (Nữ tự nhiên)</option>
+
+    <div class="form-grid">
+      <fieldset class="group">
+        <legend>Chỉ tải một đoạn <span class="muted">(tùy chọn)</span></legend>
+        <div class="range-row">
+          <input id="av-from" class="input" type="text" placeholder="00:00:00" aria-label="Từ giờ" />
+          <span class="muted">→</span>
+          <input id="av-to" class="input" type="text" placeholder="01:00:00" aria-label="Đến giờ" />
+        </div>
+        <div class="chips">
+          <button class="chip" type="button" data-sec="00:00:00,00:15:00">15 phút đầu</button>
+          <button class="chip" type="button" data-sec="00:00:00,01:00:00">Giờ thứ 1</button>
+          <button class="chip" type="button" data-sec="01:00:00,02:00:00">Giờ thứ 2</button>
+          <button class="chip" type="button" data-sec=",">Cả video</button>
+        </div>
+        <div class="help">Để trống = tải trọn video. Video 9–90 tiếng vẫn tải trọn được, bị rớt mạng sẽ tự nối tiếp.</div>
+      </fieldset>
+      <fieldset class="group">
+        <legend>Link nhiều phần (P1, P2...) <span class="muted">(tùy chọn)</span></legend>
+        <input id="av-pitems" class="input" type="text" placeholder="Ví dụ: 1-5 hoặc 1,3,5" aria-label="Chọn Part" />
+        <label class="check"><input id="av-playlist" type="checkbox" /> Tải tất cả các phần</label>
+        <div class="help">Mỗi phần thành 1 video riêng trong danh sách.</div>
+      </fieldset>
+    </div>
+
+    <div class="field">
+      <span class="label">Logo của nền tảng</span>
+      <div class="opt-grid" id="av-delogo">
+        ${logoOpts.map(([v, title, desc, marks], i) => `
+          <label class="opt ${i === 0 ? "checked" : ""}">
+            <input type="radio" name="av-delogo" value="${v}" ${i === 0 ? "checked" : ""} />
+            <span class="screen">${marks.map((m) => `<span class="mark ${m}"></span>`).join("")}</span>
+            <span class="opt-title">${title}</span>
+            <span class="opt-desc">${desc}</span>
+          </label>`).join("")}
+      </div>
+    </div>
+
+    <div class="form-grid">
+      <div class="field">
+        <label for="av-quality">Độ phân giải</label>
+        <select id="av-quality" class="select">
+          <option value="720p">Tối đa 720p — nhẹ bằng nửa, hợp video dài</option>
+          <option value="best">Cao nhất (1080p trở lên)</option>
         </select>
       </div>
-      <div style="padding-bottom:10px">
-        <label class="check"><input id="ed-sub" type="checkbox" ${proj.burn_sub !== false ? "checked" : ""} /> In cứng phụ đề lên video</label>
+      <div class="field">
+        <label for="av-perf">Mức dùng máy khi xóa logo</label>
+        <select id="av-perf" class="select">
+          <option value="balanced">Cân bằng — 50% CPU</option>
+          <option value="eco">Mát máy — 30% CPU</option>
+          <option value="fast">Tối đa — nhanh nhất</option>
+        </select>
       </div>
     </div>
-    <div class="table-wrap" style="max-height:46vh;overflow-y:auto;border:1px solid var(--border);border-radius:10px">
-      <table class="tbl">
-        <thead><tr><th>Mốc giờ</th><th>Tiếng Trung gốc</th><th>Lời dịch & lồng tiếng Việt (sửa trực tiếp)</th></tr></thead>
-        <tbody id="ed-tbody">${rowsHtml || `<tr><td colspan="3" class="muted">Không có câu thoại nào.</td></tr>`}</tbody>
-      </table>
-    </div>
-    <div class="actions" style="margin-top:16px">
-      <button class="btn btn-primary js-busy-disable" id="ed-save">🎙️ Lưu & Xuất lại lồng tiếng</button>
-      <button class="btn btn-light" data-close>Đóng</button>
+    <div class="modal-foot">
+      <span class="muted">${icon("disk", 15)} Ổ cứng còn trống ${state.sys.free_gb || 0} GB</span>
+      <span class="grow"></span>
+      <button class="btn btn-light" type="button" data-close>Hủy</button>
+      <button class="btn btn-primary js-busy-disable" type="button" id="av-start">${icon("download", 16)} Bắt đầu tải</button>
     </div>`;
 
-  const { el, close } = openModal(`Sửa bản dịch (${segs.length} câu): ${proj.title}`, html, { wide: true });
-  renderTaskWidgets();
-
-  $("#ed-save", el).onclick = async () => {
-    const inputs = $$(".seg-vi", el);
-    const updated = segs.map((s, i) => ({ ...s, vi: inputs[i] ? inputs[i].value.trim() : s.vi }));
+  const { el, close } = openModal("Thêm video từ Bilibili / YouTube", html, { size: "wide" });
+  $("#av-url", el).focus();
+  el.addEventListener("click", (e) => {
+    const u = e.target.closest("[data-url]");
+    if (u) $("#av-url", el).value = u.dataset.url;
+    const s = e.target.closest("[data-sec]");
+    if (s) [$("#av-from", el).value, $("#av-to", el).value] = s.dataset.sec.split(",");
+  });
+  $("#av-delogo", el).onchange = () =>
+    $$("#av-delogo .opt", el).forEach((o) => o.classList.toggle("checked", $("input", o).checked));
+  $("#av-start", el).onclick = async () => {
+    const url = $("#av-url", el).value.trim();
+    if (!url) {
+      toast("Vui lòng dán link Bilibili hoặc YouTube", "error");
+      return $("#av-url", el).focus();
+    }
+    const from = $("#av-from", el).value.trim();
+    const to = $("#av-to", el).value.trim();
+    if (Boolean(from) !== Boolean(to)) return toast("Nhập đủ cả giờ bắt đầu và giờ kết thúc, hoặc để trống cả hai", "error");
+    const section = from && to ? `${from}-${to}` : "";
     const ok = await startTask(
-      "/api/dub/rerender",
+      "/api/bilibili/download",
       {
-        job_id: jobId,
-        segments: updated,
-        voice: $("#ed-voice", el).value,
-        burn_sub: $("#ed-sub", el).checked,
+        url,
+        section,
+        playlist_items: $("#av-pitems", el).value.trim(),
+        playlist: $("#av-playlist", el).checked,
+        quality: $("#av-quality", el).value,
+        delogo: $("#av-delogo input:checked", el).value,
+        perf: $("#av-perf", el).value,
       },
-      "Đang đọc lại giọng tiếng Việt và ghép video..."
+      section ? `Bắt đầu tải đoạn ${section}` : "Bắt đầu tải video"
     );
-    if (ok) close();
+    if (ok) close(true);
   };
 }
 
-function openDeleteVideoModal(relPath, title, jobId) {
+function openDelogoModal(v) {
   const html = `
-    <div class="callout warn" style="margin-top:0;margin-bottom:14px;background:var(--red-50);border-color:#fecaca;color:#991b1b">
-      <span class="ci">⚠️</span>
-      <span><b>Hành động này sẽ xóa vĩnh viễn file trên ổ cứng</b> và không thể khôi phục lại!</span>
-    </div>
-    <div class="field">
-      <label>Video sẽ bị xóa:</label>
-      <div style="padding:10px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;font-size:13px">
-        <div style="font-weight:600">${esc(title)}</div>
-        <div class="muted" style="font-size:12px;margin-top:3px"><code>${esc(relPath)}</code></div>
+    ${callout("info", "info", "Xóa logo riêng phải mã hóa lại cả video. Nếu bạn sắp lồng tiếng video này, hãy bật <b>Xóa logo</b> trong bước lồng tiếng để chỉ mã hóa một lần.")}
+    <div class="form-grid">
+      <div class="field">
+        <label for="md-delogo">Vị trí logo</label>
+        <select id="md-delogo" class="select">${options(DELOGO_OPTIONS.slice(1), "top-right")}</select>
+      </div>
+      <div class="field">
+        <label for="md-perf">Mức dùng máy</label>
+        <select id="md-perf" class="select">
+          <option value="balanced">Cân bằng — 50% CPU</option>
+          <option value="eco">Mát máy — 30% CPU</option>
+          <option value="fast">Tối đa — nhanh nhất</option>
+        </select>
       </div>
     </div>
-    ${jobId ? `
-      <div class="field" style="margin-top:12px">
-        <label class="check">
-          <input id="del-dub-chk" type="checkbox" checked />
-          Xóa luôn cả bản đã lồng tiếng Việt & phụ đề (<code>.mp4</code>, <code>.srt</code>)
-        </label>
-      </div>` : ""}
-    <div class="actions" style="margin-top:18px;justify-content:flex-end">
-      <button class="btn btn-light" data-close>Hủy</button>
-      <button class="btn btn-danger" id="del-confirm">🗑 Xóa vĩnh viễn</button>
+    <div class="modal-foot">
+      <button class="btn btn-light" type="button" data-close>Hủy</button>
+      <button class="btn btn-primary js-busy-disable" type="button" id="md-run">${icon("sparkles", 16)} Xóa logo</button>
     </div>`;
+  const { el, close } = openModal(`Xóa logo · ${v.title}`, html);
+  $("#md-run", el).onclick = async () => {
+    const ok = await startTask(
+      "/api/bilibili/delogo",
+      { local_file: v.name, delogo: $("#md-delogo", el).value, perf: $("#md-perf", el).value },
+      "Đang xóa logo"
+    );
+    if (ok) close(true);
+  };
+}
 
-  const { el, close } = openModal("Xác nhận xóa video", html);
-  $("#del-confirm", el).onclick = async () => {
-    const btn = $("#del-confirm", el);
+function openDeleteVideoModal(v) {
+  const jobId = v.dub?.job_id || "";
+  const html = `
+    ${callout("danger", "alert", "<b>File sẽ bị xóa vĩnh viễn khỏi ổ cứng</b> và không khôi phục được.")}
+    <div class="file-box">
+      <b>${esc(v.title)}</b>
+      <code>${esc(v.rel_path)}</code>
+      <span class="muted">${fmtSize(v.size_mb)}${v.duration_sec ? ` · ${fmtDur(v.duration_sec)}` : ""}</span>
+    </div>
+    ${jobId ? `<label class="check"><input id="del-dub" type="checkbox" checked /> Xóa luôn bản lồng tiếng Việt, phụ đề và cache</label>` : ""}
+    <div class="modal-foot">
+      <button class="btn btn-light" type="button" data-close>Hủy</button>
+      <button class="btn btn-danger" type="button" id="del-ok">${icon("trash", 16)} Xóa vĩnh viễn</button>
+    </div>`;
+  const { el, close } = openModal("Xóa video", html);
+  $("#del-ok", el).onclick = async () => {
+    const btn = $("#del-ok", el);
     btn.disabled = true;
-    btn.textContent = "Đang xóa...";
-    const deleteDubbed = jobId ? ($("#del-dub-chk", el)?.checked ?? true) : false;
     const d = await postJSON("/api/source/delete", {
-      rel_path: relPath,
-      job_id: jobId || "",
-      delete_dubbed: deleteDubbed,
+      rel_path: v.rel_path,
+      job_id: jobId,
+      delete_dubbed: jobId ? $("#del-dub", el).checked : false,
     });
     if (d.ok) {
-      toast("Đã xóa vĩnh viễn video khỏi ổ cứng", "success");
-      close();
+      toast("Đã xóa video", "success");
+      close(true);
       loadAll();
     } else {
       toast(d.error || "Không xóa được video", "error");
       btn.disabled = false;
-      btn.textContent = "🗑 Xóa vĩnh viễn";
     }
   };
 }
 
-function openDubConfigModal(relPath, title) {
+function openDubConfigModal(v) {
   const proj = getActiveProject();
+  const prev = v.job?.params || v.dub || {};
+  const sel = (key, fallback) => prev[key] ?? fallback;
+  const resumable = v.job && v.job.status !== "done";
   const html = `
-    <div class="callout info" style="margin-top:0;margin-bottom:14px">
-      <span class="ci">🤖</span>
-      <span>Dự án: <b>${esc(proj?.name || "Mặc định")}</b> — Antigravity sẽ tự đọc ngữ cảnh, sửa lỗi nghe nhầm, dịch chuẩn mạch truyện và tự lưu nhân vật mới!</span>
-    </div>
-    <div class="cols cols-2" style="gap:12px">
-      <div class="field" style="margin:0">
-        <label for="mc-speed">Làm chậm tạm khi tách âm</label>
-        <select id="mc-speed" class="select">
-          <option value="0.5" selected>🐢 0.5x tách âm → Xuất 1.0x gốc</option>
-          <option value="0.65">0.65x tách âm → Xuất 1.0x gốc</option>
-          <option value="0.8">0.8x tách âm → Xuất 1.0x gốc</option>
-          <option value="1.0">1.0x (không làm chậm)</option>
-        </select>
+    ${resumable
+      ? callout("warn", "clock", `Video này đang làm dở ở <b>${Math.round(v.job.pct)}%</b>. Bấm bắt đầu sẽ <b>chạy tiếp</b> từ chỗ đang dở.
+          <label class="check" style="margin-top:8px"><input id="mc-fresh" type="checkbox" /> Bỏ kết quả dở, nhận diện và dịch lại từ đầu</label>`)
+      : callout("info", "brain", `Dự án <b>${esc(proj?.name || "—")}</b>: AI đọc ngữ cảnh dự án, tự sửa lỗi nghe nhầm, dịch đúng xưng hô và ghi nhớ nhân vật mới.`)}
+    <div class="form-grid">
+      <div class="field">
+        <label for="mc-voice">Giọng lồng tiếng</label>
+        <select id="mc-voice" class="select">${options(VOICES, sel("voice", VOICES[0][0]))}</select>
       </div>
-      <div class="field" style="margin:0">
-        <label for="mc-voice">Giọng lồng tiếng Việt</label>
-        <select id="mc-voice" class="select">
-          <option value="vi-VN-NamMinhNeural">👨 Nam Minh (Nam trầm kể chuyện)</option>
-          <option value="vi-VN-HoaiMyNeural">👩 Hoài My (Nữ tự nhiên)</option>
-        </select>
-      </div>
-    </div>
-    <div class="cols cols-2" style="gap:12px;margin-top:12px">
-      <div class="field" style="margin:0">
-        <label for="mc-model">Mô hình nhận diện (Whisper)</label>
+      <div class="field">
+        <label for="mc-model">Độ chính xác nhận diện</label>
         <select id="mc-model" class="select">
-          <option value="base">Base — Nhanh, nhẹ</option>
-          <option value="small">Small — Chính xác hơn</option>
+          ${options([["base", "Nhanh (base) — hợp video dài"], ["small", "Chính xác hơn (small) — chậm gấp ~3"]], sel("model", "base"))}
         </select>
       </div>
-      <div class="field" style="margin:0">
+      <div class="field">
+        <label for="mc-speed">Làm chậm khi tách lời</label>
+        <select id="mc-speed" class="select">
+          ${options([["0.5", "0.5x — thoại nhanh, nói dồn dập"], ["0.65", "0.65x"], ["0.8", "0.8x"], ["1", "1.0x — không làm chậm, nhanh gấp đôi"]], sel("speed", 0.5))}
+        </select>
+        <div class="help">Chỉ ảnh hưởng bước nhận diện. Video xuất ra luôn ở tốc độ gốc.</div>
+      </div>
+      <div class="field">
         <label for="mc-bg">Âm thanh gốc làm nền</label>
         <select id="mc-bg" class="select">
-          <option value="0.05" selected>5% — Rất nhỏ</option>
-          <option value="0">0% — Tắt hẳn âm gốc</option>
-          <option value="0.12">12% — Rõ tiếng động nền</option>
+          ${options([["0.05", "5% — rất nhỏ"], ["0", "Tắt hẳn"], ["0.12", "12% — rõ tiếng động nền"]], sel("bg_volume", 0.05))}
         </select>
       </div>
+      <div class="field">
+        <label for="mc-delogo">Xóa logo khi xuất</label>
+        <select id="mc-delogo" class="select">${options(DELOGO_OPTIONS, sel("delogo", "none"))}</select>
+      </div>
+      <div class="field">
+        <span class="label">Phụ đề</span>
+        <label class="check"><input id="mc-sub" type="checkbox" ${sel("burn_sub", true) !== false ? "checked" : ""} /> In cứng phụ đề Việt nền đen (che chữ Trung)</label>
+        <div class="help">Tắt cả phụ đề lẫn xóa logo thì video được giữ nguyên hình, xuất gần như tức thì.</div>
+      </div>
     </div>
-    <div style="margin-top:12px">
-      <label class="check"><input id="mc-sub" type="checkbox" checked /> In cứng phụ đề tiếng Việt nền đen (che chữ Trung cũ)</label>
-    </div>
-    <div class="actions" style="margin-top:16px">
-      <button class="btn btn-primary btn-lg js-busy-disable" id="mc-run">🚀 Bắt đầu Dịch & Lồng tiếng</button>
-      <button class="btn btn-light" data-close>Hủy</button>
+    <div id="mc-est"></div>
+    <div class="modal-foot">
+      <button class="btn btn-light" type="button" data-close>Hủy</button>
+      <button class="btn btn-primary js-busy-disable" type="button" id="mc-run">${icon("mic", 16)} ${resumable ? "Tiếp tục lồng tiếng" : "Bắt đầu lồng tiếng"}</button>
     </div>`;
 
-  const { el, close } = openModal(`Cấu hình Dịch & Lồng tiếng: ${title}`, html);
-  renderTaskWidgets();
+  const { el, close } = openModal(`Lồng tiếng · ${v.title}`, html, { size: "wide" });
+
+  // Ước tính sơ bộ theo máy 8 nhân: chỉ để người dùng biết nên để máy chạy qua đêm hay không.
+  function drawEstimate() {
+    const dur = Number(v.duration_sec || 0);
+    const encode = $("#mc-sub", el).checked || $("#mc-delogo", el).value !== "none";
+    const slow = 0.5 / Number($("#mc-speed", el).value);
+    const factor = ($("#mc-model", el).value === "small" ? 0.75 : 0.25) * slow + (encode ? 0.3 : 0.03) + 0.08;
+    const needGb = (v.size_mb / 1024) * (encode ? 2.2 : 1.15) + 0.5;
+    const lowDisk = state.sys.free_gb && state.sys.free_gb < needGb;
+    $("#mc-est", el).innerHTML = [
+      dur > 600 ? callout("info", "clock", `Video dài <b>${fmtHours(dur)}</b> — ước tính xử lý khoảng <b>${fmtHours(dur * factor)}</b> (tùy máy và mạng).
+        Tiến độ được lưu liên tục: dừng, tắt máy hay mất mạng đều <b>chạy tiếp được</b> từ chỗ đang dở.`) : "",
+      lowDisk ? callout("danger", "disk", `Cần khoảng <b>${needGb.toFixed(1)} GB</b> trống nhưng ổ cứng chỉ còn <b>${state.sys.free_gb} GB</b>. Hãy xóa bớt video cũ${encode ? " hoặc tắt in phụ đề / xóa logo" : ""}.`) : "",
+    ].join("");
+  }
+  ["mc-model", "mc-speed", "mc-delogo", "mc-sub"].forEach((id) => ($("#" + id, el).onchange = drawEstimate));
+  drawEstimate();
+
   $("#mc-run", el).onclick = async () => {
     const ok = await startTask(
       "/api/dub/start",
       {
         project_id: state.activeProjectId || "",
-        rel_path: relPath,
+        rel_path: v.rel_path,
         speed: Number($("#mc-speed", el).value),
         voice: $("#mc-voice", el).value,
         model: $("#mc-model", el).value,
         bg_volume: Number($("#mc-bg", el).value),
+        delogo: $("#mc-delogo", el).value,
         burn_sub: $("#mc-sub", el).checked,
+        fresh: $("#mc-fresh", el)?.checked || false,
       },
-      "Đang chạy Dịch & Lồng tiếng! Xem thanh tiến trình ngay dưới video."
+      resumable ? "Đang chạy tiếp từ chỗ đang dở" : "Đã bắt đầu dịch & lồng tiếng"
     );
-    if (ok) close();
+    if (ok) close(true);
   };
 }
 
-function PageDubbing() {
-  function draw() {
-    const proj = getActiveProject();
-    const diskEl = $("#ws-disk");
-    if (diskEl && state.sys.free_gb) {
-      diskEl.innerHTML = `💾 Ổ cứng trống: <b>${state.sys.free_gb} GB</b>`;
+/** Sửa lời dịch: phân trang phía server nên video 90 tiếng (>100k câu) vẫn mở tức thì. */
+async function openDubEditorModal(jobId) {
+  const st = { offset: 0, limit: 100, q: "", only: "", edits: {}, info: null };
+  const editCount = () => Object.keys(st.edits).length;
+  const html = `
+    <div class="editor">
+      <div class="editor-side">
+        <video class="editor-video" controls preload="metadata"></video>
+        <div class="help">Bấm vào mốc giờ của một câu để nghe lại đúng đoạn đó.</div>
+        <div class="field"><label for="ed-voice">Giọng đọc</label><select id="ed-voice" class="select"></select></div>
+        <div class="field"><label for="ed-delogo">Xóa logo</label><select id="ed-delogo" class="select"></select></div>
+        <label class="check"><input id="ed-sub" type="checkbox" /> In cứng phụ đề lên video</label>
+      </div>
+      <div class="editor-main">
+        <div class="toolbar">
+          <input id="ed-q" class="input" type="search" placeholder="Tìm trong lời Việt hoặc tiếng Trung..." aria-label="Tìm câu thoại" />
+          <label class="check"><input id="ed-empty" type="checkbox" /> Chỉ câu chưa dịch <span class="cnt" id="ed-empty-n">0</span></label>
+        </div>
+        <div class="table-wrap bordered editor-table">
+          <table class="tbl compact">
+            <thead><tr><th>Mốc giờ</th><th>Tiếng Trung gốc</th><th>Lời Việt (sửa trực tiếp)</th></tr></thead>
+            <tbody id="ed-rows"><tr><td colspan="3" class="muted">Đang tải...</td></tr></tbody>
+          </table>
+        </div>
+        <div class="editor-pager">
+          <button class="btn btn-light btn-sm" type="button" id="ed-prev">‹ Trước</button>
+          <span class="muted" id="ed-range"></span>
+          <button class="btn btn-light btn-sm" type="button" id="ed-next">Sau ›</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="muted" id="ed-count">Chưa sửa câu nào</span>
+      <span class="grow"></span>
+      <button class="btn btn-light" type="button" data-close>Đóng</button>
+      <button class="btn btn-primary js-busy-disable" type="button" id="ed-save">${icon("mic", 16)} Lưu & xuất lại</button>
+    </div>`;
+
+  const { el, close } = openModal("Sửa lời dịch", html, {
+    size: "xl",
+    sticky: true,
+    beforeClose: () => !editCount() || confirm(`Bạn đã sửa ${editCount()} câu nhưng chưa xuất lại. Đóng và bỏ các chỉnh sửa?`),
+  });
+
+  async function load() {
+    const params = new URLSearchParams({ id: jobId, offset: st.offset, limit: st.limit, q: st.q, only: st.only });
+    const d = await getJSON("/api/dub/segments?" + params);
+    if (d.error) {
+      toast(d.error, "error");
+      return close(true);
     }
+    if (!st.info) {
+      // Lần đầu: điền thông tin cố định của bản lồng tiếng
+      $(".modal-head h3", el).textContent = `Sửa lời dịch · ${d.title}`;
+      $(".editor-video", el).src = dubFileUrl(`${jobId}.mp4`);
+      $("#ed-voice", el).innerHTML = options(VOICES, d.voice);
+      $("#ed-delogo", el).innerHTML = options(DELOGO_OPTIONS, d.delogo || "none");
+      $("#ed-sub", el).checked = d.burn_sub !== false;
+    }
+    st.info = d;
+    $("#ed-empty-n", el).textContent = d.empty;
+    $("#ed-rows", el).innerHTML =
+      d.items.map((s) => {
+        const edited = String(s.id) in st.edits;
+        return `
+          <tr data-id="${s.id}" class="${edited ? "edited" : ""}">
+            <td><button class="time-btn" type="button" data-seek="${s.start}" title="Phát từ mốc này">${fmtDur(s.start) || "0:00"}</button></td>
+            <td class="zh">${esc(s.zh)}</td>
+            <td><input class="input input-sm seg-vi" type="text" value="${esc(edited ? st.edits[s.id] : s.vi)}" data-orig="${esc(s.vi)}" aria-label="Lời Việt câu ${s.id}" /></td>
+          </tr>`;
+      }).join("") || `<tr><td colspan="3" class="muted">Không có câu nào khớp.</td></tr>`;
+    $("#ed-range", el).textContent = d.matched
+      ? `${(d.offset + 1).toLocaleString("vi")}–${(d.offset + d.items.length).toLocaleString("vi")} / ${d.matched.toLocaleString("vi")} câu`
+      : "0 câu";
+    $("#ed-prev", el).disabled = d.offset <= 0;
+    $("#ed-next", el).disabled = d.offset + d.items.length >= d.matched;
+    $(".editor-table", el).scrollTop = 0;
+  }
 
-    // Build unified video list: Bilibili + Douyin local sources matched with their dubbed versions
-    const dubByTitle = new Map(state.dubbed.map((d) => [d.title, d]));
-    const biliByFile = new Map(state.bili.map((b) => [b.local_file, b]));
+  $("#ed-rows", el).addEventListener("input", (e) => {
+    const inp = e.target.closest(".seg-vi");
+    if (!inp) return;
+    const tr = inp.closest("tr");
+    const changed = inp.value.trim() !== inp.dataset.orig;
+    if (changed) st.edits[tr.dataset.id] = inp.value.trim();
+    else delete st.edits[tr.dataset.id];
+    tr.classList.toggle("edited", changed);
+    $("#ed-count", el).textContent = editCount() ? `Đã sửa ${editCount()} câu` : "Chưa sửa câu nào";
+  });
+  $("#ed-rows", el).addEventListener("click", (e) => {
+    const b = e.target.closest("[data-seek]");
+    if (!b) return;
+    const video = $(".editor-video", el);
+    video.currentTime = Number(b.dataset.seek);
+    video.play();
+  });
+  let qTimer;
+  $("#ed-q", el).oninput = (e) => {
+    clearTimeout(qTimer);
+    qTimer = setTimeout(() => {
+      st.q = e.target.value;
+      st.offset = 0;
+      load();
+    }, 250);
+  };
+  $("#ed-empty", el).onchange = (e) => {
+    st.only = e.target.checked ? "empty" : "";
+    st.offset = 0;
+    load();
+  };
+  $("#ed-prev", el).onclick = () => {
+    st.offset = Math.max(0, st.offset - st.limit);
+    load();
+  };
+  $("#ed-next", el).onclick = () => {
+    st.offset += st.limit;
+    load();
+  };
+  $("#ed-save", el).onclick = async () => {
+    const ok = await startTask(
+      "/api/dub/rerender",
+      {
+        job_id: jobId,
+        edits: st.edits,
+        voice: $("#ed-voice", el).value,
+        delogo: $("#ed-delogo", el).value,
+        burn_sub: $("#ed-sub", el).checked,
+      },
+      "Đang xuất lại — chỉ những câu và đoạn video bị sửa mới phải làm lại"
+    );
+    if (ok) close(true);
+  };
+  load();
+}
 
-    const items = state.sources.map((s) => {
-      const fname = s.rel_path.split("/").pop();
-      const bMeta = biliByFile.get(fname) || {};
-      const dub = dubByTitle.get(fname) || null;
-      return {
-        rel_path: s.rel_path,
-        fname,
-        source: s.source,
-        title: bMeta.title || fname,
-        resolution: bMeta.resolution || dub?.resolution || "MP4",
-        duration_sec: bMeta.duration_sec || dub?.duration_sec || 0,
-        size_mb: bMeta.size_mb || 0,
-        delogo: bMeta.delogo || "none",
-        video_src: s.source === "bilibili" ? biliFileUrl(fname) : douyinFileUrl(fname),
-        dub,
-      };
-    });
+function PageWorkspace() {
+  let items = [];
 
-    $("#dub-stats").innerHTML = [
-      statCard("🎬", "Video trong máy", items.length, "Sẵn sàng để dịch & lồng tiếng", "green"),
-      statCard("🎙️", "Đã lồng tiếng Việt", state.dubbed.length, "100% dịch tự động bằng Antigravity", "purple"),
-      statCard("🧠", "Ngữ cảnh dự án", `${(proj?.characters || []).length} nhân vật`, `${(proj?.glossary || []).length} thuật ngữ đã nhớ`, "pink"),
+  function rowHtml(v) {
+    const d = v.dub;
+    const j = v.job;
+    const chips = [];
+    if (d) chips.push(`<span class="badge green">${icon("check", 13)} Đã lồng tiếng · ${(d.segment_count || 0).toLocaleString("vi")} câu</span>`);
+    if (j) chips.push(`<span class="badge ${j.status === "error" ? "red" : "amber"}">${j.status === "error" ? "Lỗi" : "Đang dở"} ở ${Math.round(j.pct)}%</span>`);
+    if (!d && !j) chips.push(`<span class="badge gray">Chưa lồng tiếng</span>`);
+    if (d?.untranslated) chips.push(`<span class="badge amber">${d.untranslated} câu chưa dịch</span>`);
+    if (v.delogo !== "none" || (d && d.delogo && d.delogo !== "none")) chips.push(`<span class="badge blue">Đã xóa logo</span>`);
+
+    const meta = [
+      v.source === "bilibili" ? "Bilibili / YouTube" : "Douyin",
+      v.resolution,
+      fmtSize(v.size_mb),
+      v.uploader,
+    ].filter(Boolean);
+
+    // Nút chính theo trạng thái: Tiếp tục > Xem bản Việt > Lồng tiếng
+    const primary = j
+      ? `<button class="btn btn-primary js-busy-disable" type="button" data-act="resume">${icon("play", 15)} Tiếp tục</button>`
+      : d
+        ? `<button class="btn btn-success" type="button" data-act="play-dub">${icon("play", 15)} Xem bản Việt</button>`
+        : `<button class="btn btn-primary js-busy-disable" type="button" data-act="dub">${icon("mic", 15)} Lồng tiếng</button>`;
+    const secondary = [
+      j && d ? `<button class="btn btn-light" type="button" data-act="play-dub">${icon("play", 15)} Bản Việt</button>` : "",
+      d ? `<button class="btn btn-light" type="button" data-act="edit-dub">${icon("edit", 15)} Sửa lời</button>` : "",
+    ].join("");
+    const menu = [
+      d ? `<a href="${esc(dubFileUrl(d.mp4_file))}" download>${icon("download", 15)} Tải MP4 bản Việt</a>` : "",
+      d ? `<a href="${esc(dubFileUrl(d.srt_file))}" download>${icon("cc", 15)} Tải phụ đề SRT</a>` : "",
+      d || j ? `<button type="button" class="js-busy-disable" data-act="dub">${icon("mic", 15)} ${j ? "Tùy chọn / làm lại từ đầu" : "Lồng tiếng lại"}</button>` : "",
+      `<button type="button" data-act="play-orig">${icon("film", 15)} Xem video gốc</button>`,
+      v.source === "bilibili" ? `<button type="button" class="js-busy-disable" data-act="delogo">${icon("sparkles", 15)} Xóa logo video gốc</button>` : "",
+      d?.cache_mb ? `<button type="button" data-act="clean">${icon("disk", 15)} Xóa cache (${fmtSize(d.cache_mb)})</button>` : "",
+      `<hr /><button type="button" class="danger" data-act="delete">${icon("trash", 15)} Xóa video</button>`,
     ].join("");
 
-    $("#ws-video-list").innerHTML = !items.length
-      ? emptyState("🎬", "Chưa có video nào", "Dán link Bilibili ở khung phía trên để tải video đầu tiên vào dự án!")
-      : `<div class="vgrid">${items.map((v) => {
-          const d = v.dub;
-          return `
-            <article class="vcard" style="cursor:default">
-              <div class="vthumb">
-                <video src="${esc(v.video_src)}#t=2" preload="metadata" muted playsinline></video>
-                <div class="tl"><span class="ov">${esc(v.resolution)}</span></div>
-                <div class="tr">
-                  ${d ? `<span class="ov purple">🎙️ Đã lồng tiếng</span>` : v.delogo !== "none" ? `<span class="ov pink">✨ Sạch logo</span>` : ""}
-                </div>
-                <div class="bl"><span class="ov green">${v.size_mb ? fmtSize(v.size_mb) : v.source.toUpperCase()}</span></div>
-                <div class="br">${v.duration_sec ? `<span class="ov">${fmtDur(v.duration_sec)}</span>` : ""}</div>
-              </div>
-              <div class="vbody">
-                <div class="vtitle" title="${esc(v.title)}">${esc(v.title)}</div>
+    return `
+      <article class="vrow" data-rel="${esc(v.rel_path)}">
+        <button class="vrow-thumb" type="button" data-act="${d ? "play-dub" : "play-orig"}" aria-label="Phát video">
+          <img src="/api/thumb?rel=${encodeURIComponent(v.rel_path)}&v=${v.mtime}" alt="" loading="lazy" onerror="this.remove()" />
+          <span class="thumb-play">${icon("play", 20)}</span>
+          ${v.duration_sec ? `<span class="thumb-dur">${fmtDur(v.duration_sec)}</span>` : ""}
+        </button>
+        <div class="vrow-main">
+          <h3 class="vrow-title" title="${esc(v.title)}">${esc(v.title)}</h3>
+          <div class="vrow-meta">${meta.map(esc).join(" · ")}</div>
+          <div class="vrow-chips when-idle">${chips.join("")}</div>
+          ${j?.error ? `<div class="vrow-err when-idle">${icon("alert", 14)} ${esc(j.error)}</div>` : ""}
+          <div class="js-vid-prog" data-target="${esc(v.rel_path)}" data-job="${esc(d?.job_id || j?.job_id || "")}"></div>
+        </div>
+        <div class="vrow-actions">
+          <button class="btn btn-danger when-running" type="button" data-stop>${icon("stop", 15)} Dừng</button>
+          <span class="when-idle vrow-btns">${secondary}${primary}</span>
+          <details class="menu">
+            <summary class="icon-btn" title="Thao tác khác" aria-label="Thao tác khác">${icon("more")}</summary>
+            <div class="menu-pop">${menu}</div>
+          </details>
+        </div>
+      </article>`;
+  }
 
-                <!-- Thanh tiến trình & trạng thái hiển thị NGAY DƯỚI VIDEO khi đang chạy -->
-                <div class="js-vid-prog" data-target="${esc(v.rel_path)}" data-job="${esc(d?.job_id || "")}" style="display:none;padding:8px 10px;background:var(--primary-50);border:1px solid #c7d7fe;border-radius:8px"></div>
+  function draw() {
+    items = buildWorkspaceItems();
+    const count = { all: items.length, new: 0, partial: 0, dubbed: 0 };
+    items.forEach((v) => count[v.status]++);
+    const totalSec = items.reduce((a, v) => a + Number(v.duration_sec || 0), 0);
+    const totalMb = items.reduce((a, v) => a + Number(v.size_mb || 0), 0);
 
-                <div class="vactions">
-                  <button class="btn btn-primary btn-sm js-busy-disable" data-act="dub" data-rel="${esc(v.rel_path)}" data-title="${esc(v.title)}">🎙️ Dịch & Lồng tiếng</button>
-                  <button class="btn btn-light btn-sm" data-act="play-orig" data-src="${esc(v.video_src)}" data-title="${esc(v.title)}">▶ Gốc</button>
-                  ${v.source === "bilibili" ? `<button class="btn btn-ghost btn-sm js-busy-disable" data-act="delogo" data-file="${esc(v.fname)}" data-title="${esc(v.title)}" title="Xóa logo">✨</button>` : ""}
-                  <button class="btn btn-ghost btn-sm" style="margin-left:auto;color:var(--red)" data-act="delete-src" data-rel="${esc(v.rel_path)}" data-title="${esc(v.title)}" data-job="${esc(d?.job_id || "")}" title="Xóa vĩnh viễn video">🗑</button>
-                </div>
+    $("#ws-metrics").innerHTML = [
+      metric("film", "Video nguồn", items.length, totalSec ? `Tổng ${fmtHours(totalSec)}` : "", "blue"),
+      metric("mic", "Đã lồng tiếng", count.dubbed, count.partial ? `${count.partial} video đang dở` : "", "green"),
+      metric("disk", "Dung lượng video", fmtSize(totalMb), `Ổ còn trống ${state.sys.free_gb || 0} GB`, "violet"),
+    ].join("");
 
-                ${d ? `
-                  <div style="margin-top:6px;padding-top:8px;border-top:1px dashed var(--border);display:flex;gap:5px;flex-wrap:wrap;align-items:center">
-                    <button class="btn btn-success btn-sm" data-act="play-dub" data-file="${esc(d.mp4_file)}" data-title="Bản Việt: ${esc(v.title)}">▶ Xem bản Việt</button>
-                    <button class="btn btn-light btn-sm" data-act="edit-dub" data-job="${esc(d.job_id)}">✏️ Sửa lời (${d.segment_count || 0})</button>
-                    <a class="btn btn-ghost btn-sm" href="${esc(dubFileUrl(d.mp4_file))}" download>💾 MP4</a>
-                    <a class="btn btn-ghost btn-sm" href="${esc(dubFileUrl(d.srt_file))}" download>SRT</a>
-                  </div>` : ""}
-              </div>
-            </article>`;
-        }).join("")}</div>`;
+    $$("#ws-filter button").forEach((b) => {
+      b.classList.toggle("active", b.dataset.v === state.wf.filter);
+      $(".cnt", b).textContent = count[b.dataset.v];
+    });
 
+    const q = state.wf.q.trim().toLowerCase();
+    const shown = items.filter(
+      (v) =>
+        (state.wf.filter === "all" || v.status === state.wf.filter) &&
+        (!q || v.title.toLowerCase().includes(q) || v.name.toLowerCase().includes(q))
+    );
+    $("#ws-list").innerHTML = !items.length
+      ? emptyState("film", "Chưa có video nào", "Dán link Bilibili / YouTube để tải video đầu tiên, hoặc tải từ Kho Douyin.",
+          `<button class="btn btn-primary" type="button" data-add>${icon("plus", 16)} Thêm video</button>`)
+      : !shown.length
+        ? emptyState("search", "Không có video phù hợp", "Thử đổi bộ lọc hoặc từ khóa tìm kiếm.")
+        : shown.map(rowHtml).join("");
     renderTaskWidgets();
   }
 
+  const find = (el) => items.find((v) => v.rel_path === el.closest("[data-rel]")?.dataset.rel);
+
   return {
     render: () => `
-      <div class="stats" id="dub-stats"></div>
-
-      <!-- Khung tải nhanh video Bilibili / YouTube ngay trong Project -->
-      <section class="card">
-        <header class="card-head">
-          <h3>➕ Tải video Bilibili / YouTube vào dự án</h3>
-          <span class="hint" id="ws-disk"></span>
-        </header>
-        <div class="card-body">
-          <div class="row" style="gap:10px;align-items:center">
-            <input id="ws-url" class="input grow" type="text" placeholder="Dán link Bilibili (https://www.bilibili.com/video/BV...) hoặc YouTube..." />
-            <input id="ws-from" class="input" style="width:105px" type="text" placeholder="00:00:00" title="Từ giờ (để trống = tải hết)" />
-            <span class="muted">→</span>
-            <input id="ws-to" class="input" style="width:105px" type="text" placeholder="00:02:00" title="Đến giờ (để trống = tải hết)" />
-            <select id="ws-delogo" class="select" style="width:auto">
-              <option value="top-right">Xóa logo phải</option>
-              <option value="top-left">Xóa logo trái</option>
-              <option value="both-top">Xóa 2 góc trên</option>
-              <option value="none">Không xóa logo</option>
-            </select>
-            <button class="btn btn-pink js-busy-disable" id="ws-dl-btn">⬇ Tải video</button>
-          </div>
-          <div class="chips" style="margin-top:8px">
-            <button class="chip" type="button" data-preset="https://www.bilibili.com/video/BV1teKEzeEfZ/|00:01:05|00:02:05">⚡ Thử cắt 1 phút tiếp theo (Tập 151–200)</button>
-            <button class="chip" type="button" data-preset="https://www.bilibili.com/video/BV1nHW3z3EhH/||">⚡ Tập lẻ 楚新钓 (84s)</button>
-          </div>
-          <div id="ws-dl-prog" style="display:none;margin-top:12px"></div>
+      <div class="metrics" id="ws-metrics"></div>
+      <div class="toolbar ws-toolbar">
+        <div class="seg" id="ws-filter" role="tablist">
+          <button type="button" data-v="all">Tất cả <span class="cnt">0</span></button>
+          <button type="button" data-v="new">Chưa làm <span class="cnt">0</span></button>
+          <button type="button" data-v="partial">Đang dở <span class="cnt">0</span></button>
+          <button type="button" data-v="dubbed">Đã lồng tiếng <span class="cnt">0</span></button>
         </div>
-      </section>
-
-      <!-- Danh sách video trong dự án -->
-      <section style="margin-top:6px">
-        <div class="list-meta" style="margin-bottom:12px">
-          <h3 style="margin:0;font-size:16px">🎬 Danh sách video (bấm "🎙️ Dịch & Lồng tiếng" để chọn cấu hình và chạy)</h3>
-          <a href="#/project/${esc(state.activeProjectId)}/logs" style="font-size:13px">Xem nhật ký chi tiết →</a>
-        </div>
-        <div id="ws-video-list"></div>
-      </section>`,
+        <input id="ws-q" class="input" type="search" placeholder="Tìm video theo tên..." aria-label="Tìm video" />
+        <button class="btn btn-primary" type="button" data-add>${icon("plus", 16)} Thêm video</button>
+      </div>
+      <div class="js-task-inline" data-type="bilibili_download" hidden></div>
+      <div class="vlist" id="ws-list"></div>`,
 
     mount() {
-      $$("[data-preset]").forEach((b) => (b.onclick = () => {
-        const [u, f, t] = b.dataset.preset.split("|");
-        $("#ws-url").value = u || "";
-        $("#ws-from").value = f || "";
-        $("#ws-to").value = t || "";
-      }));
-
-      $("#ws-dl-btn").onclick = () => {
-        const url = $("#ws-url").value.trim();
-        if (!url) return toast("Vui lòng dán link Bilibili hoặc YouTube!", "error");
-        const f = $("#ws-from").value.trim();
-        const t = $("#ws-to").value.trim();
-        const section = f && t ? `${f}-${t}` : "";
-        startTask(
-          "/api/bilibili/download",
-          { url, section, quality: "720p", delogo: $("#ws-delogo").value, perf: "balanced" },
-          "Đang tải video vào dự án..."
-        );
+      $("#ws-q").value = state.wf.q;
+      $("#ws-q").oninput = (e) => {
+        state.wf.q = e.target.value;
+        draw();
       };
-
-      $("#ws-video-list").onclick = (e) => {
-        const b = e.target.closest("[data-act]");
+      $("#ws-filter").onclick = (e) => {
+        const b = e.target.closest("button");
         if (!b) return;
+        state.wf.filter = b.dataset.v;
+        draw();
+      };
+      $("#content").onclick = async (e) => {
+        if (e.target.closest("[data-add]")) return openAddVideoModal();
+        const b = e.target.closest("[data-act]");
+        const v = b && find(b);
+        if (!v) return;
+        b.closest("details")?.removeAttribute("open");
         const act = b.dataset.act;
-        if (act === "dub") openDubConfigModal(b.dataset.rel, b.dataset.title);
-        if (act === "play-orig") openPlayer(b.dataset.src, b.dataset.title);
-        if (act === "play-dub") openPlayer(dubFileUrl(b.dataset.file), b.dataset.title);
-        if (act === "edit-dub") openDubEditorModal(b.dataset.job);
-        if (act === "delogo") openBiliDelogoModal(b.dataset.file, b.dataset.title);
-        if (act === "delete-src") openDeleteVideoModal(b.dataset.rel, b.dataset.title, b.dataset.job);
+        if (act === "dub") openDubConfigModal(v);
+        if (act === "resume")
+          startTask("/api/dub/start", { rel_path: v.rel_path, ...v.job.params }, "Đang chạy tiếp từ chỗ đang dở");
+        if (act === "play-orig") openPlayer(v.video_src, v.title);
+        if (act === "play-dub") openPlayer(dubFileUrl(v.dub.mp4_file), `Bản Việt · ${v.title}`);
+        if (act === "edit-dub") openDubEditorModal(v.dub.job_id);
+        if (act === "delogo") openDelogoModal(v);
+        if (act === "delete") openDeleteVideoModal(v);
+        if (act === "clean") {
+          if (!confirm("Xóa cache của bản lồng tiếng này?\n\nVideo đã xuất vẫn giữ nguyên. Lần xuất lại sau sẽ phải tạo lại giọng đọc và mã hóa lại toàn bộ.")) return;
+          const d = await postJSON("/api/dub/clean", { job_id: v.dub.job_id });
+          toast(d.ok ? "Đã xóa cache" : d.error || "Không xóa được cache", d.ok ? "success" : "error");
+          loadAll();
+        }
       };
     },
-
     update: draw,
   };
 }
 
 /* =========================================================
-   TRANG 7: NHẬT KÝ
+   TRANG: KHO DOUYIN (3 tab: Danh sách · Tải theo tập · Quét kênh)
+   ========================================================= */
+function DouyinList() {
+  function filtered() {
+    const f = state.vf;
+    const q = f.q.trim().toLowerCase();
+    const list = state.videos.filter((v) => {
+      if (f.season !== "all" && v._season !== f.season) return false;
+      if (f.status !== "all" && v._status !== f.status) return false;
+      if (!q) return true;
+      return (
+        (v.title || "").toLowerCase().includes(q) ||
+        String(v.episode_label || "") === q ||
+        (v.publish_date || "").includes(q) ||
+        (v.aweme_id || "").includes(q)
+      );
+    });
+    const byTime = (a, b) => (a.publish_time || 0) - (b.publish_time || 0);
+    const sorters = {
+      time_desc: (a, b) => -byTime(a, b),
+      time_asc: byTime,
+      ep_asc: (a, b) => (a.episode_num ?? 1e9) - (b.episode_num ?? 1e9) || byTime(a, b),
+      ep_desc: (a, b) => (b.episode_num ?? -1) - (a.episode_num ?? -1) || -byTime(a, b),
+      likes_desc: (a, b) => (b.likes || 0) - (a.likes || 0),
+    };
+    return list.sort(sorters[f.sort] || sorters.time_desc);
+  }
+
+  const gridHtml = (list) => `<div class="vgrid">${list.map((v) => `
+    <article class="vcard" data-id="${esc(v.aweme_id)}" tabindex="0">
+      <div class="vthumb">
+        ${thumbImg(v.cover_url, v.title)}
+        <div class="tl">${v.episode_label ? `<span class="ov">Tập ${esc(v.episode_label)}</span>` : ""}</div>
+        <div class="tr">${v._season === "p2" ? `<span class="ov purple">P2</span>` : v._season === "p1" ? `<span class="ov amber">P1</span>` : ""}</div>
+        <div class="bl">${v.local_file ? `<span class="ov green">Đã tải</span>` : ""}</div>
+        <div class="br">${v.duration_sec ? `<span class="ov">${fmtDur(v.duration_sec)}</span>` : ""}</div>
+      </div>
+      <div class="vbody">
+        <div class="vtitle" title="${esc(v.title)}">${esc(v.title)}</div>
+        <div class="vmeta"><span>${dateOnly(v.publish_date)} · ♥ ${esc(v.likes_raw || v.likes || 0)}</span>${statusBadge(v)}</div>
+      </div>
+    </article>`).join("")}</div>`;
+
+  const tableHtml = (list, offset) => `<section class="card"><div class="table-wrap"><table class="tbl">
+    <thead><tr><th>#</th><th>Ảnh</th><th>Phần / Tập</th><th>Tiêu đề</th><th>Ngày đăng</th><th>Thời lượng</th><th>Thích</th><th>Trạng thái</th></tr></thead>
+    <tbody>${list.map((v, i) => `
+      <tr class="clickable" data-id="${esc(v.aweme_id)}">
+        <td class="muted">${offset + i + 1}</td>
+        <td>${v.cover_url ? `<img class="thumb" src="${esc(v.cover_url)}" referrerpolicy="no-referrer" loading="lazy" alt="" />` : ""}</td>
+        <td class="nowrap">${seasonBadge(v)} ${v.episode_label ? `<b>Tập ${esc(v.episode_label)}</b>` : ""}</td>
+        <td class="title-cell">${esc(v.title)}</td>
+        <td class="nowrap">${dateOnly(v.publish_date)}</td>
+        <td>${fmtDur(v.duration_sec) || "—"}</td>
+        <td class="nowrap">${esc(v.likes_raw || v.likes || 0)}</td>
+        <td>${statusBadge(v)}</td>
+      </tr>`).join("")}
+    </tbody></table></div></section>`;
+
+  function pagerHtml(page, pages) {
+    if (pages <= 1) return "";
+    const nums = [...new Set([1, pages, page - 2, page - 1, page, page + 1, page + 2])].filter((n) => n >= 1 && n <= pages).sort((a, b) => a - b);
+    let html = `<button type="button" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>‹ Trước</button>`;
+    let prev = 0;
+    for (const n of nums) {
+      if (n - prev > 1) html += `<span class="gap">…</span>`;
+      html += `<button type="button" data-page="${n}" class="${n === page ? "active" : ""}">${n}</button>`;
+      prev = n;
+    }
+    return html + `<button type="button" data-page="${page + 1}" ${page >= pages ? "disabled" : ""}>Sau ›</button>`;
+  }
+
+  function draw() {
+    const list = filtered();
+    const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    state.vf.page = Math.min(state.vf.page, pages);
+    const page = state.vf.page;
+    const start = (page - 1) * PAGE_SIZE;
+    const slice = list.slice(start, start + PAGE_SIZE);
+
+    $("#vf-meta").innerHTML = `<span>Hiển thị <b>${list.length ? start + 1 : 0}–${start + slice.length}</b> trong <b>${list.length}</b> video</span>`;
+    $("#vf-list").innerHTML = !state.videos.length
+      ? emptyState("scan", "Chưa có video nào", "Quét kênh Douyin để lấy danh sách video.", `<a class="btn btn-primary" href="${projLink("douyin/scan")}">Đi tới Quét kênh</a>`)
+      : !list.length
+        ? emptyState("search", "Không tìm thấy video phù hợp", "Thử đổi bộ lọc hoặc từ khóa tìm kiếm.")
+        : state.vf.view === "grid" ? gridHtml(slice) : tableHtml(slice, start);
+    $("#vf-pager").innerHTML = pagerHtml(page, pages);
+
+    const c = { all: state.videos.length, p1: 0, p2: 0, other: 0 };
+    state.videos.forEach((v) => c[v._season]++);
+    $$("#vf-season button").forEach((b) => ($(".cnt", b).textContent = c[b.dataset.v]));
+  }
+
+  const setSeg = (id, val) => $$(`#${id} button`).forEach((b) => b.classList.toggle("active", b.dataset.v === val));
+
+  return {
+    render: () => `
+      <div class="toolbar">
+        <div class="seg" id="vf-season">
+          <button type="button" data-v="all">Tất cả <span class="cnt">0</span></button>
+          <button type="button" data-v="p2">Phần 2 <span class="cnt">0</span></button>
+          <button type="button" data-v="p1">Phần 1 <span class="cnt">0</span></button>
+          <button type="button" data-v="other">Video phụ <span class="cnt">0</span></button>
+        </div>
+        <input id="vf-q" class="input" type="search" placeholder="Tìm theo tên, số tập (25), ngày (2026-03)..." aria-label="Tìm video Douyin" />
+        <select id="vf-sort" class="select" aria-label="Sắp xếp">
+          <option value="time_desc">Mới đăng trước</option>
+          <option value="time_asc">Cũ trước (đúng mạch truyện)</option>
+          <option value="ep_asc">Số tập tăng dần</option>
+          <option value="ep_desc">Số tập giảm dần</option>
+          <option value="likes_desc">Nhiều lượt thích</option>
+        </select>
+        <select id="vf-status" class="select" aria-label="Trạng thái">
+          <option value="all">Mọi trạng thái</option>
+          <option value="pending">Chưa reup</option>
+          <option value="downloaded">Đã tải</option>
+          <option value="reupped">Đã reup</option>
+        </select>
+        <div class="seg" id="vf-view">
+          <button type="button" data-v="grid" title="Dạng thẻ" aria-label="Dạng thẻ">${icon("grid", 16)}</button>
+          <button type="button" data-v="table" title="Dạng bảng" aria-label="Dạng bảng">${icon("list", 16)}</button>
+        </div>
+      </div>
+      <div class="list-meta" id="vf-meta"></div>
+      <div id="vf-list"></div>
+      <div class="pager" id="vf-pager"></div>`,
+
+    mount() {
+      const f = state.vf;
+      $("#vf-q").value = f.q;
+      $("#vf-sort").value = f.sort;
+      $("#vf-status").value = f.status;
+      setSeg("vf-season", f.season);
+      setSeg("vf-view", f.view);
+
+      const onSeg = (id, key) => ($("#" + id).onclick = (e) => {
+        const b = e.target.closest("button");
+        if (!b) return;
+        f[key] = b.dataset.v;
+        f.page = 1;
+        setSeg(id, f[key]);
+        draw();
+      });
+      onSeg("vf-season", "season");
+      onSeg("vf-view", "view");
+      let qTimer;
+      $("#vf-q").oninput = (e) => {
+        clearTimeout(qTimer);
+        qTimer = setTimeout(() => {
+          f.q = e.target.value;
+          f.page = 1;
+          draw();
+        }, 200);
+      };
+      $("#vf-sort").onchange = (e) => {
+        f.sort = e.target.value;
+        f.page = 1;
+        draw();
+      };
+      $("#vf-status").onchange = (e) => {
+        f.status = e.target.value;
+        f.page = 1;
+        draw();
+      };
+      $("#vf-list").onclick = (e) => {
+        const el = e.target.closest("[data-id]");
+        if (el) openVideoDetail(el.dataset.id);
+      };
+      $("#vf-list").onkeydown = (e) => {
+        if (e.key === "Enter" && e.target.matches("[data-id]")) openVideoDetail(e.target.dataset.id);
+      };
+      $("#vf-pager").onclick = (e) => {
+        const b = e.target.closest("button[data-page]");
+        if (!b || b.disabled) return;
+        f.page = Number(b.dataset.page);
+        draw();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      };
+    },
+    update: draw,
+  };
+}
+
+function openVideoDetail(awemeId) {
+  const v = state.videos.find((x) => String(x.aweme_id) === String(awemeId));
+  if (!v) return;
+  const media = v.local_file
+    ? `<video src="${esc(douyinFileUrl(v.local_file))}" controls></video>`
+    : thumbImg(v.cover_url, v.title) || `<span class="muted">Không có ảnh bìa</span>`;
+
+  const html = `
+    <div class="detail">
+      <div>
+        <div class="detail-media">${media}</div>
+        <div class="actions">
+          ${v.local_file
+            ? `<a class="btn btn-success" href="${esc(douyinFileUrl(v.local_file))}" download>${icon("download", 16)} Lưu file MP4</a>`
+            : v.download_url
+              ? `<button class="btn btn-primary js-busy-disable" type="button" id="dt-download">${icon("download", 16)} Tải về máy</button>`
+              : ""}
+          ${v.video_url ? `<a class="btn btn-light" href="${esc(v.video_url)}" target="_blank" rel="noopener">${icon("external", 15)} Mở trên Douyin</a>` : ""}
+          ${v.video_url ? `<button class="btn btn-quiet" type="button" id="dt-copy">${icon("copy", 15)} Sao chép link</button>` : ""}
+        </div>
+      </div>
+      <div>
+        <h4>${esc(v.title)}</h4>
+        <dl class="kv">
+          <dt>Phần / Tập</dt><dd>${seasonBadge(v)} ${v.episode_label ? `Tập ${esc(v.episode_label)}` : ""}</dd>
+          <dt>Ngày đăng</dt><dd>${esc(v.publish_date || "—")}</dd>
+          <dt>Thời lượng</dt><dd>${fmtDur(v.duration_sec) || "—"}</dd>
+          <dt>Lượt thích</dt><dd>${esc(v.likes_raw || v.likes || 0)}</dd>
+          <dt>Bình luận</dt><dd>${esc(v.comments_raw || v.comments || 0)}</dd>
+          <dt>Lượt lưu</dt><dd>${esc(v.collects_raw || v.collects || 0)}</dd>
+          <dt>Chia sẻ</dt><dd>${esc(v.shares_raw || v.shares || 0)}</dd>
+          <dt>Mã video</dt><dd><code>${esc(v.aweme_id)}</code></dd>
+          <dt>File đã tải</dt><dd>${v.local_file ? `<code>downloads/${esc(v.local_file)}</code>` : `<span class="muted">Chưa tải</span>`}</dd>
+        </dl>
+        <div class="field">
+          <label for="dt-status">Trạng thái reup</label>
+          <select id="dt-status" class="select">${options(Object.entries(STATUS_LABEL), v.reup_status === "reupped" || v.reup_status === "downloaded" ? v.reup_status : "pending")}</select>
+        </div>
+      </div>
+    </div>`;
+
+  const { el } = openModal(epText(v), html, { size: "wide" });
+  const sel = $("#dt-status", el);
+  sel.onchange = async () => {
+    const d = await postJSON("/api/status", { key: videoKey(v), status: sel.value });
+    if (d.ok) {
+      toast(`Đã chuyển sang "${STATUS_LABEL[sel.value]}"`, "success");
+      loadAll();
+    } else toast(d.error || "Không lưu được trạng thái", "error");
+  };
+  const dlBtn = $("#dt-download", el);
+  if (dlBtn) dlBtn.onclick = () => startTask("/api/download", { ids: v.aweme_id }, "Đang tải video");
+  const cpBtn = $("#dt-copy", el);
+  if (cpBtn) cpBtn.onclick = () => copyText(v.video_url);
+}
+
+function DouyinBatch() {
+  function selection() {
+    const season = $("#dl-season").value;
+    const from = Number($("#dl-from").value || 0);
+    const to = Number($("#dl-to").value || 0);
+    const skip = $("#dl-skip").checked;
+    return state.videos
+      .filter((v) => (season === "all" ? v._season !== "other" : v._season === season))
+      .filter((v) => v.episode_num != null && v.episode_num >= from && v.episode_num <= to)
+      .filter((v) => v.download_url && !(skip && v.local_file))
+      .sort((a, b) => (a.publish_time || 0) - (b.publish_time || 0));
+  }
+
+  function draw() {
+    const sel = selection();
+    const dur = sel.reduce((a, v) => a + Number(v.duration_sec || 0), 0);
+    $("#dl-preview").innerHTML = sel.length
+      ? callout("info", "download", `Sẽ tải <b>${sel.length} video</b> (tổng khoảng <b>${fmtHours(dur)}</b>), từ “${esc(sel[0].title.slice(0, 36))}…” đến “${esc(sel[sel.length - 1].title.slice(0, 36))}…”`)
+      : callout("warn", "info", "Không có video nào khớp. Kiểm tra lại phần và khoảng tập, hoặc quét kênh để làm mới link tải.");
+    $("#dl-start").disabled = !sel.length || state.task.running;
+
+    const done = state.videos.filter((v) => v.local_file).sort((a, b) => (a.publish_time || 0) - (b.publish_time || 0));
+    $("#dl-done-count").textContent = done.length;
+    $("#dl-done").innerHTML = done.length
+      ? `<div class="table-wrap"><table class="tbl">
+          <thead><tr><th>Phần / Tập</th><th>Tiêu đề</th><th>Thời lượng</th><th></th></tr></thead>
+          <tbody>${done.map((v) => `
+            <tr>
+              <td class="nowrap">${seasonBadge(v)} ${v.episode_label ? `<b>Tập ${esc(v.episode_label)}</b>` : ""}</td>
+              <td class="title-cell">${esc(v.title)}</td>
+              <td>${fmtDur(v.duration_sec) || "—"}</td>
+              <td class="nowrap">
+                <button class="btn btn-light btn-sm" type="button" data-play="${esc(v.local_file)}" data-title="${esc(v.title)}">${icon("play", 14)} Xem</button>
+                <a class="btn btn-quiet btn-sm" href="${esc(douyinFileUrl(v.local_file))}" download>${icon("download", 14)} Lưu</a>
+              </td>
+            </tr>`).join("")}
+          </tbody></table></div>`
+      : `<p class="muted pad">Chưa tải video nào. Video tải xong sẽ tự xuất hiện ở trang <a href="${projLink("videos")}">Video & Lồng tiếng</a>.</p>`;
+  }
+
+  return {
+    render: () => `
+      <section class="card">
+        <header class="card-head"><h3>Tải hàng loạt theo tập</h3><span class="hint">MP4 gốc từ Douyin, lưu vào <code>downloads/</code></span></header>
+        <div class="card-body">
+          <div class="form-grid cols-3">
+            <div class="field">
+              <label for="dl-season">Phần</label>
+              <select id="dl-season" class="select">
+                <option value="p2">Phần 2 — Tập 1 → 275 (liền mạch)</option>
+                <option value="p1">Phần 1 — Tập 1 → 467 (thiếu 138–314)</option>
+                <option value="all">Cả 2 phần</option>
+              </select>
+            </div>
+            <div class="field"><label for="dl-from">Từ tập</label><input id="dl-from" class="input" type="number" min="1" value="1" /></div>
+            <div class="field"><label for="dl-to">Đến tập</label><input id="dl-to" class="input" type="number" min="1" value="10" /></div>
+          </div>
+          <label class="check"><input id="dl-skip" type="checkbox" checked /> Bỏ qua các tập đã tải</label>
+          <div id="dl-preview"></div>
+        </div>
+        <div class="card-foot">
+          <button class="btn btn-primary" type="button" id="dl-start">${icon("download", 16)} Bắt đầu tải</button>
+          <span class="muted">Lỗi <code>403</code>? Link tải đã hết hạn — vào tab Quét kênh, bấm Quét nối tiếp rồi tải lại.</span>
+        </div>
+      </section>
+      <section class="card">
+        <header class="card-head"><h3>Đã tải về máy <span class="badge green" id="dl-done-count">0</span></h3></header>
+        <div id="dl-done"></div>
+      </section>`,
+
+    mount() {
+      ["dl-season", "dl-from", "dl-to", "dl-skip"].forEach((id) => $("#" + id).addEventListener("input", draw));
+      $("#dl-start").onclick = () => {
+        const sel = selection();
+        if (sel.length) startTask("/api/download", { ids: sel.map((v) => v.aweme_id).join(",") }, `Bắt đầu tải ${sel.length} video`);
+      };
+      $("#dl-done").onclick = (e) => {
+        const b = e.target.closest("[data-play]");
+        if (b) openPlayer(douyinFileUrl(b.dataset.play), b.dataset.title);
+      };
+    },
+    update: draw,
+  };
+}
+
+function DouyinScan() {
+  return {
+    render: () => `
+      <div class="cols cols-main-side">
+        <div>
+          <section class="card">
+            <header class="card-head"><h3><span class="step-badge">1</span> Đăng nhập Douyin</h3><span class="hint">Chỉ cần làm một lần</span></header>
+            <div class="card-body">
+              <p class="lead">Douyin Web cần đăng nhập mới xem được danh sách video. Mở Chrome, đăng nhập bằng mã QR, rồi <b>đóng cửa sổ Chrome</b> để lưu phiên vào <code>chrome_profile/</code>.</p>
+              <button class="btn btn-light js-busy-disable" type="button" id="btn-login">${icon("key", 16)} Mở Chrome để đăng nhập</button>
+            </div>
+          </section>
+          <section class="card">
+            <header class="card-head"><h3><span class="step-badge">2</span> Quét danh sách video</h3></header>
+            <div class="card-body">
+              <div class="field">
+                <label for="scan-url">Link kênh Douyin</label>
+                <input id="scan-url" class="input" type="url" value="${esc(DEFAULT_CHANNEL_URL)}" />
+              </div>
+              <div class="actions">
+                <button class="btn btn-primary js-busy-disable" type="button" id="btn-scan-resume">${icon("scan", 16)} Quét nối tiếp</button>
+                <button class="btn btn-light js-busy-disable" type="button" id="btn-scan-new">${icon("refresh", 16)} Quét lại từ đầu</button>
+              </div>
+              ${callout("info", "info", "<b>Quét nối tiếp</b> giữ trạng thái reup đã đánh dấu, chỉ thêm video mới và làm mới link tải. Chrome sẽ tự mở và cuộn trang — đừng đóng nó cho tới khi quét xong.")}
+            </div>
+          </section>
+        </div>
+        <aside>
+          <section class="card">
+            <header class="card-head"><h3>Kênh</h3></header>
+            <div class="card-body" id="scan-channel"></div>
+          </section>
+        </aside>
+      </div>`,
+
+    mount() {
+      const url = () => $("#scan-url").value.trim();
+      $("#btn-login").onclick = () => startTask("/api/login", { url: url() }, "Đang mở Chrome để đăng nhập");
+      $("#btn-scan-resume").onclick = () => startTask("/api/scan", { url: url(), resume: true }, "Bắt đầu quét nối tiếp");
+      $("#btn-scan-new").onclick = () => {
+        if (!confirm("Quét lại từ đầu sẽ ghi đè dữ liệu cũ, kể cả trạng thái reup đã đánh dấu. Tiếp tục?")) return;
+        startTask("/api/scan", { url: url(), resume: false }, "Bắt đầu quét lại từ đầu");
+      };
+    },
+
+    update() {
+      const m = state.meta;
+      const total = Number(m.total_works || 0);
+      const got = state.videos.length;
+      const pct = total ? Math.min(100, Math.round((got / total) * 100)) : 0;
+      const c = { p1: 0, p2: 0, other: 0 };
+      state.videos.forEach((v) => c[v._season]++);
+      const link = m.channel_url || m.share_url;
+      $("#scan-channel").innerHTML = `
+        <div class="progress"><div style="width:${pct}%"></div></div>
+        <div class="prog-meta"><span>Đã quét <b>${got}</b> / ${total || "?"} video</span><span>${pct}%</span></div>
+        <dl class="kv">
+          <dt>Tên kênh</dt><dd>${esc(m.channel_name || "—")}</dd>
+          <dt>Douyin ID</dt><dd>${esc(m.douyin_id || "—")}</dd>
+          <dt>Cập nhật</dt><dd>${esc(state.updatedAt || "chưa quét")}</dd>
+          <dt>Phần 2</dt><dd>${c.p2} video</dd>
+          <dt>Phần 1</dt><dd>${c.p1} video</dd>
+          <dt>Video phụ</dt><dd>${c.other} video</dd>
+          <dt>Link</dt><dd>${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">Mở trên Douyin ${icon("external", 13)}</a>` : "—"}</dd>
+        </dl>`;
+    },
+  };
+}
+
+function PageDouyin(tab) {
+  const tabs = [
+    ["list", "Danh sách video", DouyinList],
+    ["batch", "Tải theo tập", DouyinBatch],
+    ["scan", "Quét kênh", DouyinScan],
+  ];
+  const inner = (tabs.find((t) => t[0] === tab) || tabs[0])[2]();
+  return {
+    render: () => `
+      <nav class="page-tabs" aria-label="Kho Douyin">
+        ${tabs.map(([k, label]) => `<a href="${projLink(`douyin/${k}`)}" class="${k === tab ? "active" : ""}">${label}</a>`).join("")}
+      </nav>
+      <div class="js-task-inline" data-type="scan_web" hidden></div>
+      <div class="js-task-inline" data-type="download" hidden></div>
+      ${inner.render()}`,
+    mount: () => inner.mount?.(),
+    update: () => inner.update?.(),
+  };
+}
+
+/* =========================================================
+   TRANG: NHẬT KÝ · HƯỚNG DẪN
    ========================================================= */
 function PageLogs() {
   return {
     render: () => `
+      <div class="js-task" data-variant="page"></div>
       <section class="card">
         <header class="card-head">
-          <h3>📜 Nhật ký chi tiết</h3>
-          <div class="actions">
-            <button class="btn btn-light btn-sm" id="log-copy">📋 Sao chép</button>
-            <button class="btn btn-danger btn-sm js-stop" onclick="stopTask()" disabled>⏹ Dừng tiến trình</button>
-          </div>
+          <h3>Nhật ký chi tiết</h3>
+          <button class="btn btn-light btn-sm" type="button" id="log-copy">${icon("copy", 14)} Sao chép</button>
         </header>
-        <div class="card-body">
-          <div class="task-status js-task-status idle"><span class="dot"></span> Đang kiểm tra...</div>
-          <pre class="console tall js-log" data-limit="0"></pre>
-          <div class="help">Hiển thị tối đa 200 dòng gần nhất của tiến trình đang chạy hoặc vừa kết thúc. Tự động cập nhật mỗi 2,5 giây.</div>
-        </div>
+        <pre class="console js-log" tabindex="0"></pre>
+        <div class="card-foot muted">Hiện 500 dòng gần nhất. Toàn bộ nhật ký của lần chạy gần nhất nằm ở <code>data/last_task.log</code>.</div>
       </section>`,
     mount() {
       $("#log-copy").onclick = () => copyText((state.task.logs || []).join("\n"));
@@ -2153,166 +1841,167 @@ function PageLogs() {
   };
 }
 
-/* =========================================================
-   TRANG 8: HƯỚNG DẪN
-   ========================================================= */
 function PageHelp() {
+  const step = (n, title, body) => `<li><span class="step-badge">${n}</span><div><b>${title}</b><p>${body}</p></div></li>`;
   return {
     render: () => `
       <div class="cols cols-2">
         <section class="card">
-          <header class="card-head"><h3>🚀 Cách dùng nhanh</h3></header>
-          <div class="card-body prose">
-            <ol>
-              <li><b>Quét kênh</b>: vào <a href="#/douyin/scan">Quét kênh</a> → bấm <b>Quét nối tiếp</b>. Lần đầu cần <b>Đăng nhập Chrome</b>.</li>
-              <li><b>Chọn video</b>: vào <a href="#/douyin/videos">Danh sách video</a>, lọc <b>Phần 2</b> và sắp xếp <b>Cũ nhất trước</b> để xem đúng mạch truyện.</li>
-              <li><b>Tải video</b>: vào <a href="#/douyin/downloads">Tải video</a> → chọn phần + khoảng tập → <b>Bắt đầu tải</b>.</li>
-              <li><b>Tập bị thiếu (138–314)</b>: vào <a href="#/bilibili/new">Tải video mới</a>, dán link Bilibili, chọn vị trí logo → <b>Tải & xóa logo</b>.</li>
-              <li><b>Đánh dấu đã reup</b>: bấm vào một video → đổi <b>Trạng thái reup</b>.</li>
+          <header class="card-head"><h3>Quy trình 4 bước</h3></header>
+          <div class="card-body">
+            <ol class="steps">
+              ${step(1, "Tạo dự án", "Mỗi bộ truyện / phim là một dự án. Nhập bối cảnh và nhân vật để AI dịch đúng xưng hô.")}
+              ${step(2, "Thêm video", "Trong dự án, bấm <b>Thêm video</b> và dán link Bilibili / YouTube; hoặc tải từ <b>Kho Douyin</b>.")}
+              ${step(3, "Lồng tiếng", "Bấm <b>Lồng tiếng</b> ở video. Máy tự nhận diện lời thoại → dịch → tạo giọng Việt → xuất video.")}
+              ${step(4, "Sửa lời & xuất lại", "Bấm <b>Sửa lời</b>, chỉnh câu chưa ưng rồi xuất lại — chỉ câu và đoạn bị sửa mới phải làm lại.")}
             </ol>
           </div>
         </section>
 
         <section class="card">
-          <header class="card-head"><h3>📚 Cấu trúc nội dung kênh 楚新钓</h3></header>
-          <div class="card-body p0">
-            <div class="table-wrap"><table class="tbl">
-              <thead><tr><th>Phần</th><th>Thời gian đăng</th><th>Số tập</th></tr></thead>
-              <tbody>
-                <tr><td>${seasonBadge({ _season: "p1" })}</td><td>11/2023 → 07/2024</td><td>Tập 1 → 137</td></tr>
-                <tr><td><span class="badge red" style="background:var(--red-50);color:var(--red)">Thiếu</span></td><td>Nghỉ ~1 năm</td><td>Tập 138 → 314 (tìm trên Bilibili)</td></tr>
-                <tr><td>${seasonBadge({ _season: "p1" })}</td><td>06/2025 → 02/2026</td><td>Tập 315 → 467</td></tr>
-                <tr><td>${seasonBadge({ _season: "p2" })}</td><td>02/2026 → nay</td><td>Tập 1 → 275 (liền mạch)</td></tr>
-              </tbody>
-            </table></div>
+          <header class="card-head"><h3>Video rất dài (9 – 90 tiếng)</h3></header>
+          <div class="card-body prose">
+            <ul>
+              <li><b>Chạy tiếp được.</b> Video được xử lý theo khối 10 phút và lưu tiến độ liên tục. Dừng, tắt máy, mất mạng — bấm <b>Tiếp tục</b> là chạy từ chỗ đang dở.</li>
+              <li><b>Không tốn RAM.</b> Mỗi lúc chỉ một khối nằm trong bộ nhớ, video 90 tiếng dùng RAM như video 10 phút.</li>
+              <li><b>Chọn “Không xóa lúc tải”</b> khi thêm video, rồi bật <b>Xóa logo khi xuất</b> ở bước lồng tiếng: video chỉ bị mã hóa một lần.</li>
+              <li><b>Ổ cứng:</b> cần trống khoảng 2,2 lần dung lượng video nếu in phụ đề / xóa logo; khoảng 1,2 lần nếu giữ nguyên hình.</li>
+              <li><b>Thời gian:</b> chế độ nhận diện <b>Nhanh</b> mất khoảng 0,6 lần thời lượng video khi có in phụ đề. Cứ để máy chạy qua đêm.</li>
+              <li><b>Cache:</b> giọng đọc và các đoạn video đã mã hóa được giữ lại để xuất lại nhanh. Lấy lại ổ cứng bằng <b>⋯ → Xóa cache</b>.</li>
+            </ul>
           </div>
         </section>
       </div>
 
-      <section class="card">
-        <header class="card-head"><h3>📁 Vị trí các file</h3></header>
-        <div class="card-body p0">
-          <div class="table-wrap"><table class="tbl">
-            <thead><tr><th>Đường dẫn</th><th>Nội dung</th></tr></thead>
-            <tbody>
-              <tr><td><code>data/videos.json</code>, <code>data/videos.csv</code></td><td>Danh sách video Douyin đã quét</td></tr>
-              <tr><td><code>downloads/</code></td><td>Video MP4 tải từ Douyin</td></tr>
-              <tr><td><code>data/bilibili.json</code></td><td>Danh sách video Bilibili / YouTube đã tải</td></tr>
-              <tr><td><code>downloads/bilibili/</code></td><td>Video MP4 tải từ Bilibili / YouTube (đã xóa logo)</td></tr>
-              <tr><td><code>chrome_profile/</code></td><td>Phiên đăng nhập Douyin của Chrome</td></tr>
-            </tbody>
-          </table></div>
-        </div>
-      </section>
-
       <div class="cols cols-2">
         <section class="card">
-          <header class="card-head"><h3>⌨️ Lệnh dòng lệnh (tùy chọn)</h3></header>
-          <div class="card-body prose">
-            <p>Khởi động giao diện web:</p>
-            <pre class="code">node server.mjs   # mở http://localhost:3456</pre>
-            <p>Quét kênh Douyin nối tiếp:</p>
-            <pre class="code">node list_channel_web.mjs --resume</pre>
-            <p>Tải video Bilibili và xóa logo góc phải:</p>
-            <pre class="code">node download_bilibili.mjs --url "https://www.bilibili.com/video/BV..." --delogo top-right</pre>
+          <header class="card-head"><h3>Câu hỏi thường gặp</h3></header>
+          <div class="card-body">
+            <details class="faq"><summary>Báo “Đang có tiến trình khác chạy”?</summary>
+              <p>Mỗi lúc chỉ chạy một tiến trình. Đợi xong hoặc bấm <b>Dừng</b> ở góc dưới bên trái — tiến độ lồng tiếng vẫn được lưu.</p></details>
+            <details class="faq"><summary>Một số câu bị “chưa dịch”?</summary>
+              <p>Antigravity lỗi tạm thời ở vài lô. Mở <b>Sửa lời</b>, tick <b>Chỉ câu chưa dịch</b> để điền tay, hoặc chọn <b>Lồng tiếng lại</b>.</p></details>
+            <details class="faq"><summary>Video Bilibili vẫn còn logo?</summary>
+              <p>Logo nằm ở góc khác. Chọn <b>Cả 2 góc trên</b> khi lồng tiếng hoặc trong <b>⋯ → Xóa logo video gốc</b>.</p></details>
+            <details class="faq"><summary>Quét kênh Douyin dừng sớm hoặc tải bị lỗi 403?</summary>
+              <p>Do mạng chậm, Douyin đòi xác minh, hoặc link tải hết hạn. Vào <b>Kho Douyin → Quét kênh</b>, bấm <b>Quét nối tiếp</b> rồi tải lại.</p></details>
           </div>
         </section>
 
         <section class="card">
-          <header class="card-head"><h3>❓ Câu hỏi thường gặp</h3></header>
-          <div class="card-body">
-            <details class="faq"><summary>Quét kênh bị dừng sớm, không đủ video?</summary>
-              <p>Do mạng chậm hoặc Douyin yêu cầu xác minh. Mở cửa sổ Chrome đang chạy để kiểm tra, sau đó bấm <b>Quét nối tiếp</b> lần nữa — dữ liệu cũ vẫn được giữ.</p></details>
-            <details class="faq"><summary>Tải video Douyin bị lỗi 403?</summary>
-              <p>Link tải đã hết hạn. Bấm <b>Quét nối tiếp</b> để làm mới link rồi tải lại.</p></details>
-            <details class="faq"><summary>Video Bilibili vẫn còn logo?</summary>
-              <p>Logo có thể nằm ở góc khác. Tải lại và chọn <b>Cả 2 góc trên</b>, hoặc chọn đúng góc chứa logo.</p></details>
-            <details class="faq"><summary>Báo "Đang có tiến trình khác chạy"?</summary>
-              <p>Mỗi lúc chỉ chạy 1 tiến trình. Đợi tiến trình hiện tại xong hoặc bấm <b>Dừng tiến trình</b> ở góc dưới bên trái.</p></details>
-          </div>
+          <header class="card-head"><h3>Vị trí các file</h3></header>
+          <div class="table-wrap"><table class="tbl">
+            <tbody>
+              <tr><td><code>downloads/bilibili/</code></td><td>Video tải từ Bilibili / YouTube</td></tr>
+              <tr><td><code>downloads/</code></td><td>Video tải từ Douyin</td></tr>
+              <tr><td><code>downloads/dubbed/</code></td><td>Bản lồng tiếng Việt (<code>.mp4</code>) và phụ đề (<code>.srt</code>)</td></tr>
+              <tr><td><code>data/projects/</code></td><td>Ngữ cảnh AI của từng dự án</td></tr>
+              <tr><td><code>data/dub_work/</code></td><td>Tiến độ đang dở và cache giọng đọc / video</td></tr>
+              <tr><td><code>chrome_profile/</code></td><td>Phiên đăng nhập Douyin</td></tr>
+            </tbody>
+          </table></div>
         </section>
       </div>`,
   };
 }
 
 /* =========================================================
-   ROUTER (Trang chủ = Danh sách Dự án → Bên trong Dự án)
+   ROUTER
    ========================================================= */
 const GLOBAL_ROUTES = {
-  "/projects": { title: "Dự án của tôi", sub: "Chọn một dự án truyện / phim để tải video, dịch và lồng tiếng", page: PageProjects },
-  "/logs": { title: "Nhật ký tiến trình", sub: "Theo dõi chi tiết tiến trình đang chạy", page: PageLogs },
-  "/help": { title: "Hướng dẫn sử dụng", sub: "Các bước làm, vị trí file và câu hỏi thường gặp", page: PageHelp },
+  "/projects": { title: "Dự án", sub: "Mỗi bộ truyện / phim một dự án — AI nhớ nhân vật, xưng hô và mạch truyện", page: PageProjects },
+  "/logs": { title: "Nhật ký", sub: "Tiến trình đang chạy và kết quả lần chạy gần nhất", page: PageLogs },
+  "/help": { title: "Hướng dẫn", sub: "Quy trình làm việc và mẹo xử lý video rất dài", page: PageHelp },
 };
 
-const PROJECT_SUB_ROUTES = {
-  dubbing: { title: "Dịch & Lồng tiếng AI", sub: "Làm chậm 0.5x tách âm → Antigravity dịch theo ngữ cảnh dự án → Xuất 1.0x gốc", page: PageDubbing },
-  "bilibili-new": { title: "Tải video Bilibili / YouTube", sub: "Dán link → cắt khung giờ / chọn Part → tải và xóa logo", page: PageBiliNew },
-  "bilibili-library": { title: "Thư viện Bilibili / YouTube", sub: "Các video đã tải về máy", page: PageBiliLibrary },
-  "douyin-scan": { title: "Quét kênh Douyin", sub: "Lấy danh sách video, ảnh bìa và link tải từ Douyin Web", page: PageScan },
-  "douyin-videos": { title: "Danh sách video Douyin", sub: "Xem, lọc và đánh dấu trạng thái từng tập", page: PageVideos },
-  "douyin-downloads": { title: "Tải video Douyin", sub: "Tải file MP4 gốc theo phần và khoảng tập", page: PageDouyinDownloads },
-  logs: { title: "Nhật ký tiến trình", sub: "Theo dõi chi tiết tiến trình đang chạy", page: PageLogs },
+const PROJECT_ROUTES = {
+  videos: { title: "Video & Lồng tiếng", sub: "Tải video, dịch theo ngữ cảnh dự án và lồng tiếng Việt", page: PageWorkspace },
+  "douyin/list": { title: "Kho Douyin", sub: "Xem, lọc và đánh dấu trạng thái từng tập", page: () => PageDouyin("list") },
+  "douyin/batch": { title: "Kho Douyin", sub: "Tải file MP4 gốc theo phần và khoảng tập", page: () => PageDouyin("batch") },
+  "douyin/scan": { title: "Kho Douyin", sub: "Lấy danh sách video và link tải từ Douyin Web", page: () => PageDouyin("scan") },
+  logs: GLOBAL_ROUTES["/logs"],
+};
+// Đường dẫn của giao diện cũ vẫn mở đúng trang mới
+const ROUTE_ALIASES = {
+  dubbing: "videos", "bilibili-new": "videos", "bilibili-library": "videos",
+  douyin: "douyin/list", "douyin-videos": "douyin/list", "douyin-downloads": "douyin/batch", "douyin-scan": "douyin/scan",
 };
 
 let currentPage = null;
 
-function router() {
+function parseRoute() {
   const path = location.hash.replace(/^#/, "") || "/projects";
-  const topActions = $("#topbar-actions");
+  const m = path.match(/^\/project\/([^/]+)(?:\/(.*))?$/);
+  if (!m) return { path, pid: "", sub: "" };
+  const sub = m[2] || "videos";
+  return { path, pid: decodeURIComponent(m[1]), sub: ROUTE_ALIASES[sub] || sub };
+}
 
-  const projMatch = path.match(/^\/project\/([^/]+)(?:\/(.*))?$/);
-  if (projMatch) {
-    const pid = projMatch[1];
-    const sub = projMatch[2] || "dubbing";
-    const subRoute = PROJECT_SUB_ROUTES[sub];
-    if (!subRoute) {
-      location.hash = `#/project/${pid}/dubbing`;
+function router() {
+  const { path, pid, sub } = parseRoute();
+  let route;
+  let actions;
+
+  if (pid) {
+    const proj = state.projects.find((p) => p.id === pid);
+    if ((state.loaded && !proj) || !PROJECT_ROUTES[sub]) {
+      location.hash = state.loaded && !proj ? "#/projects" : `#/project/${encodeURIComponent(pid)}/videos`;
       return;
     }
     state.activeProjectId = pid;
-    const proj = state.projects.find((p) => p.id === pid);
-    $("#page-title").textContent = subRoute.title;
-    $("#page-sub").textContent = proj ? `Dự án: ${proj.name} — ${subRoute.sub}` : subRoute.sub;
-    document.title = `${subRoute.title} — ${proj?.name || "Reup Studio"}`;
-    topActions.innerHTML = `
-      <button class="btn btn-light" onclick="openProjectDrawer('${esc(pid)}')">⚙️ Cài đặt dự án</button>
-      <button class="btn btn-light" onclick="loadAll(true)">↻ Làm mới</button>`;
-
-    renderSidebar();
-    currentPage = subRoute.page();
-    $("#content").innerHTML = currentPage.render();
-    currentPage.mount?.();
-    if (state.loaded) currentPage.update?.();
-    renderTaskWidgets();
-    document.body.classList.remove("sb-open");
-    window.scrollTo(0, 0);
-    return;
+    route = PROJECT_ROUTES[sub];
+    document.title = `${route.title} · ${proj?.name || "OpenReup Studio"}`;
+    actions = `<button class="btn btn-light" type="button" data-drawer="${esc(pid)}">${icon("brain", 16)}<span class="lbl">Ngữ cảnh AI</span></button>`;
+  } else {
+    route = GLOBAL_ROUTES[path];
+    if (!route) {
+      location.hash = "#/projects";
+      return;
+    }
+    document.title = `${route.title} · OpenReup Studio`;
+    actions = path === "/projects" ? `<button class="btn btn-primary" type="button" data-new-project>${icon("plus", 16)}<span class="lbl">Tạo dự án</span></button>` : "";
   }
 
-  const route = GLOBAL_ROUTES[path];
-  if (!route) {
-    location.hash = "#/projects";
-    return;
-  }
   $("#page-title").textContent = route.title;
   $("#page-sub").textContent = route.sub;
-  document.title = `${route.title} — Reup Studio`;
-  topActions.innerHTML =
-    path === "/projects"
-      ? `<button class="btn btn-primary" onclick="openNewProjectModal()">➕ Tạo dự án mới</button>
-         <button class="btn btn-light" onclick="loadAll(true)">↻ Làm mới</button>`
-      : `<button class="btn btn-light" onclick="loadAll(true)">↻ Làm mới</button>`;
+  $("#topbar-actions").innerHTML = `${actions}<button class="icon-btn" type="button" data-refresh title="Làm mới dữ liệu" aria-label="Làm mới dữ liệu">${icon("refresh")}</button>`;
 
   renderSidebar();
+  const content = $("#content");
+  content.onclick = null;
   currentPage = route.page();
-  $("#content").innerHTML = currentPage.render();
+  content.innerHTML = currentPage.render();
   currentPage.mount?.();
   if (state.loaded) currentPage.update?.();
   renderTaskWidgets();
-
   document.body.classList.remove("sb-open");
   window.scrollTo(0, 0);
 }
+
+/* ------------------------- Khởi động ------------------------- */
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem("theme", theme);
+  $("#theme-toggle").innerHTML = `${icon(theme === "dark" ? "sun" : "moon", 16)}<span>${theme === "dark" ? "Giao diện sáng" : "Giao diện tối"}</span>`;
+}
+
+document.addEventListener("click", (e) => {
+  // Các nút dùng chung toàn trang
+  if (e.target.closest("[data-stop]")) return stopTask();
+  if (e.target.closest("[data-refresh]")) return loadAll(true);
+  if (e.target.closest("[data-new-project]")) return openNewProjectModal();
+  const drawer = e.target.closest("[data-drawer]");
+  if (drawer) return openProjectDrawer(drawer.dataset.drawer);
+  // Đóng menu "⋯" khi bấm ra ngoài
+  $$("details.menu[open]").forEach((d) => !d.contains(e.target) && d.removeAttribute("open"));
+});
+
+$("#menu-btn").innerHTML = icon("menu");
+$("#menu-btn").onclick = () => document.body.classList.toggle("sb-open");
+$("#sb-backdrop").onclick = () => document.body.classList.remove("sb-open");
+$("#sb-help").innerHTML = `${icon("help", 16)}<span>Hướng dẫn</span>`;
+$("#theme-toggle").onclick = () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+setTheme(document.documentElement.dataset.theme);
 
 window.addEventListener("hashchange", router);
 router();

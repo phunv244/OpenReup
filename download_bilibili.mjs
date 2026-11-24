@@ -99,7 +99,7 @@ function saveHistory(videos) {
  * Streaming command runner that does NOT accumulate unlimited stdout into RAM.
  * Only retains lines starting with `SAVED_FILE:::`.
  */
-function runStreamingCmd(cmd, args, { niceLevel = 0 } = {}) {
+function runStreamingCmd(cmd, args, { niceLevel = 0, onLine = null } = {}) {
   return new Promise((resolve, reject) => {
     const finalCmd = niceLevel > 0 ? "nice" : cmd;
     const finalArgs = niceLevel > 0 ? ["-n", String(niceLevel), cmd, ...args] : args;
@@ -110,12 +110,13 @@ function runStreamingCmd(cmd, args, { niceLevel = 0 } = {}) {
 
     proc.stdout.on("data", (buf) => {
       const chunk = buf.toString("utf8");
-      process.stdout.write(chunk);
+      if (!onLine) process.stdout.write(chunk);
       partial += chunk;
       const lines = partial.split(/\r?\n/);
       partial = lines.pop() || "";
       for (const line of lines) {
-        if (line.startsWith("SAVED_FILE:::")) {
+        if (onLine) onLine(line);
+        else if (line.startsWith("SAVED_FILE:::")) {
           savedFiles.push(line.slice("SAVED_FILE:::".length).trim());
         }
       }
@@ -207,7 +208,7 @@ async function removeLogoInPlace(mp4Path, mode, perf = "balanced") {
   const fileGb = stat.size / 1024 ** 3;
   assertDiskSpace(path.dirname(mp4Path), Math.max(MIN_FREE_GB, fileGb * 1.4));
 
-  const { w, h } = probeVideo(mp4Path);
+  const { w, h, duration } = probeVideo(mp4Path);
   const vf = buildDelogoFilter(mode, w, h);
   if (!vf) return;
 
@@ -239,14 +240,31 @@ async function removeLogoInPlace(mp4Path, mode, perf = "balanced") {
     : `CPU libx264 (${threads || cpuCount}/${cpuCount} luồng, nice=${niceLevel})`;
   console.log(`[Delogo] Đang xóa logo (${mode}) bằng ${encDesc} trên ${path.basename(mp4Path)} (${w}x${h})...`);
 
+  // Video dài mã hóa lại mất nhiều giờ: báo % + thời gian còn lại cho giao diện (server đọc dòng @@PROGRESS).
+  const startedAt = Date.now();
+  let lastEmit = 0;
+  const onLine = (line) => {
+    const m = /^out_time_us=(\d+)/.exec(line);
+    if (!m || !duration || Date.now() - lastEmit < 2000) return;
+    lastEmit = Date.now();
+    const frac = Math.min(1, Number(m[1]) / 1e6 / duration);
+    const eta = frac > 0.005 ? Math.round(((Date.now() - startedAt) / 1000) * (1 - frac) / frac) : null;
+    console.log(
+      "@@PROGRESS " +
+        JSON.stringify({ pct: Number((frac * 100).toFixed(1)), label: `Đang xóa logo ${fmtClock(frac * duration)} / ${fmtClock(duration)}`, eta })
+    );
+  };
+
   try {
     await runStreamingCmd(
       "ffmpeg",
       [
         "-y",
         "-loglevel",
-        "warning",
-        "-stats",
+        "error",
+        "-nostats",
+        "-progress",
+        "pipe:1",
         "-i",
         mp4Path,
         "-vf",
@@ -258,7 +276,7 @@ async function removeLogoInPlace(mp4Path, mode, perf = "balanced") {
         "+faststart",
         tmpPath,
       ],
-      { niceLevel }
+      { niceLevel, onLine }
     );
     fs.renameSync(tmpPath, mp4Path);
     console.log(`[Delogo] Xóa logo hoàn tất!`);
@@ -311,6 +329,72 @@ async function runStandaloneDelogo(args) {
   console.log(`[OK] Đã cập nhật file sạch logo: ${safeName}`);
 }
 
+function fmtClock(sec) {
+  const s = Math.max(0, Math.round(sec));
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
+}
+
+function clockToSec(t) {
+  return String(t || "").split(":").reduce((a, x) => a * 60 + Number(x || 0), 0);
+}
+
+/**
+ * Hỏi yt-dlp thời lượng + dung lượng ước tính TRƯỚC khi tải, để video 9–90 tiếng không làm đầy ổ giữa chừng.
+ * Không lấy được thông tin (mạng, site lạ) thì bỏ qua, vẫn tải bình thường.
+ */
+function preflight(args, formatSel, usePlaylist) {
+  let out = "";
+  try {
+    out = execFileSync(
+      "yt-dlp",
+      [
+        usePlaylist ? "--yes-playlist" : "--no-playlist",
+        ...(args.playlistItems ? ["--playlist-items", args.playlistItems.trim()] : []),
+        "-f",
+        formatSel,
+        "--print",
+        "%(duration|0)s|%(filesize,filesize_approx|0)s",
+        args.url,
+      ],
+      { encoding: "utf8", timeout: 90_000, stdio: ["ignore", "pipe", "ignore"] }
+    );
+  } catch {
+    return;
+  }
+  let totalSec = 0;
+  let totalBytes = 0;
+  let count = 0;
+  for (const line of out.split("\n")) {
+    const [d, b] = line.trim().split("|").map(Number);
+    if (!d) continue;
+    count++;
+    let frac = 1;
+    if (args.section) {
+      const [from, to] = args.section.replace(/^\*/, "").split("-").map(clockToSec);
+      frac = Math.min(1, Math.max(0, (Math.min(to || d, d) - from) / d));
+    }
+    totalSec += d * frac;
+    totalBytes += (b || 0) * frac;
+  }
+  if (!count) return;
+  const estGb = totalBytes / 1024 ** 3;
+  console.log(
+    `[Kiểm tra] ${count} video · tổng thời lượng ${fmtClock(totalSec)}` +
+      (estGb ? ` · ước tính ${estGb.toFixed(2)} GB` : " · không rõ dung lượng")
+  );
+  if (estGb) {
+    // Tải hình + tiếng riêng rồi ghép (~2x), xóa logo ghi thêm 1 bản tạm (~1.4x).
+    const withDelogo = args.delogo && args.delogo !== "none";
+    assertDiskSpace(args.outDir, Math.max(MIN_FREE_GB, estGb * (withDelogo ? 2.5 : 2.1) + 2));
+  }
+  if (totalSec > 4 * 3600 && args.delogo && args.delogo !== "none") {
+    console.log(
+      "[Gợi ý] Video rất dài: nên chọn 'Không xóa logo' khi tải, rồi bật 'Xóa logo' ngay trong bước Lồng tiếng để chỉ phải mã hóa video 1 lần."
+    );
+  }
+}
+
 function normalizeSection(sec) {
   const s = (sec || "").trim();
   if (!s) return "";
@@ -349,11 +433,15 @@ async function main() {
     "--newline",
     "--continue",
     "--retries",
-    "20",
+    "50",
     "--fragment-retries",
-    "20",
+    "50",
+    "--retry-sleep",
+    "linear=2:30:2",
     "--socket-timeout",
     "30",
+    "--concurrent-fragments",
+    "4",
     "-f",
     formatSel,
     "--merge-output-format",
@@ -379,8 +467,23 @@ async function main() {
   if (args.section) console.log(`[Section] Chỉ tải khung giờ: ${args.section}`);
   if (args.playlistItems) console.log(`[Playlist] Chỉ tải các phần: ${args.playlistItems}`);
 
+  preflight(args, formatSel, usePlaylist);
+
+  // Tải vài chục GB khó tránh rớt mạng: thử lại cả lệnh, yt-dlp tự nối tiếp file .part đang dở.
   const niceLevel = args.perf === "eco" ? 15 : 5;
-  const { savedFiles } = await runStreamingCmd("yt-dlp", ytdlpArgs, { niceLevel });
+  const MAX_TRIES = 5;
+  const saved = new Set();
+  for (let attempt = 1; ; attempt++) {
+    try {
+      (await runStreamingCmd("yt-dlp", ytdlpArgs, { niceLevel })).savedFiles.forEach((f) => saved.add(f));
+      break;
+    } catch (err) {
+      if (attempt >= MAX_TRIES) throw err;
+      console.log(`[Thử lại] Lần ${attempt}/${MAX_TRIES} bị gián đoạn (${err.message}). Tự nối tiếp sau 15 giây...`);
+      await new Promise((r) => setTimeout(r, 15_000));
+    }
+  }
+  const savedFiles = [...saved];
 
   const history = loadHistory();
   const byFile = new Map(history.map((v) => [v.local_file, v]));

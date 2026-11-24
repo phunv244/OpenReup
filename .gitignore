@@ -27,3 +27,6 @@ data/projects/
 # OS & editor files
 .DS_Store
 *.log
+data/dub_work/
+data/thumbs/
+data/media_cache.json

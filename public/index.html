@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reup Studio — Quản lý Dự án Truyện & Phim</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>" />
+  <link rel="stylesheet" href="/assets/app.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- ============ CỘT MENU BÊN TRÁI ============ -->
+    <aside class="sidebar">
+      <a class="brand" href="#/projects" style="text-decoration:none">
+        <div class="brand-logo">🎬</div>
+        <div>
+          <div class="brand-name">Reup Studio</div>
+          <div class="brand-sub">Antigravity AI Dubbing</div>
+        </div>
+      </a>
+
+      <nav class="nav" id="sidebar-nav"></nav>
+
+      <div class="sb-foot">
+        <div class="task-status js-task-status idle"><span class="dot"></span> Đang kiểm tra...</div>
+        <button class="btn btn-danger btn-sm btn-block js-stop" onclick="stopTask()" disabled>⏹ Dừng tiến trình</button>
+      </div>
+    </aside>
+
+    <!-- ============ NỘI DUNG CHÍNH BÊN PHẢI ============ -->
+    <div class="main">
+      <header class="topbar">
+        <button class="menu-btn" onclick="document.body.classList.toggle('sb-open')" aria-label="Mở menu">☰</button>
+        <div class="topbar-title">
+          <h1 id="page-title">Dự án của tôi</h1>
+          <p id="page-sub">Chọn một dự án truyện / phim để tải video, dịch và lồng tiếng</p>
+        </div>
+        <div class="topbar-actions" id="topbar-actions"></div>
+      </header>
+
+      <main id="content" class="content"></main>
+    </div>
+  </div>
+
+  <!-- ============ NGĂN CÀI ĐẶT DỰ ÁN BÊN PHẢI (RIGHT DRAWER) ============ -->
+  <div id="drawer-root"></div>
+
+  <div class="sb-backdrop" onclick="document.body.classList.remove('sb-open')"></div>
+  <div id="modal-root"></div>
+  <div id="toasts"></div>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>

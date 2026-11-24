@@ -1,0 +1,29 @@
+# Dependencies & environments
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# Private browser session & cookies (DO NOT COMMIT)
+chrome_profile/
+
+# Downloaded & rendered media files
+downloads/
+*.mp4
+*.mp3
+*.wav
+*.srt
+*.part
+
+# Local runtime data
+data/videos.json
+data/videos.csv
+data/bilibili.json
+data/dubbed.json
+data/story_memory.json
+data/dub_projects/
+data/projects/
+
+# OS & editor files
+.DS_Store
+*.log

@@ -30,3 +30,6 @@ data/projects/
 data/dub_work/
 data/thumbs/
 data/media_cache.json
+
+# Cookie đăng nhập Bilibili/YouTube (KHÔNG commit)
+cookies.txt

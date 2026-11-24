@@ -16,7 +16,7 @@ Toàn bộ pipeline được thiết kế để chạy nhiều ngày liên tục
 
 | Công đoạn | Cách xử lý | Lưu / cache ở |
 |---|---|---|
-| Tải video | `yt-dlp` tự nối tiếp file `.part`, tự thử lại 5 lần, ước tính dung lượng và kiểm tra ổ cứng **trước** khi tải | `downloads/bilibili/` |
+| Tải video | `yt-dlp` + `aria2c` 16 kết nối (CDN Bilibili bóp mỗi kết nối ~1 MB/s), tự nối tiếp file `.part`, tự thử lại 5 lần, ước tính dung lượng và kiểm tra ổ cứng **trước** khi tải | `downloads/bilibili/` |
 | Nhận diện | Giải mã từng khối ~10 phút (cắt tại khoảng lặng, không cắt đôi câu), mỗi khối xong là ghi checkpoint | `data/dub_work/<job>/chunks/` |
 | Dịch | 3 lô chạy song song ngay khi khối vừa nhận diện xong; lỗi mạng thì thử lại, lô hỏng không làm mất cả video | cùng file khối |
 | Giọng đọc | 12 luồng chạy nền, cache theo nội dung câu (câu trùng / câu không sửa không phải tạo lại) | `tts/` |
@@ -36,6 +36,8 @@ Kiểm tra nhanh phần lõi (không cần mạng): `.venv/bin/python test_dub_v
 ### Yêu cầu
 - Node.js >= 20, Python >= 3.10
 - `ffmpeg`, `ffprobe`, `yt-dlp`, Google Chrome, Antigravity CLI (`agy`)
+- Nên có `aria2c` (`sudo apt install aria2`): tải Bilibili nhanh gấp ~10 lần. Không có vẫn chạy, tự dùng chế độ chia khúc.
+- Tùy chọn: đặt `cookies.txt` (xuất từ trình duyệt đã đăng nhập Bilibili) ở thư mục gốc để tải 1080P cao / 4K.
 
 ### Cài đặt
 ```bash

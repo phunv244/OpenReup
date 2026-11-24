@@ -878,7 +878,7 @@ function openAddVideoModal() {
           <button class="chip" type="button" data-sec="01:00:00,02:00:00">Giờ thứ 2</button>
           <button class="chip" type="button" data-sec=",">Cả video</button>
         </div>
-        <div class="help">Để trống = tải trọn video. Video 9–90 tiếng vẫn tải trọn được, bị rớt mạng sẽ tự nối tiếp.</div>
+        <div class="help">Để trống = tải trọn video bằng 16 kết nối song song (cần <code>aria2c</code>), rớt mạng tự nối tiếp. Cắt đoạn thì tải chậm hơn vì phải đi qua ffmpeg.</div>
       </fieldset>
       <fieldset class="group">
         <legend>Link nhiều phần (P1, P2...) <span class="muted">(tùy chọn)</span></legend>
@@ -1037,7 +1037,9 @@ function openDubConfigModal(v) {
     ${resumable
       ? callout("warn", "clock", `Video này đang làm dở ở <b>${Math.round(v.job.pct)}%</b>. Bấm bắt đầu sẽ <b>chạy tiếp</b> từ chỗ đang dở.
           <label class="check" style="margin-top:8px"><input id="mc-fresh" type="checkbox" /> Bỏ kết quả dở, nhận diện và dịch lại từ đầu</label>`)
-      : callout("info", "brain", `Dự án <b>${esc(proj?.name || "—")}</b>: AI đọc ngữ cảnh dự án, tự sửa lỗi nghe nhầm, dịch đúng xưng hô và ghi nhớ nhân vật mới.`)}
+      : v.dub
+        ? callout("warn", "alert", "Lồng tiếng lại sẽ <b>nhận diện và dịch lại từ đầu</b>: các câu bạn đã sửa tay trong bản hiện tại sẽ bị thay thế. Nếu chỉ muốn đổi giọng / phụ đề / logo, hãy dùng <b>Sửa lời → Lưu & xuất lại</b>.")
+        : callout("info", "brain", `Dự án <b>${esc(proj?.name || "—")}</b>: AI đọc ngữ cảnh dự án, tự sửa lỗi nghe nhầm, dịch đúng xưng hô và ghi nhớ nhân vật mới.`)}
     <div class="form-grid">
       <div class="field">
         <label for="mc-voice">Giọng lồng tiếng</label>
@@ -1161,9 +1163,12 @@ async function openDubEditorModal(jobId) {
     beforeClose: () => !editCount() || confirm(`Bạn đã sửa ${editCount()} câu nhưng chưa xuất lại. Đóng và bỏ các chỉnh sửa?`),
   });
 
+  let loadSeq = 0;
   async function load() {
+    const seq = ++loadSeq;
     const params = new URLSearchParams({ id: jobId, offset: st.offset, limit: st.limit, q: st.q, only: st.only });
     const d = await getJSON("/api/dub/segments?" + params);
+    if (seq !== loadSeq) return; // đã có yêu cầu mới hơn (gõ tìm nhanh / lật trang liên tục)
     if (d.error) {
       toast(d.error, "error");
       return close(true);

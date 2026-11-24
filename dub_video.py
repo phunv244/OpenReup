@@ -17,6 +17,7 @@ Hai chế độ:
 
 import argparse
 import asyncio
+import bisect
 import hashlib
 import json
 import math
@@ -512,6 +513,7 @@ class Translator:
         self.failed_segs = 0
         self.fatal: Optional[str] = None
         self.futures: List = []
+        self.memory_lock = threading.Lock()
         self.verbose = prog.duration <= 900
 
     # --- ngữ cảnh gửi kèm mỗi lô: chỉ lấy phần liên quan để prompt không phình theo độ dài video
@@ -652,6 +654,8 @@ class Translator:
                     known.add(zh)
 
     def submit_chunk(self, chunk: Dict) -> None:
+        if self.fatal:  # đừng để Whisper chạy tiếp hàng giờ khi phần dịch đã hỏng hẳn
+            raise RuntimeError(self.fatal)
         segs = chunk["segments"]
         todo = [s for s in segs if s.get("zh") and not s.get("vi")]
         with self.prog.lock:
@@ -694,6 +698,10 @@ class Translator:
         """Ghi nhân vật/thuật ngữ mới vào file Dự án. Đọc lại file trước khi ghi để không đè chỉnh sửa trên web."""
         if not self.project_id:
             return
+        with self.memory_lock:  # 2 luồng dịch xong cùng lúc không được đọc-ghi file dự án chồng nhau
+            self._persist_memory(final)
+
+    def _persist_memory(self, final: bool) -> None:
         with self.lock:
             add_chars, add_gloss = self.new_chars, self.new_gloss
             self.new_chars, self.new_gloss = [], []
@@ -814,6 +822,12 @@ class TTS:
         finally:
             tmp.unlink(missing_ok=True)
 
+    def cached(self, text: str) -> Optional[Path]:
+        """File mp3 đã có của câu, không thử tạo lại (ensure_all đã thử đủ số lần rồi)."""
+        text = (text or "").strip()
+        out = self.path(text) if text else None
+        return out if out and out.exists() else None
+
     def prewarm(self, texts: List[str]) -> None:
         """Tạo giọng đọc ở luồng nền ngay khi 1 khối vừa dịch xong, không chờ hết video."""
         texts = [t for t in texts if t]
@@ -931,7 +945,10 @@ def build_audio_parts(job: "Job", segments: List[Dict], tts: "TTS", duration: fl
             j += 1
         part_segs, i = segments[i:j], j
         key = hashlib.sha1(
-            json.dumps([tts.voice, tts.rate, t0, t1, [[s["start"], s.get("vi", "")] for s in part_segs]]).encode()
+            # có/không có giọng cũng nằm trong khóa: câu từng tạo giọng lỗi sẽ được dựng lại khi đã có giọng
+            json.dumps(
+                [tts.voice, tts.rate, t0, t1, [[s["start"], s.get("vi", ""), bool(tts.cached(s.get("vi", "")))] for s in part_segs]]
+            ).encode()
         ).hexdigest()[:12]
         jobs.append((k, t0, t1, part_segs, adir / f"a{k:05d}_{key}.flac"))
     done = 0
@@ -942,7 +959,7 @@ def build_audio_parts(job: "Job", segments: List[Dict], tts: "TTS", duration: fl
         if not part.exists():
             for stale in adir.glob(f"a{k:05d}_*"):
                 stale.unlink(missing_ok=True)
-            inputs, graph, _ = audio_part_graph(part_segs, [tts.ensure(s.get("vi", "")) for s in part_segs], t0, t1)
+            inputs, graph, _ = audio_part_graph(part_segs, [tts.cached(s.get("vi", "")) for s in part_segs], t0, t1)
             script = adir / f"a{k:05d}.filter.txt"
             script.write_text(graph, encoding="utf-8")
             tmp = part.with_suffix(".tmp.flac")
@@ -1035,10 +1052,13 @@ def render_parts(
     n_parts = max(1, math.ceil((duration - 0.05) / PART_SEC))
     threads = max(2, min(8, (os.cpu_count() or 4) - 2))
     keep, done_before = [], 0
+    starts = [s["start"] for s in segments]
     for k in range(n_parts):
         t0 = k * PART_SEC
         dur = min(PART_SEC, duration - t0)
-        srt_txt = build_srt(segments, offset=t0, window=dur) if burn_sub else ""
+        # chỉ xét các câu quanh phần này (câu dài nhất vài giây) thay vì quét cả 100k câu cho mỗi phần
+        near = segments[bisect.bisect_left(starts, t0 - 60) : bisect.bisect_left(starts, t0 + dur)]
+        srt_txt = build_srt(near, offset=t0, window=dur) if burn_sub else ""
         key = hashlib.sha1(json.dumps([sig, t0, dur, srt_txt, delogo_vf, SUB_STYLE, encode_args]).encode()).hexdigest()[:12]
         part = job.parts_dir / f"p{k:05d}_{key}.mp4"
         keep.append(part)
@@ -1212,6 +1232,9 @@ def main() -> int:
         voice, bg_volume, burn_sub, delogo, tts_rate = args.voice, args.bg_volume, not args.no_sub, args.delogo, args.tts_rate
         story_project_id = args.story_project or ""
         stem = re.sub(r"[^0-9a-zA-Z_-]+", "_", input_mp4.stem)[:32].strip("_") or "video"
+        if stem != input_mp4.stem:
+            # Tên có chữ Trung / quá dài bị rút gọn: thêm mã băm để 2 video khác nhau không đè job của nhau.
+            stem += "_" + hashlib.sha1(input_mp4.name.encode("utf-8")).hexdigest()[:6]
         job_id = f"dub_{stem}_{str(speed).replace('.', 'p')}x"
         segments = []
     if not input_mp4.exists():

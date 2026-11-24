@@ -395,6 +395,36 @@ function preflight(args, formatSel, usePlaylist) {
   }
 }
 
+let cachedAria2 = null;
+function hasAria2() {
+  if (cachedAria2 === null) {
+    try {
+      execFileSync("aria2c", ["--version"], { stdio: "ignore" });
+      cachedAria2 = true;
+    } catch {
+      cachedAria2 = false;
+    }
+  }
+  return cachedAria2;
+}
+
+/**
+ * CDN Bilibili bóp mỗi kết nối còn ~1 MB/s sau vài giây đầu. Đo trên video 5 tiếng (45 giây mỗi cách):
+ *   yt-dlp mặc định 38 MB · --http-chunk-size 10M 181 MB · aria2c 8 kết nối 244 MB · aria2c 16 kết nối 409 MB.
+ * Nên: có aria2c thì tải 16 kết nối; chưa cài (hoặc aria2c lỗi 2 lần liền, vd CDN trả 412) thì chia khúc 10 MB.
+ */
+function downloaderArgs(attempt) {
+  if (hasAria2() && attempt <= 2) {
+    return [
+      "--downloader",
+      "aria2c",
+      "--downloader-args",
+      "aria2c:-x 16 -s 16 -k 1M --file-allocation=none --summary-interval=3 --console-log-level=warn --retry-wait=3 --max-tries=10",
+    ];
+  }
+  return ["--http-chunk-size", "10M"];
+}
+
 function normalizeSection(sec) {
   const s = (sec || "").trim();
   if (!s) return "";
@@ -455,6 +485,10 @@ async function main() {
     "after_move:SAVED_FILE:::%(filepath)s",
   ];
 
+  // Có file cookies.txt (xuất từ trình duyệt đã đăng nhập) thì mới tải được 1080P cao / 4K của Bilibili.
+  const cookiesFile = path.join(__dirname, "cookies.txt");
+  if (fs.existsSync(cookiesFile)) ytdlpArgs.push("--cookies", cookiesFile);
+
   if (args.playlistItems) {
     ytdlpArgs.push("--playlist-items", args.playlistItems.trim());
   }
@@ -468,6 +502,11 @@ async function main() {
   if (args.playlistItems) console.log(`[Playlist] Chỉ tải các phần: ${args.playlistItems}`);
 
   preflight(args, formatSel, usePlaylist);
+  console.log(
+    hasAria2()
+      ? "[Tăng tốc] Dùng aria2c 16 kết nối song song."
+      : "[Tăng tốc] Chưa cài aria2c — tải kiểu chia khúc 10 MB (chậm hơn ~2 lần). Cài thêm: sudo apt install aria2"
+  );
 
   // Tải vài chục GB khó tránh rớt mạng: thử lại cả lệnh, yt-dlp tự nối tiếp file .part đang dở.
   const niceLevel = args.perf === "eco" ? 15 : 5;
@@ -475,7 +514,8 @@ async function main() {
   const saved = new Set();
   for (let attempt = 1; ; attempt++) {
     try {
-      (await runStreamingCmd("yt-dlp", ytdlpArgs, { niceLevel })).savedFiles.forEach((f) => saved.add(f));
+      const cmdArgs = [...downloaderArgs(attempt), ...ytdlpArgs];
+      (await runStreamingCmd("yt-dlp", cmdArgs, { niceLevel })).savedFiles.forEach((f) => saved.add(f));
       break;
     } catch (err) {
       if (attempt >= MAX_TRIES) throw err;

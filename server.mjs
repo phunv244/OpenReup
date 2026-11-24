@@ -71,9 +71,21 @@ function sendJson(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
+/** job_id chỉ gồm chữ/số/_/- : chặn "." và ".." (path.basename không chặn) trước khi dùng để xóa thư mục. */
+function safeJobId(value) {
+  const id = path.basename(String(value || ""));
+  return /^[0-9A-Za-z_-]+$/.test(id) ? id : "";
+}
+
+/** Đang lồng tiếng / xuất lại thì không cho xóa bản lồng tiếng hay cache — tiến trình đang ghi vào đó. */
+function dubBusyError() {
+  return task.proc && task.type.startsWith("dub_") ? "Đang lồng tiếng. Hãy dừng tiến trình trước khi xóa." : "";
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
+    req.setEncoding("utf8"); // không để ký tự tiếng Việt/Trung bị cắt đôi giữa 2 gói TCP
     req.on("data", (chunk) => {
       raw += chunk;
       if (raw.length > 8_000_000) {
@@ -114,11 +126,17 @@ const task = {
 };
 const MAX_LOG_LINES = 500;
 const DL_LINE = /^\[download\]\s+(\d+(?:\.\d+)?)%(?:\s+of\s+~?\s*(\S+))?(?:\s+at\s+(\S+))?(?:\s+ETA\s+(\S+))?/;
+// Dòng tiến độ của aria2c: [#4c3a6a 304MiB/787MiB(38%) CN:16 DL:10MiB ETA:44s]
+const ARIA_LINE = /^\[#\w+ (\S+?)\/(\S+?)\((\d+)%\) CN:\d+(?: DL:(\S+?))?(?: ETA:(\S+?))?\]/;
+const ARIA_NOISE = /^(\s*\*\*\* Download Progress Summary|[=-]{20,}|FILE: )/;
 const LOG_TS = /^\[[^\]]*\] /;
 
+/** "05:12" (yt-dlp) hoặc "1h2m3s" (aria2c) -> giây */
 function etaToSec(s) {
-  if (!s || !/^\d+(:\d+)*$/.test(s)) return null;
-  return s.split(":").reduce((a, x) => a * 60 + Number(x), 0);
+  if (!s) return null;
+  if (/^\d+(:\d+)*$/.test(s)) return s.split(":").reduce((a, x) => a * 60 + Number(x), 0);
+  const parts = [...s.matchAll(/(\d+)([hms])/g)];
+  return parts.length ? parts.reduce((a, [, n, u]) => a + Number(n) * { h: 3600, m: 60, s: 1 }[u], 0) : null;
 }
 
 function appendLog(line) {
@@ -134,7 +152,10 @@ function appendLog(line) {
     return;
   }
 
-  const dl = clean.match(DL_LINE);
+  if (ARIA_NOISE.test(clean)) return;
+  const aria = clean.match(ARIA_LINE);
+  // đưa dòng aria2c về cùng dạng [%, tổng, tốc độ, ETA] với dòng [download] của yt-dlp
+  const dl = aria ? [aria[0], aria[3], aria[2], aria[4] && `${aria[4]}/s`, aria[5]] : clean.match(DL_LINE);
   if (dl) {
     const extra = [dl[2] && `/ ${dl[2]}`, dl[3] && `· ${dl[3]}`].filter(Boolean).join(" ");
     task.progress = { pct: Math.min(99, Number(dl[1])), label: `Đang tải ${dl[1]}% ${extra}`.trim(), eta: etaToSec(dl[4]), stage: 0 };
@@ -142,7 +163,7 @@ function appendLog(line) {
   const entry = `[${new Date().toLocaleTimeString("vi-VN", { hour12: false })}] ${clean}`;
   const last = task.logs.length - 1;
   // yt-dlp in hàng nghìn dòng %: ghi đè dòng % ngay trước để nhật ký không trôi mất thông tin hữu ích.
-  if (dl && last >= 0 && DL_LINE.test(task.logs[last].replace(LOG_TS, ""))) {
+  if (dl && last >= 0 && /^\[(download\]\s+[\d.]+%|#\w+ )/.test(task.logs[last].replace(LOG_TS, ""))) {
     task.logs[last] = entry;
     return;
   }
@@ -742,6 +763,10 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 409, { ok: false, error: "Video này đang được xử lý. Hãy dừng tiến trình trước khi xóa." });
         return;
       }
+      if (body.delete_dubbed && dubBusyError()) {
+        sendJson(res, 409, { ok: false, error: dubBusyError() });
+        return;
+      }
       // Job lồng tiếng đang dở của file này cũng vô dụng khi file nguồn mất.
       const pending = readDubJobs().get(resolved);
       if (pending && pending.status !== "done") fs.rmSync(path.join(DUB_WORK_DIR, pending.job_id), { recursive: true, force: true });
@@ -749,7 +774,7 @@ const server = http.createServer(async (req, res) => {
       if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) fs.unlinkSync(resolved);
       fs.rmSync(resolved.replace(/\.mp4$/i, ".info.json"), { force: true });
       removeFromBiliIndex(path.basename(resolved));
-      if (body.delete_dubbed) removeDubJob(path.basename(String(body.job_id || "")));
+      if (body.delete_dubbed) removeDubJob(safeJobId(body.job_id));
       sendJson(res, 200, { ok: true });
       return;
     }
@@ -792,7 +817,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (GET && pathname === "/api/dub/segments") {
-      const jobId = path.basename(String(urlObj.searchParams.get("id") || ""));
+      const jobId = safeJobId(urlObj.searchParams.get("id"));
       const proj = loadDubProject(jobId);
       if (!proj) {
         sendJson(res, 404, { ok: false, error: "Không tìm thấy dữ liệu phụ đề của bản lồng tiếng này." });
@@ -819,7 +844,7 @@ const server = http.createServer(async (req, res) => {
 
     if (POST && pathname === "/api/dub/rerender") {
       const body = await readBody(req);
-      const jobId = path.basename(String(body.job_id || ""));
+      const jobId = safeJobId(body.job_id);
       const proj = loadDubProject(jobId);
       if (!proj) {
         sendJson(res, 404, { ok: false, error: "Không tìm thấy project để xuất lại." });
@@ -849,7 +874,7 @@ const server = http.createServer(async (req, res) => {
 
     if (POST && pathname === "/api/dub/assign") {
       const body = await readBody(req);
-      const jobId = path.basename(String(body.job_id || ""));
+      const jobId = safeJobId(body.job_id);
       const projectId = String(body.project_id || "").trim();
       updateDubbed((vids) => vids.forEach((v) => v.job_id === jobId && (v.project_id = projectId)));
       const proj = loadDubProject(jobId);
@@ -864,9 +889,9 @@ const server = http.createServer(async (req, res) => {
     if (POST && pathname === "/api/dub/clean") {
       // Xóa cache (giọng đọc + các phần video đã mã hóa) để lấy lại ổ cứng; bản lồng tiếng vẫn giữ nguyên.
       const body = await readBody(req);
-      const jobId = path.basename(String(body.job_id || ""));
-      if (task.proc && task.target === jobId) {
-        sendJson(res, 409, { ok: false, error: "Bản này đang được xuất lại, chưa xóa cache được." });
+      const jobId = safeJobId(body.job_id);
+      if (dubBusyError()) {
+        sendJson(res, 409, { ok: false, error: dubBusyError() });
         return;
       }
       if (jobId) fs.rmSync(path.join(DUB_WORK_DIR, jobId), { recursive: true, force: true });
@@ -877,9 +902,13 @@ const server = http.createServer(async (req, res) => {
 
     if (POST && pathname === "/api/dub/delete") {
       const body = await readBody(req);
-      const jobId = path.basename(String(body.job_id || ""));
+      const jobId = safeJobId(body.job_id);
       if (!jobId) {
         sendJson(res, 400, { ok: false, error: "Thiếu job_id." });
+        return;
+      }
+      if (dubBusyError()) {
+        sendJson(res, 409, { ok: false, error: dubBusyError() });
         return;
       }
       removeDubJob(jobId);

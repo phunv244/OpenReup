@@ -33,3 +33,19 @@ data/media_cache.json
 
 # Cookie đăng nhập Bilibili/YouTube (KHÔNG commit)
 cookies.txt
+
+# SQLite câu thoại + giọng clone tải về
+data/openreup.db*
+data/voices/_tmp/
+data/voices/_preview/
+data/voices/_src/
+data/video_projects.json
+data/voices.json
+data/asr_models/
+data/asr_settings.json
+
+# Giao diện Next.js
+web/node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts

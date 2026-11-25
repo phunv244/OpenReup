@@ -112,6 +112,7 @@ async function main() {
 
     if (fs.existsSync(dest) && fs.statSync(dest).size > 50_000) {
       console.log(`[${i + 1}/${videos.length}] Đã có sẵn: ${filename}`);
+      console.log(`SAVED_FILE:::${dest}`);
       ok++;
       continue;
     }
@@ -120,6 +121,7 @@ async function main() {
       const bytes = await downloadFile(v.download_url, dest);
       const mb = (bytes / (1024 * 1024)).toFixed(2);
       console.log(`[${i + 1}/${videos.length}] OK (${mb} MB): ${filename}`);
+      console.log(`SAVED_FILE:::${dest}`); // server.mjs dựa vào dòng này để gán video vào dự án
       ok++;
     } catch (err) {
       console.error(`[${i + 1}/${videos.length}] Lỗi tải ${v.aweme_id}: ${err.message}`);

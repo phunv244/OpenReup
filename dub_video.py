@@ -11,12 +11,11 @@ Thiết kế cho video siêu dài:
     và cache theo nội dung phụ đề -> "Sửa lời & Xuất lại" chỉ làm lại đúng phần bị sửa.
 
 Hai chế độ:
-  - Chạy mới / tiếp tục:  dub_video.py --input <mp4> --speed 0.5 --voice vi-VN-NamMinhNeural
+  - Chạy mới / tiếp tục:  dub_video.py --input <mp4> --speed 0.5 --voice "vieneu:Thiện Minh"
   - Xuất lại sau khi sửa: dub_video.py --project <job_id>   (bỏ qua nhận diện & dịch)
 """
 
 import argparse
-import asyncio
 import bisect
 import hashlib
 import json
@@ -38,6 +37,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DUB_OUT_DIR = BASE_DIR / "downloads" / "dubbed"
 PROJECTS_DIR = BASE_DIR / "data" / "dub_projects"
 STORY_PROJECTS_DIR = BASE_DIR / "data" / "projects"
+DB_PATH = BASE_DIR / "data" / "openreup.db"  # câu thoại của mọi bản lồng tiếng (server.mjs đọc/sửa cùng file này)
 DUBBED_INDEX_JSON = BASE_DIR / "data" / "dubbed.json"
 WORK_ROOT = BASE_DIR / "data" / "dub_work"
 AGY_BIN = shutil.which("agy") or "/home/phu/.local/bin/agy"
@@ -118,6 +118,55 @@ def read_json(path: Path, default):
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return default
+
+
+def open_db():
+    """SQLite cho câu thoại: video 90 tiếng (>100k câu) sửa 1 câu không phải ghi lại cả file JSON.
+    Lược đồ phải khớp với server.mjs (openDb)."""
+    import sqlite3
+
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(DB_PATH, timeout=30)
+    db.execute("PRAGMA journal_mode=WAL")  # server đọc được trong lúc tiến trình này ghi
+    db.execute(
+        """CREATE TABLE IF NOT EXISTS segments (
+             job_id TEXT NOT NULL, id INTEGER NOT NULL, start_s REAL NOT NULL, end_s REAL NOT NULL,
+             zh TEXT NOT NULL DEFAULT '', vi TEXT NOT NULL DEFAULT '', speaker TEXT NOT NULL DEFAULT '',
+             PRIMARY KEY (job_id, id)) WITHOUT ROWID"""
+    )
+    return db
+
+
+def save_segments(job_id: str, segments: List[Dict]) -> None:
+    """Thay toàn bộ câu thoại của 1 job trong 1 giao dịch (lỗi giữa chừng thì bản cũ còn nguyên)."""
+    db = open_db()
+    try:
+        with db:
+            db.execute("DELETE FROM segments WHERE job_id = ?", (job_id,))
+            db.executemany(
+                "INSERT INTO segments VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [(job_id, s.get("id") or i, s["start"], s["end"], s.get("zh", ""), s.get("vi", ""), s.get("speaker", ""))
+                 for i, s in enumerate(segments, start=1)],
+            )
+    finally:
+        db.close()
+
+
+def load_segments(job_id: str) -> List[Dict]:
+    db = open_db()
+    try:
+        rows = db.execute(
+            "SELECT id, start_s, end_s, zh, vi, speaker FROM segments WHERE job_id = ? ORDER BY start_s, id", (job_id,)
+        ).fetchall()
+    finally:
+        db.close()
+    out = []
+    for i, a, b, zh, vi, spk in rows:
+        seg = {"id": i, "start": a, "end": b, "zh": zh, "vi": vi}
+        if spk:
+            seg["speaker"] = spk
+        out.append(seg)
+    return out
 
 
 def write_json_atomic(path: Path, data, indent: Optional[int] = None) -> None:
@@ -433,15 +482,30 @@ def run_stt(
     if chunks:
         log(f"[Nhận diện] Tiếp tục từ {fmt_clock(t)} (đã xong {len(chunks)} khối).")
 
-    from faster_whisper import WhisperModel
+    import asr
+
+    spec = asr.get(model_size)
+    if not asr.installed(spec):
+        raise RuntimeError(f"Chưa tải mô hình nhận diện '{spec['name']}'. Mở mục 'Mô hình nhận diện' để tải về.")
+    sherpa = spec["engine"] == "sherpa"
+    if sherpa:
+        speed = 1.0  # SenseVoice/Paraformer/FireRed nghe được thoại nhanh, không cần làm chậm
 
     names = [c["zh"] for c in story_ctx.get("characters", []) if c.get("zh")]
     names += [g["zh"] for g in story_ctx.get("glossary", [])[:8] if g.get("zh")]
     prompt = ("普通话对白：" + "，".join(names[:40])) if names else "钓鱼动画楚新钓普通话对白"
 
-    log(f"[Nhận diện] Nạp Whisper '{model_size}' — tách âm chậm {speed}x, quy đổi mốc giờ về tốc độ gốc 1.0x.")
-    threads = max(2, min(8, (os.cpu_count() or 4) - 2))
-    model = WhisperModel(model_size, device="cpu", compute_type="int8", cpu_threads=threads)
+    if sherpa:
+        log(f"[Nhận diện] Nạp {spec['name']} (sherpa-onnx, CPU) — lọc giọng nói bằng {asr.VAD_BY_ID[asr.vad_choice()]['name']}.")
+        model = None
+    else:
+        from faster_whisper import WhisperModel
+
+        gpu = asr.cuda_devices() > 0
+        log(f"[Nhận diện] Nạp {spec['name']} trên {'GPU' if gpu else 'CPU'} — tách âm chậm {speed}x, quy đổi mốc giờ về tốc độ gốc 1.0x.")
+        threads = max(2, min(8, (os.cpu_count() or 4) - 2))
+        model = WhisperModel(spec["repo"], device="cuda" if gpu else "cpu",
+                             compute_type="int8_float16" if gpu else "int8", cpu_threads=threads)
     verbose = duration <= 900
     total_segs = sum(len(c["segments"]) for c in chunks)
 
@@ -450,7 +514,13 @@ def run_stt(
         is_last = win_end >= duration - 0.01
         audio = decode_audio_window(input_mp4, t, win_end - t, speed)
         words: List[Dict] = []
-        if len(audio) > 1600:
+        if sherpa and len(audio) > 1600:
+            def on_progress(tt: float) -> None:
+                prog.stt = min(1.0, min(tt, t + chunk_sec) / prog.duration)
+                prog.emit()
+
+            words = asr.sherpa_words(model_size, audio, t, on_progress)
+        elif len(audio) > 1600:
             seg_iter, _ = model.transcribe(
                 audio,
                 language="zh",
@@ -472,7 +542,8 @@ def run_stt(
         del audio
 
         cut = duration if is_last else pick_cut(words, t + chunk_sec, win_end)
-        segs = words_to_segments([w for w in words if w["s"] < cut])
+        # Bỏ "câu" chỉ có dấu câu (SenseVoice đôi khi tách riêng dấu "。")
+        segs = [x for x in words_to_segments([w for w in words if w["s"] < cut]) if re.search(r"\w", x["zh"])]
         chunk = {"idx": len(chunks), "t0": round(t, 3), "t1": round(cut, 3), "segments": segs, "translated": not segs}
         job.save_chunk(chunk)
         chunks.append(chunk)
@@ -501,7 +572,7 @@ class Translator:
         self.ctx = story_ctx or {}
         self.project_id = project_id
         self.prog = prog
-        self.on_chunk_done = on_chunk_done
+        self.on_chunk_done = on_chunk_done or (lambda chunk: None)
         self.pool = ThreadPoolExecutor(max_workers=max(1, workers), thread_name_prefix="translate")
         self.lock = threading.Lock()
         self.chars: List[Dict] = list(self.ctx.get("characters") or [])
@@ -729,125 +800,293 @@ class Translator:
 
 
 # ----------------------------------------------------------------------------
-# Bước 4: Giọng đọc tiếng Việt (edge-tts, dự phòng Google) — cache theo nội dung câu
+# Bước 4: Giọng đọc tiếng Việt (VieNeu-TTS chạy trên máy) — cache theo nội dung câu
 # ----------------------------------------------------------------------------
-def google_tts_fallback(text: str, mp3_path: Path, is_male: bool) -> bool:
-    import requests
+VOICES_DIR = BASE_DIR / "data" / "voices"
 
-    chunks = [text[i : i + 180] for i in range(0, len(text), 180)] or [text]
-    raw_mp3 = mp3_path.with_suffix(".gtts_raw.mp3")
-    with raw_mp3.open("wb") as f:
-        for ch in chunks:
-            r = requests.get(
-                "https://translate.googleapis.com/translate_tts",
-                params={"ie": "UTF-8", "tl": "vi", "client": "tw-ob", "q": ch},
-                headers={"User-Agent": "Mozilla/5.0"},
-                timeout=12,
-            )
-            if r.status_code == 200 and len(r.content) > 200:
-                f.write(r.content)
-    try:
-        if raw_mp3.stat().st_size < 200:
+
+class VieNeuEngine:
+    """VieNeu-TTS v3 Turbo chạy offline trên CPU (ONNX). Giọng:
+    - "vieneu:<tên preset>"   vd vieneu:Hải Đăng
+    - "vieneu-clone:<slug>"   clone từ data/voices/<slug>.wav (clip 3–8 giây, 1 người nói)
+    Mô hình chiếm hết nhân CPU nên chỉ chạy 1 câu tại 1 thời điểm (khóa bên dưới)."""
+
+    _model = None
+    _load_lock = threading.Lock()
+    _infer_lock = threading.Lock()  # 1 mô hình dùng chung cho mọi giọng, chạy lần lượt từng câu
+
+    def __init__(self, voice: str):
+        try:
+            import vieneu  # noqa: F401 — báo lỗi ngay từ đầu thay vì lỗi lặp lại ở từng câu
+        except ImportError:
+            raise RuntimeError("Chưa cài VieNeu-TTS: chạy  uv pip install --python .venv/bin/python vieneu")
+        kind, _, name = voice.partition(":")
+        self.ref_audio: Optional[str] = None
+        self.preset: Optional[str] = None
+        if kind == "vieneu-clone":
+            if not re.fullmatch(r"[a-z0-9_-]+", name):
+                raise ValueError(f"Tên giọng clone không hợp lệ: {name!r}")
+            ref = VOICES_DIR / f"{name}.wav"
+            if not ref.exists():
+                raise FileNotFoundError(f"Không thấy file giọng mẫu {ref}")
+            self.ref_audio = str(ref)
+        elif kind == "vieneu" and name:
+            self.preset = name
+        else:
+            raise ValueError(f"Giọng không hợp lệ: {voice!r} (chỉ dùng vieneu:<preset> hoặc vieneu-clone:<slug>)")
+
+    @classmethod
+    def model(cls):
+        with cls._load_lock:
+            if cls._model is None:
+                from vieneu import Vieneu
+
+                log("[Giọng đọc] Đang nạp mô hình VieNeu-TTS (lần đầu ~10–20 giây)...")
+                cls._model = Vieneu()
+        return cls._model
+
+    def synth_mp3(self, text: str, out: Path) -> bool:
+        tts = self.model()
+        with self._infer_lock:
+            # Giọng clone: lần đầu lọc nhiễu + trích đặc trưng giọng, sau đó VieNeu tự nhớ (cache theo nội dung file).
+            wav = tts.infer(text, ref_audio=self.ref_audio) if self.ref_audio else tts.infer(text, voice=self.preset)
+        if wav is None or len(wav) < tts.sample_rate * 0.1:
             return False
-        # Giọng nam: hạ tông cho trầm kiểu kể chuyện; giọng nữ: chỉ tăng nhẹ tốc độ.
-        af = "asetrate=24000*0.86,aresample=24000,atempo=1.22" if is_male else "atempo=1.10"
-        run_cmd(["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw_mp3), "-af", af, "-f", "mp3", str(mp3_path)])
-    finally:
-        raw_mp3.unlink(missing_ok=True)
-    return mp3_path.exists() and mp3_path.stat().st_size > 200
+        # mp3 CBR không thẻ ID3: mp3_duration() đọc được thời lượng ngay từ header, không cần ffprobe.
+        subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", "-f", "f32le", "-ar", str(tts.sample_rate), "-ac", "1", "-i", "-",
+             "-ar", str(SAMPLE_RATE), "-b:a", "64k", "-write_xing", "0", "-id3v2_version", "0", "-f", "mp3", str(out)],
+            input=wav.astype("float32").tobytes(), check=True,
+        )
+        return out.exists() and out.stat().st_size > 200
+
+
+# Giọng VieNeu tự gán cho các nhân vật phụ (nhân vật nói nhiều nhất dùng giọng người dùng chọn).
+AUTO_VOICES = {
+    "male": ["vieneu:Thiện Minh", "vieneu:Hải Đăng", "vieneu:Quang Sơn", "vieneu:Thái Sơn",
+             "vieneu:Thiền Tâm Đức", "vieneu:Đức Trí", "vieneu:Minh Đức", "vieneu:Phạm Tuyên"],
+    "female": ["vieneu:Ngọc Huyền", "vieneu:Trúc Ly", "vieneu:Quỳnh Anh", "vieneu:Ngọc Trân",
+               "vieneu:Mai Anh", "vieneu:Mỹ Duyên", "vieneu:Thùy Dung", "vieneu:Đoan Trang"],
+}
+DIAR_WINDOW_SEC = 600.0     # đọc audio gốc từng cửa sổ 10 phút: video 90 tiếng cũng không tràn RAM
+DIAR_MAX_FIT = 3000         # gom nhóm trên tối đa 3000 câu dài nhất, các câu còn lại gán theo tâm nhóm
+DIAR_DISTANCE = 0.62        # khoảng cách cosine tối đa trong 1 nhóm (đo trên video thử: 0.6–0.7 tách đúng 2 người)
+DIAR_MAX_SPEAKERS = 8
+
+
+def cluster_speakers(emb, durs):
+    """Gom câu thành nhân vật theo đặc trưng giọng (vector đã chuẩn hóa). Trả mảng nhãn 0..k-1,
+    nhãn 0 là người nói nhiều nhất. Câu < 1 giây (đặc trưng kém) chỉ được gán theo nhóm gần nhất."""
+    import numpy as np
+    from sklearn.cluster import AgglomerativeClustering
+
+    n = len(emb)
+    if n == 0:
+        return np.zeros(0, dtype=int)
+    order = np.argsort(-durs)
+    fit = [i for i in order[:DIAR_MAX_FIT] if durs[i] >= 1.0] or list(order[:DIAR_MAX_FIT])
+    if len(fit) < 2:
+        return np.zeros(n, dtype=int)
+    lab = AgglomerativeClustering(
+        n_clusters=None, metric="cosine", linkage="average", distance_threshold=DIAR_DISTANCE
+    ).fit_predict(emb[fit])
+    groups = [np.array(fit)[lab == k] for k in range(lab.max() + 1)]
+    # Bỏ nhóm vụn (< 4% thời lượng lời và < 3 câu: thường là tiếng hét/cười/nhạc), giữ tối đa N nhân vật.
+    total = durs[fit].sum()
+    groups.sort(key=lambda g: -durs[g].sum())
+    keep = [g for g in groups if durs[g].sum() >= total * 0.04 or len(g) >= 3][:DIAR_MAX_SPEAKERS] or groups[:1]
+    cents = np.stack([emb[g].mean(axis=0) for g in keep])
+    cents /= np.linalg.norm(cents, axis=1, keepdims=True) + 1e-9
+    return np.argmax(emb @ cents.T, axis=1)
+
+
+def diarize(input_mp4: Path, segments: List[Dict], prog: "Progress") -> int:
+    """Ghi s["speaker"] = "NV1".."NVk" cho từng câu và s["_f0"] (cao độ trung vị, Hz). Trả số nhân vật."""
+    import numpy as np
+
+    enc = VieNeuEngine.model().engine._ensure_speaker_encoder()
+    sr = 16000
+    emb = np.zeros((len(segments), 0), dtype=np.float32)
+    rows, f0s = [], []
+    i = 0
+    t = 0.0
+    end_all = segments[-1]["end"] if segments else 0
+    while i < len(segments):
+        w0 = segments[i]["start"]
+        j = i
+        while j < len(segments) and segments[j]["end"] - w0 <= DIAR_WINDOW_SEC:
+            j += 1
+        j = max(j, i + 1)
+        w1 = segments[j - 1]["end"]
+        raw = run_cmd(["ffmpeg", "-v", "error", "-ss", f"{w0:.3f}", "-to", f"{w1 + 0.05:.3f}", "-i", str(input_mp4),
+                       "-vn", "-ac", "1", "-ar", str(sr), "-f", "f32le", "-"])
+        y = np.frombuffer(raw, dtype=np.float32)
+        for s in segments[i:j]:
+            clip = y[int((s["start"] - w0) * sr): int((s["end"] - w0) * sr)]
+            if len(clip) < sr * 0.8:  # câu rất ngắn: lặp lại cho đủ độ dài tối thiểu của bộ trích giọng
+                clip = np.tile(clip, int(np.ceil(sr * 0.8 / max(1, len(clip)))))[: int(sr * 0.8)] if len(clip) else np.zeros(int(sr * 0.8), np.float32)
+            e = np.asarray(enc.embed(clip.astype(np.float32), sr), dtype=np.float32).reshape(-1)
+            rows.append(e / (np.linalg.norm(e) + 1e-9))
+            f0s.append(_median_f0(clip, sr))
+        i = j
+        t = w1
+        prog.note = f"Phân biệt nhân vật {fmt_clock(t)} / {fmt_clock(end_all)}"
+        prog.emit()
+    emb = np.stack(rows)
+    durs = np.array([s["end"] - s["start"] for s in segments])
+    labels = cluster_speakers(emb, durs)
+    for s, lab, f0 in zip(segments, labels, f0s):
+        s["speaker"] = f"NV{lab + 1}"
+        s["_f0"] = f0
+    prog.note = ""
+    return int(labels.max()) + 1 if len(labels) else 0
+
+
+def _median_f0(clip, sr: int) -> float:
+    import numpy as np
+    import librosa
+
+    if len(clip) < sr * 0.2:
+        return 0.0
+    f0 = librosa.yin(clip, fmin=70, fmax=450, sr=sr, frame_length=1024)
+    f0 = f0[(f0 > 72) & (f0 < 445)]  # yin trả biên khi khung không có giọng
+    return float(np.median(f0)) if len(f0) else 0.0
+
+
+# Ranh giới nam/nữ theo cao độ trung vị. Giọng nam lồng hoạt hình hay lên 170–180 Hz (đo trên video thử), nữ thường > 200.
+FEMALE_F0 = 185
+
+
+def voice_gender(voice: str) -> str:
+    """"male" / "female" / "" (không rõ) của 1 giọng: giọng clone đọc từ data/voices.json, preset theo danh sách."""
+    if voice.startswith("vieneu-clone:"):
+        slug = voice.split(":", 1)[1]
+        return next((v.get("gender", "") for v in read_json(VOICES_DIR.parent / "voices.json", []) if v.get("slug") == slug), "")
+    if voice in AUTO_VOICES["male"]:
+        return "male"
+    if voice in AUTO_VOICES["female"]:
+        return "female"
+    return ""
+
+
+def auto_voice_map(segments: List[Dict], main_voice: str, project_voices: Optional[List[str]] = None) -> Dict[str, Dict]:
+    """{"NV1": {"voice", "gender", "f0", "lines"}, ...}: NV1 (nói nhiều nhất) giữ giọng đã chọn. Nhân vật khác
+    nhận giọng chưa dùng, cùng giới tính đoán từ cao độ (> FEMALE_F0 Hz: nữ/trẻ em): ưu tiên giọng của dự án
+    (để đồng bộ với kênh), hết mới lấy giọng VieNeu có sẵn."""
+    import numpy as np
+
+    mine = [v for v in project_voices or [] if v != main_voice]
+
+    stats: Dict[str, Dict] = {}
+    for s in segments:
+        st = stats.setdefault(s.get("speaker", "NV1"), {"f0": [], "lines": 0, "dur": 0.0})
+        st["lines"] += 1
+        st["dur"] += s["end"] - s["start"]
+        if s.get("_f0"):
+            st["f0"].append(s["_f0"])
+    used = {main_voice}
+    out: Dict[str, Dict] = {}
+    for spk in sorted(stats, key=lambda k: -stats[k]["dur"]):
+        st = stats[spk]
+        f0 = round(float(np.median(st["f0"]))) if st["f0"] else 0
+        gender = "female" if f0 > FEMALE_F0 else "male"
+        if not out:
+            voice = main_voice
+        else:
+            other = "male" if gender == "female" else "female"
+            pool = (
+                [v for v in mine if v not in used and voice_gender(v) in (gender, "")]
+                or [v for v in AUTO_VOICES[gender] if v not in used]
+                or [v for v in mine + AUTO_VOICES[other] if v not in used]
+                or [main_voice]
+            )
+            voice = pool[0]
+        used.add(voice)
+        out[spk] = {"voice": voice, "gender": gender, "f0": f0, "lines": st["lines"]}
+    return out
 
 
 class TTS:
-    def __init__(self, cache_dir: Path, voice: str, rate: str, workers: int, prog: Progress):
+    def __init__(self, cache_dir: Path, voice: str, workers: int, prog: Progress):
         self.cache_dir = cache_dir
         self.voice = voice
-        self.rate = rate
         self.prog = prog
-        self.is_male = "NamMinh" in (voice or "")
+        self.voice_map: Dict[str, str] = {}  # nhân vật -> giọng; trống = mọi câu dùng `voice`
+        self.engines: Dict[str, VieNeuEngine] = {}
         self.pool = ThreadPoolExecutor(max_workers=max(1, workers), thread_name_prefix="tts")
         self.lock = threading.Lock()
-        self.edge_fail_streak = 0
-        self.edge_blocked_until = 0.0
+        self.engine(voice)  # báo lỗi cài đặt / tên giọng ngay từ đầu
         self.failed = 0
-        self.fallbacks = 0
         self.prewarmed: List = []
 
-    def path(self, text: str) -> Path:
-        h = hashlib.sha1(f"{self.voice}|{self.rate}|{text}".encode("utf-8")).hexdigest()
+    def engine(self, voice: str) -> "VieNeuEngine":
+        with self.lock:
+            if voice not in self.engines:
+                self.engines[voice] = VieNeuEngine(voice)
+            return self.engines[voice]
+
+    def voice_for(self, seg: Dict) -> str:
+        return self.voice_map.get(seg.get("speaker", ""), self.voice)
+
+    def item(self, seg: Dict):
+        """(lời Việt, giọng) của 1 câu — đơn vị mà cache giọng đọc làm khóa."""
+        return seg.get("vi", ""), self.voice_for(seg)
+
+    def path(self, text: str, voice: Optional[str] = None) -> Path:
+        h = hashlib.sha1(f"{voice or self.voice}|{text}".encode("utf-8")).hexdigest()
         return self.cache_dir / h[:2] / f"{h}.mp3"
 
-    def ensure(self, text: str) -> Optional[Path]:
+    def ensure(self, text: str, voice: Optional[str] = None) -> Optional[Path]:
         """Trả về file mp3 của câu (tạo nếu chưa có). Gọi lại nhiều lần / từ nhiều luồng đều an toàn."""
         text = (text or "").strip()
+        voice = voice or self.voice
         if not text or not re.search(r"\w", text):
             return None
-        out = self.path(text)
+        out = self.path(text, voice)
         if out.exists() and out.stat().st_size > 200:
             return out
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp = out.with_name(f"{out.stem}.{threading.get_ident()}.tmp.mp3")
         try:
-            if time.time() >= self.edge_blocked_until:
-                import edge_tts
-
-                # Edge-TTS hay trả "No audio received" ngẫu nhiên từng lần (đo thực tế có lúc ~50%):
-                # thử lại đủ nhiều để gần như mọi câu giữ đúng 1 giọng, thay vì lẫn giọng Google dự phòng.
-                for attempt in range(6):
-                    try:
-                        asyncio.run(edge_tts.Communicate(text=text, voice=self.voice, rate=self.rate).save(str(tmp)))
-                        if tmp.exists() and tmp.stat().st_size > 200:
-                            os.replace(tmp, out)
-                            self.edge_fail_streak = 0
-                            return out
-                    except Exception:
-                        time.sleep(0.5 * (attempt + 1))
-                with self.lock:
-                    self.edge_fail_streak += 1
-                    if self.edge_fail_streak >= 8:
-                        # Edge đang sập/chặn: nghỉ 2 phút rồi thử lại, thay vì bỏ hẳn như trước.
-                        self.edge_blocked_until = time.time() + 120
-                        self.edge_fail_streak = 0
-                        log("[Giọng đọc] Edge-TTS lỗi liên tục, tạm dùng giọng Google trong 2 phút.")
-            try:
-                if google_tts_fallback(text, tmp, self.is_male):
-                    os.replace(tmp, out)
-                    with self.lock:
-                        self.fallbacks += 1
-                    return out
-            except Exception:
-                pass
+            for attempt in range(3):
+                try:
+                    if self.engine(voice).synth_mp3(text, tmp):
+                        os.replace(tmp, out)
+                        return out
+                except Exception as e:
+                    log(f"[Giọng đọc] VieNeu lỗi câu \"{text[:40]}\" (lần {attempt + 1}): {e}")
             with self.lock:
                 self.failed += 1
             return None
         finally:
             tmp.unlink(missing_ok=True)
 
-    def cached(self, text: str) -> Optional[Path]:
+    def cached(self, text: str, voice: Optional[str] = None) -> Optional[Path]:
         """File mp3 đã có của câu, không thử tạo lại (ensure_all đã thử đủ số lần rồi)."""
         text = (text or "").strip()
-        out = self.path(text) if text else None
+        out = self.path(text, voice) if text else None
         return out if out and out.exists() else None
 
-    def prewarm(self, texts: List[str]) -> None:
-        """Tạo giọng đọc ở luồng nền ngay khi 1 khối vừa dịch xong, không chờ hết video."""
-        texts = [t for t in texts if t]
+    def prewarm(self, items) -> None:
+        """Tạo giọng đọc ở luồng nền ngay khi 1 khối vừa dịch xong, không chờ hết video. items: [(lời, giọng)]."""
+        items = [it for it in items if it[0]]
         with self.prog.lock:
-            self.prog.tts_total += len(texts)
-        self.prewarmed += [self.pool.submit(self._ensure_counted, t) for t in texts]
+            self.prog.tts_total += len(items)
+        self.prewarmed += [self.pool.submit(self._ensure_counted, it) for it in items]
 
-    def _ensure_counted(self, text: str) -> Optional[Path]:
+    def _ensure_counted(self, item) -> Optional[Path]:
         try:
-            return self.ensure(text)
+            return self.ensure(*item)
         finally:
             self.prog.bump("tts_done")
 
-    def ensure_all(self, texts: List[str]) -> List[Optional[Path]]:
+    def ensure_all(self, items) -> List[Optional[Path]]:
         for f in self.prewarmed:  # chờ lượt chạy nền xong để không tạo trùng 1 câu 2 lần
             f.result()
         self.prewarmed = []
         with self.prog.lock:
-            self.prog.tts_total, self.prog.tts_done = len(texts), 0
-        return list(self.pool.map(self._ensure_counted, texts))
+            self.prog.tts_total, self.prog.tts_done = len(items), 0
+        return list(self.pool.map(self._ensure_counted, items))
 
 
 MP3_BITRATES = {
@@ -857,8 +1096,8 @@ MP3_BITRATES = {
 
 
 def mp3_duration(path: Path) -> float:
-    """Thời lượng 1 câu TTS. File edge-tts là luồng mp3 CBR thô nên tính được ngay từ header (không tốn 1 lần
-    chạy ffprobe cho mỗi câu trong 100k câu); file có thẻ ID3/khung Info (giọng Google dự phòng) thì hỏi ffprobe."""
+    """Thời lượng 1 câu TTS. File VieNeu là luồng mp3 CBR thô nên tính được ngay từ header (không tốn 1 lần
+    chạy ffprobe cho mỗi câu trong 100k câu); file mp3 khác (có thẻ ID3/khung Info) thì hỏi ffprobe."""
     try:
         with path.open("rb") as f:
             head = f.read(4)
@@ -947,7 +1186,7 @@ def build_audio_parts(job: "Job", segments: List[Dict], tts: "TTS", duration: fl
         key = hashlib.sha1(
             # có/không có giọng cũng nằm trong khóa: câu từng tạo giọng lỗi sẽ được dựng lại khi đã có giọng
             json.dumps(
-                [tts.voice, tts.rate, t0, t1, [[s["start"], s.get("vi", ""), bool(tts.cached(s.get("vi", "")))] for s in part_segs]]
+                [t0, t1, [[s["start"], *tts.item(s), bool(tts.cached(*tts.item(s)))] for s in part_segs]]
             ).encode()
         ).hexdigest()[:12]
         jobs.append((k, t0, t1, part_segs, adir / f"a{k:05d}_{key}.flac"))
@@ -959,7 +1198,7 @@ def build_audio_parts(job: "Job", segments: List[Dict], tts: "TTS", duration: fl
         if not part.exists():
             for stale in adir.glob(f"a{k:05d}_*"):
                 stale.unlink(missing_ok=True)
-            inputs, graph, _ = audio_part_graph(part_segs, [tts.cached(s.get("vi", "")) for s in part_segs], t0, t1)
+            inputs, graph, _ = audio_part_graph(part_segs, [tts.cached(*tts.item(s)) for s in part_segs], t0, t1)
             script = adir / f"a{k:05d}.filter.txt"
             script.write_text(graph, encoding="utf-8")
             tmp = part.with_suffix(".tmp.flac")
@@ -1191,16 +1430,18 @@ def main() -> int:
     parser.add_argument("--project", help="Job ID có sẵn để render lại sau khi sửa bản dịch")
     parser.add_argument("--story-project", default="", help="ID Dự án truyện/phim (data/projects/<id>.json)")
     parser.add_argument("--speed", type=float, default=0.5, help="Tốc độ làm chậm khi tách âm (mặc định 0.5)")
-    parser.add_argument("--voice", default="vi-VN-NamMinhNeural", help="Giọng đọc edge-tts")
-    parser.add_argument("--tts-rate", default="+5%", help="Tốc độ đọc TTS mặc định (vd: +0%%, +10%%)")
-    parser.add_argument("--model", default="small", help="Whisper model: tiny | base | small")
+    parser.add_argument("--voice", default="vieneu:Thiện Minh", help="Giọng VieNeu: vieneu:<preset> hoặc vieneu-clone:<slug>")
+    parser.add_argument("--model", default="sensevoice-small", help="Mô hình nhận diện (xem: asr.py list)")
     parser.add_argument("--bg-volume", type=float, default=0.06, help="Âm lượng âm thanh gốc giữ lại (0.0 = tắt hẳn)")
     parser.add_argument("--no-sub", action="store_true", help="Không in cứng phụ đề tiếng Việt lên video")
     parser.add_argument("--delogo", default="none", help="Xóa logo ngay khi xuất: none | top-right | top-left | both-top | x,y,w,h")
+    parser.add_argument("--multi-voice", action="store_true",
+                        help="Tự phân biệt nhân vật theo giọng nói gốc, mỗi nhân vật một giọng VieNeu")
     parser.add_argument("--fresh", action="store_true", help="Bỏ kết quả dở dang, nhận diện & dịch lại từ đầu")
     parser.add_argument("--chunk-min", type=float, default=10.0, help="Độ dài mỗi khối nhận diện (phút)")
     parser.add_argument("--translate-workers", type=int, default=3, help="Số lô dịch chạy song song")
-    parser.add_argument("--tts-workers", type=int, default=12, help="Số câu tạo giọng đọc song song")
+    # VieNeu chạy lần lượt từng câu (1 mô hình dùng hết CPU); luồng thứ 2 chỉ để nối phần mã hóa mp3 của câu trước.
+    parser.add_argument("--tts-workers", type=int, default=2, help="Số luồng tạo giọng đọc")
     args = parser.parse_args()
 
     os.nice(8)  # chạy nền nhiều giờ: nhường CPU cho máy; ffmpeg/agy con được thừa hưởng
@@ -1220,17 +1461,21 @@ def main() -> int:
         bg_volume = float(proj.get("bg_volume", 0.06))
         burn_sub = bool(proj.get("burn_sub", True))
         delogo = proj.get("delogo") or "none"
-        tts_rate = proj.get("tts_rate") or args.tts_rate
         story_project_id = proj.get("project_id", "")
-        segments = sorted(proj.get("segments", []), key=lambda s: s["start"])
+        multi_voice = bool(proj.get("multi_voice"))
+        speakers = proj.get("speakers") or {}
+        # File project đời cũ còn chứa "segments" (server chuyển sang SQLite lúc khởi động; đây là đường dự phòng khi chạy tay).
+        segments = load_segments(job_id) or sorted(proj.get("segments", []), key=lambda s: s["start"])
         log(f"[Xuất lại] Đọc {len(segments)} câu đã chỉnh sửa từ project {job_id}...")
     else:
         if not args.input:
             raise RuntimeError("Cần truyền --input <mp4> hoặc --project <job_id>")
         input_mp4 = Path(args.input).resolve()
         speed = max(0.25, min(1.5, args.speed))
-        voice, bg_volume, burn_sub, delogo, tts_rate = args.voice, args.bg_volume, not args.no_sub, args.delogo, args.tts_rate
+        voice, bg_volume, burn_sub, delogo = args.voice, args.bg_volume, not args.no_sub, args.delogo
         story_project_id = args.story_project or ""
+        multi_voice = args.multi_voice
+        speakers = {}
         stem = re.sub(r"[^0-9a-zA-Z_-]+", "_", input_mp4.stem)[:32].strip("_") or "video"
         if stem != input_mp4.stem:
             # Tên có chữ Trung / quá dài bị rút gọn: thêm mã băm để 2 video khác nhau không đè job của nhau.
@@ -1266,7 +1511,8 @@ def main() -> int:
             status="running", error="", input_path=str(input_mp4), title=input_mp4.name, duration=round(duration, 1),
             stt_params=stt_params,
             params={"speed": speed, "voice": voice, "model": args.model, "bg_volume": bg_volume, "burn_sub": burn_sub,
-                    "delogo": delogo, "project_id": story_project_id, "tts_rate": tts_rate},
+                    "delogo": delogo, "project_id": story_project_id,
+                    "multi_voice": multi_voice},
         )
     else:
         # Xuất lại không đổi `status`: nếu lỗi/dừng, job vẫn là "done" và lời đã sửa trong project không bị
@@ -1283,7 +1529,8 @@ def main() -> int:
     log(f"[Video] {input_mp4.name} | {fmt_clock(duration)} | {media['w']}x{media['h']} | {in_gb:.2f} GB")
 
     prog = Progress(job, duration, encode)
-    tts = TTS(job.tts_dir, voice, tts_rate, args.tts_workers, prog)
+    tts = TTS(job.tts_dir, voice, args.tts_workers, prog)
+    tts.voice_map = {k: v["voice"] for k, v in speakers.items()}
     out_mp4 = DUB_OUT_DIR / f"{job_id}.mp4"
     out_srt = DUB_OUT_DIR / f"{job_id}.srt"
     proj_path = PROJECTS_DIR / f"{job_id}.json"
@@ -1292,7 +1539,8 @@ def main() -> int:
     if not rerender:
         translator = Translator(
             job, story_ctx, story_project_id, args.translate_workers, prog,
-            on_chunk_done=lambda c: tts.prewarm([s.get("vi", "") for s in c["segments"]]),
+            # Nhiều giọng: chưa biết câu nào của ai cho tới khi nghe hết video, nên không tạo giọng trước.
+            on_chunk_done=None if multi_voice else lambda c: tts.prewarm([tts.item(s) for s in c["segments"]]),
         )
         chunks = run_stt(
             job, input_mp4, duration, speed, args.model, story_ctx, max(60.0, args.chunk_min * 60), prog,
@@ -1318,6 +1566,21 @@ def main() -> int:
                 "Kết quả đã lưu — bấm Tiếp tục để dịch nốt phần còn thiếu."
             )
         log(f"[Dịch] Hoàn tất {len(segments) - untranslated}/{len(segments)} câu thoại.")
+        if multi_voice:
+            try:
+                prog.set_stage("tts")
+                log("[Nhân vật] Đang phân biệt người nói theo giọng gốc...")
+                n = diarize(input_mp4, segments, prog)
+                speakers = auto_voice_map(segments, voice, story_ctx.get("voices"))
+                tts.voice_map = {k: v["voice"] for k, v in speakers.items()}
+                for k, v in speakers.items():
+                    log(f"[Nhân vật] {k}: {v['lines']} câu, ~{v['f0']} Hz ({'nữ/trẻ' if v['gender'] == 'female' else 'nam'}) → {v['voice']}")
+                log(f"[Nhân vật] Tìm thấy {n} nhân vật. Đổi giọng từng nhân vật trong 'Sửa lời' rồi xuất lại nếu cần.")
+            except Exception as e:  # thiếu VieNeu / lỗi đọc audio: vẫn lồng tiếng được bằng 1 giọng
+                log(f"[Nhân vật] ⚠ Không phân biệt được nhân vật ({e}) — dùng 1 giọng cho cả video.")
+                multi_voice, speakers = False, {}
+            for s in segments:
+                s.pop("_f0", None)
     else:
         prog.stt = 1.0
 
@@ -1331,23 +1594,22 @@ def main() -> int:
             "input_path": str(input_mp4),
             "speed": speed,
             "voice": voice,
-            "tts_rate": tts_rate,
             "bg_volume": bg_volume,
             "burn_sub": burn_sub,
             "delogo": delogo,
+            "multi_voice": multi_voice,
+            "speakers": speakers,
             "orig_duration_sec": round(duration, 1),
             "dub_duration_sec": round(duration, 1),
             "resolution": f"{media['w']}x{media['h']}",
-            "segments": segments,
             "updated_at": datetime.now().isoformat(timespec="seconds"),
         },
     )
+    save_segments(job_id, segments)
 
     prog.set_stage("tts")
     log(f"[Giọng đọc] Tạo giọng tiếng Việt ({voice}) cho {len(segments)} câu (câu đã có trong cache được dùng lại)...")
-    mp3_files = tts.ensure_all([s.get("vi", "") for s in segments])
-    if tts.fallbacks:
-        log(f"[Giọng đọc] {tts.fallbacks} câu phải dùng giọng Google dự phòng vì Edge-TTS lỗi.")
+    mp3_files = tts.ensure_all([tts.item(s) for s in segments])
     if tts.failed:
         log(f"[Giọng đọc] ⚠ {tts.failed} câu không tạo được âm thanh (sẽ im lặng ở các câu đó).")
 
@@ -1380,6 +1642,8 @@ def main() -> int:
             "title": input_mp4.name,
             "speed": speed,
             "voice": voice,
+            "multi_voice": multi_voice,
+            "speaker_count": len(speakers),
             "bg_volume": bg_volume,
             "burn_sub": burn_sub,
             "delogo": delogo,

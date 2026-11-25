@@ -106,7 +106,7 @@ export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; project
             <Options list={voiceOptions(allVoices, proj, prev.voice)} />
           </select>
           <div className="help">
-            Quản lý ở mục <Link href={projHref(projectId, "voices")}>Giọng đọc</Link> của dự án.
+            Quản lý ở mục <Link href="/resources/?tab=voices">Tài nguyên → Giọng đọc</Link>.
           </div>
         </div>
         <div className="field">

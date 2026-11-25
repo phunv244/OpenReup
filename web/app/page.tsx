@@ -137,7 +137,7 @@ export default function ProjectsPage() {
   // Link kiểu giao diện cũ (#/project/<id>/<trang>) vẫn mở đúng trang mới.
   useEffect(() => {
     const m = location.hash.match(/^#\/project\/([^/]+)(?:\/([a-z]+))?/);
-    if (m) router.replace(projHref(decodeURIComponent(m[1]), ["douyin", "voices", "logs"].includes(m[2]) ? m[2] : "videos"));
+    if (m) router.replace(projHref(decodeURIComponent(m[1]), ["douyin", "logs"].includes(m[2]) ? m[2] : "videos"));
     else if (/^#\/(models|logs|help)/.test(location.hash)) router.replace(`/${location.hash.slice(2).split("/")[0]}/`);
   }, [router]);
   const totalSec = dubbed.reduce((a, v) => a + Number(v.duration_sec || 0), 0);

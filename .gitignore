@@ -40,7 +40,6 @@ data/voices/_tmp/
 data/voices/_preview/
 data/voices/_src/
 data/video_projects.json
-data/voices.json
 data/asr_models/
 data/asr_settings.json
 
@@ -52,3 +51,8 @@ web/next-env.d.ts
 data/agy_models.json
 data/fonts/
 data/fonts.json
+
+# Giọng mẫu đi kèm repo (thư viện giọng dùng chung)
+!data/voices/*.wav
+# Giọng clone từ kênh của người khác: chỉ giữ trên máy, không đẩy lên git
+data/voices/tuncoi.wav

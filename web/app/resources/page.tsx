@@ -1,11 +1,14 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Topbar } from "@/components/Shell";
 import { useToast } from "@/components/Toasts";
-import { Callout } from "@/components/ui";
+import { Callout, Seg } from "@/components/ui";
+import { VoiceLibrary } from "@/components/VoiceLibrary";
 import { FontInfo, postJSON } from "@/lib/api";
 import { useStudio } from "@/lib/studio";
+
+type Tab = "fonts" | "voices";
 
 const SAMPLE = "Xin chào các bạn — Phụ đề tiếng Việt 0123";
 const EXTS = ["ttf", "otf", "ttc", "otc"];
@@ -45,7 +48,12 @@ function FontRow({ f }: { f: FontInfo }) {
 
 export default function ResourcesPage() {
   const toast = useToast();
-  const { fonts, systemFonts, reload } = useStudio();
+  const { fonts, systemFonts, voices, reload } = useStudio();
+  const [tab, setTab] = useState<Tab>("fonts");
+  // Liên kết từ chỗ chọn giọng mở thẳng mục Giọng đọc (?tab=voices)
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "voices") setTab("voices");
+  }, []);
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -80,10 +88,21 @@ export default function ResourcesPage() {
 
   return (
     <>
-      <Topbar title="Tài nguyên" sub="Font chữ và các tài nguyên dùng chung cho mọi dự án" />
+      <Topbar title="Tài nguyên" sub="Font chữ và giọng đọc dùng chung cho mọi dự án" />
       {/* @font-face cho chữ mẫu */}
       <style>{fonts.map((f) => `@font-face{font-family:"rf-${f.id}";src:url("/api/fonts/file?id=${f.id}")}`).join("")}</style>
       <main className="content">
+        <div className="toolbar">
+          <Seg<Tab>
+            value={tab}
+            onChange={setTab}
+            items={[
+              { v: "fonts", label: "Font chữ ", count: fonts.length },
+              { v: "voices", label: "Giọng đọc ", count: voices.clones.length + voices.presets.length },
+            ]}
+          />
+        </div>
+        {tab === "voices" ? <VoiceLibrary /> : <>
         <Callout tone="info" icon="type">
           Font tải lên ở đây dùng được cho phụ đề Việt của <b>mọi dự án</b> (chọn khi lồng tiếng hoặc ở <b>Sửa lời</b> → Kiểu phụ đề → Tùy chỉnh). Chọn font có đủ dấu
           tiếng Việt.
@@ -137,6 +156,7 @@ export default function ResourcesPage() {
             <p className="muted pad">Các font tiếng Việt cài sẵn trong hệ điều hành, luôn dùng được cho phụ đề mà không cần tải lên.</p>
           )}
         </section>
+        </>}
       </main>
     </>
   );

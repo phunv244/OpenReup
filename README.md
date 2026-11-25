@@ -64,11 +64,13 @@ Danh mục nằm ở `asr.py` (`CATALOG`); mô hình sherpa-onnx lưu ở `data/
 uv pip install --python .venv/bin/python vieneu   # bản CPU, không cần torch/GPU
 ```
 - Chọn giọng `VieNeu · ...` (25 giọng có sẵn) hoặc giọng clone trong hộp thoại Lồng tiếng.
-- **Mục "Giọng đọc" của dự án**: tick các giọng dự án dùng (giọng đầu là giọng chính), nghe thử bằng câu tự gõ,
-  và **Clone giọng mới** từ file tải lên, link video hoặc video trong dự án. Máy tự chọn đoạn nói 3–8,5 giây sạch nhất,
+- **Tài nguyên → Giọng đọc** (dùng chung mọi dự án): nghe thử bằng câu tự gõ và **Clone giọng mới** từ file tải lên,
+  link video hoặc video đã tải. Giọng riêng của từng nhân vật đặt trong Ngữ cảnh AI → Nhân vật của dự án. Máy tự chọn đoạn nói 3–8,5 giây sạch nhất,
   hoặc tự nhập mốc giây. Thư viện giọng dùng chung mọi dự án (`data/voices.json` + `data/voices/<ten>.wav`);
   file `.wav` thả tay vào `data/voices/` cũng được tự nhận.
 - Có sẵn `data/voices/tuncoi.wav`: cắt từ video mẫu TunCoi Dub (giọng cao ~320 Hz, đọc nhanh ~4,2 tiếng/giây).
+- Giọng mẫu đi kèm repo (`data/voices/*.wav` + `data/voices.json`): Ông lão, Bà lão, Bé hoạt hình, Chuột chít, Gấu to, Cô tiên
+  — tạo bằng cách đổi cao độ giọng VieNeu có sẵn.
 - **Mỗi nhân vật một giọng** (bật sẵn trong hộp thoại Lồng tiếng): sau khi dịch, máy nghe giọng gốc từng câu
   (bộ trích đặc trưng giọng của VieNeu) và gom thành NV1, NV2… NV1 (nói nhiều nhất) dùng giọng đã chọn, nhân vật khác
   tự nhận giọng VieNeu nam/nữ theo cao độ (> 185 Hz coi là nữ/trẻ em). Trong **Sửa lời**: đổi giọng từng nhân vật,

@@ -11,11 +11,10 @@ export function voiceLabel(all: Voice[], id: string) {
   return `VieNeu · ${v.name} — ${GENDER_LABEL[v.gender]}, ${v.desc}`;
 }
 
-/** [[mã, nhãn]] cho ô chọn giọng: dự án đã chọn giọng thì chỉ hiện các giọng đó (giọng chính đứng đầu),
- *  chưa chọn thì hiện cả thư viện. `keep` (giọng đang dùng) luôn có mặt để không bị đổi ngầm. */
+/** [[mã, nhãn]] cho ô chọn giọng: cả thư viện (dùng chung mọi dự án); giọng dự án từng chọn đứng đầu để giữ
+ *  giọng mặc định cũ. `keep` (giọng đang dùng) luôn có mặt để không bị đổi ngầm. */
 export function voiceOptions(all: Voice[], proj: Project | null | undefined, keep = ""): [string, string][] {
-  const mine = proj?.voices?.length ? proj.voices : all.map((v) => v.id);
-  return [...new Set([...mine, ...(keep ? [keep] : [])])].map((id) => [id, voiceLabel(all, id)]);
+  return [...new Set([...(proj?.voices || []), ...all.map((v) => v.id), ...(keep ? [keep] : [])])].map((id) => [id, voiceLabel(all, id)]);
 }
 
 let player: HTMLAudioElement | null = null;

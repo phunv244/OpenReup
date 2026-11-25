@@ -1,16 +1,14 @@
 "use client";
+/** Thư viện giọng đọc dùng chung mọi dự án (mục con của Tài nguyên): clone giọng, nghe thử, đặt giới tính, xóa. */
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Modal } from "@/components/Modal";
-import { ProjectTopbar } from "@/components/ProjectTopbar";
 import { useToast } from "@/components/Toasts";
 import { Callout, Options, Seg } from "@/components/ui";
-import { buildWorkItems } from "@/components/video/items";
-import { Project, Voice, postJSON } from "@/lib/api";
+import { Voice, postJSON } from "@/lib/api";
 import { fmtDur } from "@/lib/format";
-import { useProject } from "@/lib/project";
 import { useStudio } from "@/lib/studio";
-import { DEFAULT_PREVIEW_TEXT, GENDER_LABEL, playVoiceUrl, voiceLabel } from "@/lib/voices";
+import { DEFAULT_PREVIEW_TEXT, GENDER_LABEL, playVoiceUrl } from "@/lib/voices";
 
 /** Nút phát: hiện "Đang tạo…" trong lúc máy đọc thử lần đầu (10–20 giây). */
 function PlayButton({ url, label, quiet }: { url: () => string; label: string; quiet?: boolean }) {
@@ -37,12 +35,9 @@ function PlayButton({ url, label, quiet }: { url: () => string; label: string; q
   );
 }
 
-function VoiceRow({ v, proj, text, save }: { v: Voice; proj: Project; text: string; save: (voices: string[]) => void }) {
+function VoiceRow({ v, text }: { v: Voice; text: string }) {
   const toast = useToast();
   const { reload } = useStudio();
-  const mine = proj.voices || [];
-  const picked = mine.includes(v.id);
-  const main = mine[0] === v.id;
   const [gender, setGender] = useState(v.gender || "");
   const sub =
     v.kind === "clone"
@@ -58,23 +53,10 @@ function VoiceRow({ v, proj, text, save }: { v: Voice; proj: Project; text: stri
   }
 
   return (
-    <div className={`voice-row ${picked ? "picked" : ""}`}>
-      <label className="check voice-pick" title="Dùng giọng này cho dự án">
-        <input
-          type="checkbox"
-          checked={picked}
-          aria-label={`Dùng giọng ${v.name} cho dự án`}
-          onChange={(e) => save(e.target.checked ? [...mine, v.id] : mine.filter((x) => x !== v.id))}
-        />
-      </label>
+    <div className="voice-row">
       <div className="voice-main">
         <div className="voice-name">
-          {v.name} {v.kind === "clone" ? <span className="badge violet">Clone</span> : <span className="badge gray">VieNeu</span>}{" "}
-          {main && (
-            <span className="badge green">
-              <Icon name="check" size={13} /> Giọng chính
-            </span>
-          )}
+          {v.name} {v.kind === "clone" ? <span className="badge violet">Clone</span> : <span className="badge gray">VieNeu</span>}
         </div>
         <div className="voice-sub muted" title={sub}>
           {sub}
@@ -101,11 +83,6 @@ function VoiceRow({ v, proj, text, save }: { v: Voice; proj: Project; text: stri
           </>
         )}
         <PlayButton label="Nghe thử" url={() => `/api/voices/preview?voice=${encodeURIComponent(v.id)}&text=${encodeURIComponent(text.trim() || DEFAULT_PREVIEW_TEXT)}`} />
-        {picked && !main && (
-          <button className="btn btn-quiet btn-sm" type="button" onClick={() => save([v.id, ...mine.filter((x) => x !== v.id)])}>
-            Đặt làm giọng chính
-          </button>
-        )}
         {v.kind === "clone" && (
           <button className="icon-btn danger" type="button" title="Xóa giọng" aria-label={`Xóa giọng ${v.name}`} onClick={remove}>
             <Icon name="trash" size={16} />
@@ -118,10 +95,10 @@ function VoiceRow({ v, proj, text, save }: { v: Voice; proj: Project; text: stri
 
 type Src = "upload" | "url" | "video";
 
-function CloneVoiceModal({ proj, onClose }: { proj: Project; onClose: () => void }) {
+function CloneVoiceModal({ onClose }: { onClose: () => void }) {
   const toast = useToast();
-  const { sources, dubbed, bili, reload } = useStudio();
-  const videos = buildWorkItems(sources, dubbed, bili, proj.id).map((s) => [s.rel_path, s.title] as [string, string]);
+  const { sources, reload } = useStudio();
+  const videos = sources.map((s) => [s.rel_path, s.name] as [string, string]);
   const [src, setSrc] = useState<Src>("upload");
   const [f, setF] = useState({ name: "", url: "", video: videos[0]?.[0] || "", mode: "auto", start: "", end: "" });
   const [file, setFile] = useState<File | null>(null);
@@ -131,7 +108,7 @@ function CloneVoiceModal({ proj, onClose }: { proj: Project; onClose: () => void
   async function run() {
     const name = f.name.trim();
     if (!name) return toast("Hãy đặt tên cho giọng", "error");
-    const body: Record<string, unknown> = { name, project_id: proj.id };
+    const body: Record<string, unknown> = { name };
     if (f.mode === "manual") {
       const start = Number(f.start);
       const end = Number(f.end);
@@ -153,7 +130,7 @@ function CloneVoiceModal({ proj, onClose }: { proj: Project; onClose: () => void
       setStep("work");
       const d = await postJSON<{ voice: Voice }>("/api/voices/create", body);
       if (!d.ok) throw new Error(d.error || "Không tạo được giọng");
-      toast(`Đã tạo giọng "${d.voice.name}" từ đoạn ${fmtDur(d.voice.start) || "0:00"}–${fmtDur(d.voice.end)} và thêm vào dự án`, "success");
+      toast(`Đã tạo giọng "${d.voice.name}" từ đoạn ${fmtDur(d.voice.start) || "0:00"}–${fmtDur(d.voice.end)}`, "success");
       onClose();
       reload();
     } catch (err) {
@@ -179,7 +156,7 @@ function CloneVoiceModal({ proj, onClose }: { proj: Project; onClose: () => void
           items={[
             { v: "upload", label: "Tải file lên" },
             { v: "url", label: "Dán link video" },
-            { v: "video", label: "Video trong dự án", disabled: !videos.length },
+            { v: "video", label: "Video đã tải", disabled: !videos.length },
           ]}
         />
       </div>
@@ -198,7 +175,7 @@ function CloneVoiceModal({ proj, onClose }: { proj: Project; onClose: () => void
       )}
       {src === "video" && (
         <div className="field">
-          <select className="select" aria-label="Video trong dự án" value={f.video} onChange={set("video")}>
+          <select className="select" aria-label="Video đã tải" value={f.video} onChange={set("video")}>
             <Options list={videos} />
           </select>
         </div>
@@ -235,69 +212,47 @@ function CloneVoiceModal({ proj, onClose }: { proj: Project; onClose: () => void
   );
 }
 
-export default function VoicesPage() {
-  const toast = useToast();
-  const proj = useProject();
-  const { voices, patchProject } = useStudio();
+export function VoiceLibrary() {
+  const { voices } = useStudio();
   const [text, setText] = useState(DEFAULT_PREVIEW_TEXT);
   const [cloning, setCloning] = useState(false);
-  if (!proj) return null;
-  const all = [...voices.clones, ...voices.presets];
-  const mine = proj.voices || [];
-
-  async function save(list: string[]) {
-    const d = await postJSON<{ project: Project }>("/api/projects/save", { id: proj!.id, voices: list });
-    if (!d.ok) return toast(d.error || "Không lưu được giọng của dự án", "error");
-    patchProject({ ...proj!, voices: d.project.voices });
-  }
-
   return (
     <>
-      <ProjectTopbar title="Giọng đọc" sub="Clone giọng riêng và chọn giọng dùng cho dự án này" />
-      <main className="content">
-        <Callout tone="info" icon="mic">
-          Chọn một hoặc nhiều giọng cho dự án để mọi video trong kênh nghe đồng bộ. <b>Giọng chính</b> đọc nhân vật nói nhiều nhất; khi bật{" "}
-          <b>Mỗi nhân vật một giọng</b>, các nhân vật khác lần lượt nhận những giọng còn lại của dự án (đúng nam / nữ).
-        </Callout>
-        <div className="toolbar">
-          <input className="input" maxLength={200} value={text} onChange={(e) => setText(e.target.value)} aria-label="Câu dùng để nghe thử" placeholder="Câu dùng để nghe thử..." />
-          <button className="btn btn-primary" type="button" onClick={() => setCloning(true)}>
-            <Icon name="plus" size={16} /> Clone giọng mới
-          </button>
-        </div>
-        <p className="muted voice-summary">
-          {mine.length ? (
-            <>
-              Dự án đang dùng <b>{mine.length}</b> giọng. Giọng chính: <b>{voiceLabel(all, mine[0])}</b>.
-            </>
-          ) : (
-            "Dự án chưa chọn giọng nào — khi lồng tiếng sẽ hiện toàn bộ thư viện."
-          )}
-        </p>
-        <section className="card">
-          <header className="card-head">
-            <h3>Giọng clone của bạn</h3>
-            <span className="hint">Dùng chung cho mọi dự án</span>
-          </header>
-          {voices.clones.length ? (
-            voices.clones.map((v) => <VoiceRow key={v.id} v={v} proj={proj} text={text} save={save} />)
-          ) : (
-            <div className="voice-empty muted">
-              Chưa có giọng clone nào. Bấm <b>Clone giọng mới</b> để tạo giọng riêng cho kênh từ một đoạn nói 5–8 giây.
-            </div>
-          )}
-        </section>
-        <section className="card">
-          <header className="card-head">
-            <h3>Giọng có sẵn</h3>
-            <span className="hint">VieNeu · chạy trên máy, không cần mạng</span>
-          </header>
-          {voices.presets.map((v) => (
-            <VoiceRow key={v.id} v={v} proj={proj} text={text} save={save} />
-          ))}
-        </section>
-      </main>
-      {cloning && <CloneVoiceModal proj={proj} onClose={() => setCloning(false)} />}
+      <Callout tone="info" icon="mic">
+        Giọng ở đây dùng chung cho <b>mọi dự án</b>. Chọn giọng khi lồng tiếng; giọng riêng của từng nhân vật đặt trong <b>Ngữ cảnh AI → Nhân vật</b> của dự án.
+      </Callout>
+      <div className="toolbar">
+        <input className="input" maxLength={200} value={text} onChange={(e) => setText(e.target.value)} aria-label="Câu dùng để nghe thử" placeholder="Câu dùng để nghe thử..." />
+        <button className="btn btn-primary" type="button" onClick={() => setCloning(true)}>
+          <Icon name="plus" size={16} /> Clone giọng mới
+        </button>
+      </div>
+      <section className="card">
+        <header className="card-head">
+          <h3>
+            Giọng clone của bạn <span className="badge gray">{voices.clones.length}</span>
+          </h3>
+        </header>
+        {voices.clones.length ? (
+          voices.clones.map((v) => <VoiceRow key={v.id} v={v} text={text} />)
+        ) : (
+          <div className="voice-empty muted">
+            Chưa có giọng clone nào. Bấm <b>Clone giọng mới</b> để tạo giọng riêng từ một đoạn nói 5–8 giây.
+          </div>
+        )}
+      </section>
+      <section className="card">
+        <header className="card-head">
+          <h3>
+            Giọng có sẵn <span className="badge gray">{voices.presets.length}</span>
+          </h3>
+          <span className="hint">VieNeu · chạy trên máy, không cần mạng</span>
+        </header>
+        {voices.presets.map((v) => (
+          <VoiceRow key={v.id} v={v} text={text} />
+        ))}
+      </section>
+      {cloning && <CloneVoiceModal onClose={() => setCloning(false)} />}
     </>
   );
 }

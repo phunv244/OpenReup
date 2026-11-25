@@ -15,6 +15,7 @@ import dubRoutes from "./routes/dub.mjs";
 import projectRoutes from "./routes/projects.mjs";
 import sourceRoutes from "./routes/sources.mjs";
 import taskRoutes from "./routes/tasks.mjs";
+import resourceRoutes from "./routes/resources.mjs";
 import voiceRoutes from "./routes/voices.mjs";
 
 runMigrations();
@@ -77,6 +78,7 @@ await app.register(taskRoutes);
 await app.register(sourceRoutes);
 await app.register(projectRoutes);
 await app.register(voiceRoutes);
+await app.register(resourceRoutes);
 await app.register(dubRoutes);
 
 for (const sig of ["SIGINT", "SIGTERM"]) {

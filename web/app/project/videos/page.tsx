@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { PlayerModal } from "@/components/Modal";
@@ -12,7 +13,7 @@ import { DubEditorModal } from "@/components/video/DubEditorModal";
 import { WorkItem, buildWorkItems } from "@/components/video/items";
 import { DeleteVideoModal, DelogoModal, MoveVideoModal } from "@/components/video/SmallModals";
 import { dubFileUrl, postJSON } from "@/lib/api";
-import { fmtDur, fmtHours, fmtSize } from "@/lib/format";
+import { fmtDur, fmtHours, fmtSize, projHref } from "@/lib/format";
 import { useProjectId } from "@/lib/project";
 import { useStudio } from "@/lib/studio";
 
@@ -127,9 +128,9 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
             </button>
           )}
           {d && (
-            <button className="btn btn-light" type="button" onClick={() => open({ kind: "edit", jobId: d.job_id })}>
-              <Icon name="edit" size={15} /> Sửa lời
-            </button>
+            <Link className="btn btn-light" href={projHref(pid, "video", `&job=${encodeURIComponent(d.job_id)}`)}>
+              <Icon name="edit" size={15} /> Chi tiết
+            </Link>
           )}
           {primary}
         </span>

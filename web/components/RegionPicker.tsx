@@ -5,8 +5,7 @@
  * onChange nhận "x,y,w,h" theo pixel gốc, hoặc "" khi chưa chọn.
  */
 import { useEffect, useRef, useState } from "react";
-import { DELOGO_WITH_REGION, isRegion } from "@/lib/format";
-import { Options } from "./ui";
+import { isRegion } from "@/lib/format";
 
 type Rect = { x: number; y: number; w: number; h: number }; // tỉ lệ 0..1 so với khung hình
 
@@ -91,8 +90,8 @@ export function RegionPicker({ rel, initial = "", onChange }: { rel: string; ini
       <div className="rp-bar">
         <span className="rp-info muted">
           {px && size
-            ? `Vùng xóa ${px.w}×${px.h}px tại (${px.x}, ${px.y}) · video ${size.W}×${size.H}`
-            : "Kéo chuột trên khung hình để khoanh vùng logo."}
+            ? `Vùng ${px.w}×${px.h}px tại (${px.x}, ${px.y}) · video ${size.W}×${size.H}`
+            : "Kéo chuột trên khung hình để khoanh vùng."}
         </span>
         {sel && (
           <button className="btn btn-quiet btn-sm" type="button" onClick={() => setSel(null)}>
@@ -105,28 +104,30 @@ export function RegionPicker({ rel, initial = "", onChange }: { rel: string; ini
 }
 
 /**
- * Ô chọn vị trí logo + bộ khoanh vùng (hiện khi chọn "Tự khoanh vùng").
- * onChange nhận giá trị gửi server; "" khi chọn tự khoanh nhưng chưa kéo vùng nào (bên gọi phải chặn).
+ * Công tắc bật/tắt một vùng trên khung hình (xóa logo, che phụ đề gốc): mặc định tắt.
+ * Bật lên thì bắt buộc khoanh vùng. onChange nhận giá trị gửi server: "none" khi tắt, "x,y,w,h" khi đã khoanh,
+ * "" khi đã bật nhưng chưa kéo vùng nào (bên gọi phải chặn lại).
  */
-export function DelogoField({ id, label, rel, initial, onChange }: { id: string; label: string; rel: string; initial?: string; onChange: (v: string) => void }) {
-  const [mode, setMode] = useState(isRegion(initial) ? "region" : initial || "none");
+export function RegionToggle({ label, hint, rel, initial, onChange }: {
+  label: string;
+  hint?: React.ReactNode;
+  rel: string;
+  initial?: string;
+  onChange: (v: string) => void;
+}) {
+  // Bản cũ có thể đã lưu vị trí góc ("top-right"...): vẫn coi là đang bật, nhưng phải khoanh vùng lại.
+  const [on, setOn] = useState(Boolean(initial && initial !== "none"));
   const [region, setRegion] = useState(isRegion(initial) ? String(initial) : "");
   const changed = useRef(onChange);
   changed.current = onChange;
-  useEffect(() => changed.current(mode === "region" ? region : mode), [mode, region]);
+  useEffect(() => changed.current(on ? region : "none"), [on, region]);
   return (
-    <>
-      <div className="field">
-        <label htmlFor={id}>{label}</label>
-        <select id={id} className="select" value={mode} onChange={(e) => setMode(e.target.value)}>
-          <Options list={DELOGO_WITH_REGION} />
-        </select>
-      </div>
-      {mode === "region" && (
-        <div className="field">
-          <RegionPicker rel={rel} initial={isRegion(initial) ? initial : ""} onChange={setRegion} />
-        </div>
-      )}
-    </>
+    <div className="field">
+      <label className="check">
+        <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} /> {label}
+      </label>
+      {hint && <div className="help">{hint}</div>}
+      {on && <RegionPicker rel={rel} initial={isRegion(initial) ? initial : ""} onChange={setRegion} />}
+    </div>
   );
 }

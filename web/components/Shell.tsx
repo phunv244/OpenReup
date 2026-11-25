@@ -27,7 +27,7 @@ function NavLink({ href, icon, label, count, active }: { href: string; icon: str
 }
 
 function Nav() {
-  const { projects, sources, videos, asr } = useStudio();
+  const { projects, sources, videos, asr, fonts } = useStudio();
   const openDrawer = useOpenDrawer();
   const path = clean(usePathname());
   const params = useSearchParams();
@@ -47,10 +47,11 @@ function Nav() {
             {proj.name}
           </div>
         </div>
-        <NavLink href={projHref(pid, "videos")} icon="film" label="Video & Lồng tiếng" active={sub === "videos"}
+        <NavLink href={projHref(pid, "videos")} icon="film" label="Video & Lồng tiếng" active={sub === "videos" || sub === "video"}
           count={sources.filter((s) => s.project_id === pid).length} />
         <NavLink href={projHref(pid, "douyin")} icon="list" label="Kho Douyin" active={sub === "douyin"} count={videos.length} />
         <NavLink href={projHref(pid, "voices")} icon="mic" label="Giọng đọc" active={sub === "voices"} count={(proj.voices || []).length} />
+        <NavLink href={projHref(pid, "resources")} icon="type" label="Tài nguyên" active={sub === "resources"} count={fonts.length} />
         <button className="nav-link" type="button" onClick={() => openDrawer(pid)}>
           <Icon name="brain" />
           <span>Ngữ cảnh AI</span>

@@ -14,6 +14,7 @@ const FILES: [string, React.ReactNode][] = [
   ["downloads/dubbed/", <>Bản lồng tiếng Việt (<code>.mp4</code>) và phụ đề (<code>.srt</code>)</>],
   ["data/projects/", "Ngữ cảnh AI của từng dự án"],
   ["data/voices/", "Giọng clone (file .wav) dùng chung mọi dự án"],
+  ["data/fonts/", "Font chữ phụ đề tải lên ở mục Tài nguyên"],
   ["data/openreup.db", "Câu thoại của các bản lồng tiếng (SQLite)"],
   ["data/dub_work/", "Tiến độ đang dở và cache giọng đọc / video"],
   ["chrome_profile/", "Phiên đăng nhập Douyin"],
@@ -47,7 +48,7 @@ export default function HelpPage() {
               <ul>
                 <li><b>Chạy tiếp được.</b> Video được xử lý theo khối 10 phút và lưu tiến độ liên tục. Dừng, tắt máy, mất mạng — bấm <b>Tiếp tục</b> là chạy từ chỗ đang dở.</li>
                 <li><b>Không tốn RAM.</b> Mỗi lúc chỉ một khối nằm trong bộ nhớ, video 90 tiếng dùng RAM như video 10 phút.</li>
-                <li><b>Chọn “Không xóa lúc tải”</b> khi thêm video, rồi bật <b>Xóa logo khi xuất</b> ở bước lồng tiếng: video chỉ bị mã hóa một lần.</li>
+                <li><b>Xóa logo</b> ở bước lồng tiếng (bật <b>Xóa logo khi xuất</b> rồi khoanh vùng): video chỉ bị mã hóa một lần.</li>
                 <li><b>Ổ cứng:</b> cần trống khoảng 2,2 lần dung lượng video nếu in phụ đề / xóa logo; khoảng 1,2 lần nếu giữ nguyên hình.</li>
                 <li><b>Hàng đợi:</b> bấm lồng tiếng / tải nhiều video liền, máy tự xếp hàng và làm lần lượt (xem cột bên phải). Cứ để máy chạy qua đêm.</li>
                 <li><b>Cache:</b> giọng đọc và các đoạn video đã mã hóa được giữ lại để xuất lại nhanh. Lấy lại ổ cứng bằng <b>⋯ → Xóa cache</b>.</li>
@@ -69,7 +70,15 @@ export default function HelpPage() {
               </details>
               <details className="faq">
                 <summary>Video Bilibili vẫn còn logo?</summary>
-                <p>Chọn <b>Tự khoanh vùng trên khung hình</b> khi lồng tiếng (hoặc <b>⋯ → Xóa logo video gốc</b>) rồi kéo chuột quanh logo.</p>
+                <p>Bật <b>Xóa logo khi xuất</b> trong hộp thoại lồng tiếng hoặc <b>Sửa lời</b> (hoặc <b>⋯ → Xóa logo video gốc</b>) rồi kéo chuột quanh đúng logo.</p>
+              </details>
+              <details className="faq">
+                <summary>Đổi font, màu chữ, nền, viền của phụ đề?</summary>
+                <p>Khi lồng tiếng (hoặc ở <b>Sửa lời</b>), mục <b>Kiểu phụ đề Việt</b> → <b>Tùy chỉnh</b>; ảnh xem trước vẽ trên khung hình thật. Font riêng tải lên ở mục <b>Tài nguyên</b> (cần đủ dấu tiếng Việt).</p>
+              </details>
+              <details className="faq">
+                <summary>Phụ đề Việt đè lên chữ Trung?</summary>
+                <p>Bật <b>Che phụ đề gốc</b> khi lồng tiếng (hoặc trong <b>Sửa lời</b>) rồi khoanh vùng chữ Trung: vùng đó được làm mờ và phụ đề Việt hiện ngay trong khung.</p>
               </details>
               <details className="faq">
                 <summary>Nhận diện sót câu nói nhỏ / thì thầm?</summary>

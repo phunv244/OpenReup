@@ -7,13 +7,14 @@ import { Character, GlossItem, Project, postJSON } from "@/lib/api";
 import { useStudio } from "@/lib/studio";
 import { Icon } from "./Icon";
 import { useToast } from "./Toasts";
-import { Callout, copyText } from "./ui";
+import { voiceOptions } from "@/lib/voices";
+import { Callout, Options, copyText } from "./ui";
 
 const TYPES = ["Truyện / Hoạt hình", "Phim bộ", "Phim lẻ", "Review / Tài liệu"];
 type Tab = "info" | "chars" | "gloss" | "notes";
 
 export function buildAiContextPrompt(proj: Project) {
-  const chars = (proj.characters || []).map((c) => `- ${c.zh} → ${c.vi} (${c.role || ""}; xưng hô: ${c.pronouns || ""})`).join("\n");
+  const chars = (proj.characters || []).map((c) => `- ${c.zh} → ${c.vi} (${c.role || ""}; xưng hô: ${c.pronouns || ""}${c.personality ? `; tính cách: ${c.personality}` : ""})`).join("\n");
   const gloss = (proj.glossary || []).map((g) => `- ${g.zh} → ${g.vi}`).join("\n");
   const eps = (proj.videos || [])
     .map((v, i) => `- Tập ${i + 1} (${v.title}): ${(proj.episode_notes || {})[v.job_id] || "(chưa có tóm tắt)"}`)
@@ -42,7 +43,7 @@ function RowsTable<T extends Record<string, string | undefined>>({
 }: {
   rows: T[];
   setRows: (r: T[]) => void;
-  cols: [keyof T & string, string][];
+  cols: [keyof T & string, string, [string, string][]?][]; // có danh sách lựa chọn thì hiện ô chọn thay ô nhập
   hint: string;
   emptyText: string;
   blank: T;
@@ -69,8 +70,14 @@ function RowsTable<T extends Record<string, string | undefined>>({
             {rows.length ? (
               rows.map((r, i) => (
                 <tr key={i}>
-                  {cols.map(([key, label], ci) => (
+                  {cols.map(([key, label, options], ci) => (
                     <td key={key}>
+                      {options ? (
+                        <select className="select input-sm" value={r[key] || ""} aria-label={label}
+                          onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, [key]: e.target.value } : x)))}>
+                          <Options list={options} />
+                        </select>
+                      ) : (
                       <input
                         className="input input-sm"
                         value={r[key] || ""}
@@ -78,6 +85,7 @@ function RowsTable<T extends Record<string, string | undefined>>({
                         autoFocus={ci === 0 && i === rows.length - 1 && !r[key]}
                         onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, [key]: e.target.value } : x)))}
                       />
+                      )}
                     </td>
                   ))}
                   <td>
@@ -104,7 +112,8 @@ function RowsTable<T extends Record<string, string | undefined>>({
 export function ProjectDrawer({ project, onClose }: { project: Project; onClose: () => void }) {
   const toast = useToast();
   const router = useRouter();
-  const { reload } = useStudio();
+  const { reload, voices } = useStudio();
+  const allVoices = [...voices.clones, ...voices.presets];
   const [tab, setTab] = useState<Tab>("info");
   const [d, setD] = useState({
     name: project.name || "",
@@ -131,7 +140,7 @@ export function ProjectDrawer({ project, onClose }: { project: Project; onClose:
       type: d.type,
       style: d.style.trim(),
       synopsis: d.synopsis.trim(),
-      characters: d.characters.map((c) => ({ ...c, zh: c.zh.trim(), vi: c.vi.trim(), pronouns: (c.pronouns || "").trim() })).filter((c) => c.zh || c.vi),
+      characters: d.characters.map((c) => ({ ...c, zh: c.zh.trim(), vi: c.vi.trim(), pronouns: (c.pronouns || "").trim(), personality: (c.personality || "").trim() })).filter((c) => c.zh || c.vi),
       glossary: d.glossary.map(({ zh, vi }) => ({ zh: zh.trim(), vi: vi.trim() })).filter((g) => g.zh || g.vi),
       episode_notes: Object.fromEntries(Object.entries(d.episode_notes).map(([k, v]) => [k, v.trim()])),
     });
@@ -205,10 +214,13 @@ export function ProjectDrawer({ project, onClose }: { project: Project; onClose:
             <RowsTable
               rows={d.characters}
               setRows={(r) => set("characters", r)}
-              cols={[["zh", "Tên gốc"], ["vi", "Tên Việt"], ["pronouns", "Xưng hô"]]}
-              hint="AI tự thêm khi gặp nhân vật mới — bạn có thể sửa tên và xưng hô."
+              cols={[
+                ["zh", "Tên gốc"], ["vi", "Tên Việt"], ["pronouns", "Xưng hô"], ["personality", "Tính cách"],
+                ["voice", "Giọng đọc", [["", "Tự chọn"], ...voiceOptions(allVoices, project, "").filter(([id]) => id)]],
+              ]}
+              hint="AI tự thêm nhân vật, ghi tính cách qua lời thoại và chọn giọng khi lồng tiếng nhiều giọng — bạn sửa được tất cả."
               emptyText="Chưa có nhân vật."
-              blank={{ zh: "", vi: "", pronouns: "", role: "" }}
+              blank={{ zh: "", vi: "", pronouns: "", role: "", personality: "", voice: "" }}
             />
           )}
           {tab === "gloss" && (

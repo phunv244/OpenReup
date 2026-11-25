@@ -1,0 +1,62 @@
+[
+  {
+    "id": "be-vietnam-pro-bold",
+    "file": "be-vietnam-pro-bold.ttf",
+    "family": "Be Vietnam Pro",
+    "style": "Bold",
+    "vi": true,
+    "original_name": "BeVietnamPro-Bold.ttf",
+    "size_kb": 137,
+    "created_at": "2026-11-25T08:55:24"
+  },
+  {
+    "id": "be-vietnam-pro-regular",
+    "file": "be-vietnam-pro-regular.ttf",
+    "family": "Be Vietnam Pro",
+    "style": "Regular",
+    "vi": true,
+    "original_name": "BeVietnamPro-Regular.ttf",
+    "size_kb": 130,
+    "created_at": "2026-11-25T08:55:24"
+  },
+  {
+    "id": "lora-regular",
+    "file": "lora-regular.ttf",
+    "family": "Lora",
+    "style": "Regular",
+    "vi": true,
+    "original_name": "Lora.ttf",
+    "size_kb": 207,
+    "created_at": "2026-11-25T08:55:24"
+  },
+  {
+    "id": "montserrat-thin",
+    "file": "montserrat-thin.ttf",
+    "family": "Montserrat",
+    "style": "Thin",
+    "vi": true,
+    "original_name": "Montserrat.ttf",
+    "size_kb": 727,
+    "created_at": "2026-11-25T08:55:24"
+  },
+  {
+    "id": "open-sans-regular",
+    "file": "open-sans-regular.ttf",
+    "family": "Open Sans",
+    "style": "Regular",
+    "vi": false,
+    "original_name": "OpenSans.ttf",
+    "size_kb": 520,
+    "created_at": "2026-11-25T08:55:24"
+  },
+  {
+    "id": "roboto-regular",
+    "file": "roboto-regular.ttf",
+    "family": "Roboto",
+    "style": "Regular",
+    "vi": false,
+    "original_name": "Roboto.ttf",
+    "size_kb": 477,
+    "created_at": "2026-11-25T08:55:24"
+  }
+]

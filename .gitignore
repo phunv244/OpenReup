@@ -48,8 +48,7 @@ web/.next/
 web/out/
 web/next-env.d.ts
 data/agy_models.json
-data/fonts/
-data/fonts.json
+data/projects/
 
 # Giọng mẫu đi kèm repo (thư viện giọng dùng chung)
 !data/voices/*.wav

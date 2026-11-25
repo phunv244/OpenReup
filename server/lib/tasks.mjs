@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { DATA_DIR, DOWNLOADS_DIR, ROOT, TASK_LOG } from "../config.mjs";
+import { DATA_DIR, DOWNLOADS_DIR, PORT, ROOT, TASK_LOG } from "../config.mjs";
 import { relOf } from "./util.mjs";
 import { setVideoProject } from "./store.mjs";
 
@@ -101,12 +101,17 @@ function runTask({ type, cmd, args, target = "", projectId = "" }) {
     exitCode: null,
     lastType: type,
   });
-  appendLog(`Bắt đầu: ${path.basename(cmd)} ${args.map((a) => path.basename(String(a))).join(" ")}`);
+  const fmtArg = (a) => (/^https?:\/\//i.test(String(a)) ? String(a) : path.basename(String(a)));
+  appendLog(`Bắt đầu: ${path.basename(cmd)} ${args.map(fmtArg).join(" ")}`);
 
   // detached = nhóm tiến trình riêng, để nút Dừng tắt được cả yt-dlp / ffmpeg / agy con cháu.
   const proc = spawn(cmd, args, {
     cwd: ROOT,
-    env: { ...process.env, DISPLAY: process.env.DISPLAY || ":0" },
+    env: {
+      ...process.env,
+      DISPLAY: process.env.DISPLAY || ":0",
+      AGY_PROXY_URL: process.env.AGY_PROXY_URL || `http://127.0.0.1:${PORT}`,
+    },
     detached: true,
   });
   task.proc = proc;

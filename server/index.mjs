@@ -17,6 +17,8 @@ import sourceRoutes from "./routes/sources.mjs";
 import taskRoutes from "./routes/tasks.mjs";
 import resourceRoutes from "./routes/resources.mjs";
 import voiceRoutes from "./routes/voices.mjs";
+import agyProxyRoutes from "./routes/agyProxy.mjs";
+import agyCliChatRoutes from "./routes/agyCliChat.mjs";
 
 runMigrations();
 clearVoiceTmp();
@@ -27,6 +29,7 @@ const app = Fastify({ bodyLimit: 8_000_000 });
 // DEV_WEB_ORIGIN=localhost:3000 khi chạy giao diện Next ở chế độ dev (npm run dev:web).
 const DEV_ORIGINS = String(process.env.DEV_WEB_ORIGIN || "").split(",").map((s) => s.trim()).filter(Boolean);
 app.addHook("onRequest", async (req, reply) => {
+  if (req.url.startsWith("/v1/")) return; // OpenAI-compatible gateway có CORS & API key riêng
   const origin = req.headers.origin;
   if (req.method !== "POST" || !origin) return;
   let host = "";
@@ -80,6 +83,8 @@ await app.register(projectRoutes);
 await app.register(voiceRoutes);
 await app.register(resourceRoutes);
 await app.register(dubRoutes);
+await app.register(agyProxyRoutes);
+await app.register(agyCliChatRoutes);
 
 for (const sig of ["SIGINT", "SIGTERM"]) {
   process.on(sig, () => {

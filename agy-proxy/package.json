@@ -1,0 +1,17 @@
+{
+  "name": "agy-multi-account-proxy",
+  "version": "1.0.0",
+  "description": "Standalone Antigravity Multi-Account OAuth Proxy & Auto-Fallback OpenAI Gateway (extracted from 9router)",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs",
+    "login": "node cli.mjs login",
+    "accounts": "node cli.mjs list",
+    "quota": "node cli.mjs quota",
+    "test": "node test.mjs"
+  }
+}

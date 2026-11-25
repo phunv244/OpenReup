@@ -65,23 +65,17 @@ def parse_region(mode: str) -> Optional[Tuple[int, int, int, int]]:
 
 
 def build_subcover_filter(mode: str, w: int, h: int) -> str:
-    """Che phụ đề gốc: làm mờ mạnh + tối vùng x,y,w,h (chữ Trung không còn đọc được, nhưng vẫn thấy hình nền)."""
+    """Xóa phụ đề gốc kiểu xóa logo (delogo): nội suy từ viền quanh vùng x,y,w,h nên chữ Trung + viền đen biến mất,
+    không còn khối hộp tối. Cùng 1 lần mã hóa với xóa logo và in phụ đề Việt."""
     r = parse_region(mode)
     if not r:
         return ""
-    # yuv420: số chẵn để crop/overlay không lệch nửa điểm ảnh ở kênh màu
-    x, y = r[0] // 2 * 2, r[1] // 2 * 2
-    bw, bh = min(r[2], w - x) // 2 * 2, min(r[3], h - y) // 2 * 2  # vùng vượt mép thì cắt cho vừa
+    # delogo báo lỗi nếu vùng chạm mép: x,y >= 1 và x+w, y+h <= kích thước - 1
+    x, y = max(1, r[0]), max(1, r[1])
+    bw, bh = min(r[2], w - 1 - x), min(r[3], h - 1 - y)  # vùng vượt mép thì cắt cho vừa
     if bw < 4 or bh < 4:
         return ""
-    # boxblur báo lỗi nếu bán kính > nửa cạnh ngắn; kênh màu chỉ bằng nửa kích thước nên bán kính cũng nửa.
-    luma = max(1, min(24, min(bw, bh) // 2 - 1))
-    chroma = max(1, min(luma, min(bw, bh) // 4 - 1))
-    return (
-        f"split[scv_main][scv_cut];[scv_cut]crop={bw}:{bh}:{x}:{y},"
-        f"boxblur=luma_radius={luma}:luma_power=3:chroma_radius={chroma}:chroma_power=3,eq=brightness=-0.18[scv_blur];"
-        f"[scv_main][scv_blur]overlay={x}:{y}"
-    )
+    return f"delogo=x={x}:y={y}:w={bw}:h={bh}:show=0"
 
 
 # ----------------------------------------------------------------------------

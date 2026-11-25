@@ -52,3 +52,8 @@ data/projects/
 
 # Giọng mẫu đi kèm repo (thư viện giọng dùng chung)
 !data/voices/*.wav
+
+# Dữ liệu token OAuth & cấu hình bí mật (KHÔNG commit)
+.env
+agy-proxy/.env
+agy-proxy/data/

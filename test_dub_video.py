@@ -86,11 +86,11 @@ def test_part_srt_is_shifted_and_clipped():
 
 def test_subcover_filter():
     assert d.build_subcover_filter("none", 1280, 720) == ""
-    vf = d.build_subcover_filter("129,577,1024,87", 1280, 720)
-    # số chẵn (yuv420) và bán kính làm mờ kênh màu không vượt 1/4 cạnh ngắn (ffmpeg báo lỗi nếu vượt)
-    assert "crop=1024:86:128:576" in vf and "overlay=128:576" in vf and "chroma_radius=20" in vf
-    # vùng vượt mép video thì cắt cho vừa
-    assert "crop=100:20:1180:700" in d.build_subcover_filter("1180,700,500,500", 1280, 720)
+    # che phụ đề gốc = xóa kiểu delogo (không còn khối mờ tối)
+    assert d.build_subcover_filter("129,577,1024,87", 1280, 720) == "delogo=x=129:y=577:w=1024:h=87:show=0"
+    # vùng vượt mép video thì cắt cho vừa (delogo không cho chạm mép)
+    assert d.build_subcover_filter("1180,700,500,500", 1280, 720) == "delogo=x=1180:y=700:w=99:h=19:show=0"
+    assert d.build_subcover_filter("0,0,50,50", 1280, 720) == "delogo=x=1:y=1:w=50:h=50:show=0"
 
 
 def test_subtitle_style_and_ass():
@@ -138,6 +138,44 @@ def test_agy_model_argument():
     default, chosen = calls
     assert "--effort" in default and "low" in default and "--model" not in default
     assert chosen[chosen.index("--model") + 1] == "gemini-4-neon-high" and "--effort" not in chosen
+
+
+def test_agy_proxy_call():
+    """Khi bật use_proxy, _call_agy gọi POST /v1/ask và tự bóc JSON kể cả khi bọc markdown."""
+    import json as _json
+
+    captured = {}
+
+    class FakeResp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self):
+            return _json.dumps({
+                "ok": True,
+                "text": "```json\n{\"translations\":[{\"id\":1,\"vi\":\"Xin chào\"}],\"episode_summary\":\"ok\",\"new_characters\":[],\"new_glossary\":[]}\n```",
+                "account": {"email": "acc2@example.com", "priority": 2},
+                "fallbackCount": 1,
+            }).encode("utf-8")
+
+    def fake_urlopen(req, timeout=0):
+        captured["url"] = req.full_url
+        captured["body"] = _json.loads(req.data.decode("utf-8"))
+        return FakeResp()
+
+    real = d.urllib.request.urlopen
+    d.urllib.request.urlopen = fake_urlopen
+    try:
+        t = d.Translator.__new__(d.Translator)
+        t.agy_model = "gemini-3.8-flash"
+        t.use_proxy = True
+        out = t._call_agy("dịch hộ")
+    finally:
+        d.urllib.request.urlopen = real
+
+    assert captured["url"].endswith("/v1/ask")
+    assert captured["body"]["model"] == "gemini-3.8-flash"
+    assert captured["body"]["json"] is True
+    assert out["translations"][0]["vi"] == "Xin chào"
 
 
 def test_delogo_matches_js():

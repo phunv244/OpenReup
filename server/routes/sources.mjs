@@ -65,15 +65,17 @@ export default async function sourceRoutes(app) {
 
   app.post("/api/bilibili/download", async (req, reply) => {
     const body = req.body || {};
-    const url = String(body.url || "").trim();
-    if (body.delogo && !validDelogo(body.delogo)) return fail(reply, 400, "Vị trí logo không hợp lệ.");
+    const url = String(body.url || "")
+      .trim()
+      .replace(/^(https?:\/\/(?:www\.|m\.)?bilibili\.com)\/[a-z]{2}(?:-[a-z]{2})?\/(video\/)/i, "$1/$2");
+    const delogo = String(body.delogo || "none");
+    if (!validDelogo(delogo)) return fail(reply, 400, "Vị trí logo không hợp lệ.");
     if (!/^https?:\/\//i.test(url)) return fail(reply, 400, "Vui lòng nhập link Bilibili hoặc YouTube (bắt đầu bằng http).");
-    const args = [script("download_bilibili.mjs"), "--url", url];
+    const args = [script("download_bilibili.mjs"), "--url", url, "--delogo", delogo];
     if (body.playlist) args.push("--playlist");
     if (body.playlist_items) args.push("--playlist-items", String(body.playlist_items));
     if (body.section) args.push("--section", String(body.section));
     if (body.quality) args.push("--quality", String(body.quality));
-    if (body.delogo) args.push("--delogo", String(body.delogo));
     if (body.perf) args.push("--perf", String(body.perf));
     return send(reply, spawnTask("bilibili_download", NODE, args, "", projectIdOf(body)));
   });

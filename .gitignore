@@ -22,7 +22,6 @@ data/bilibili.json
 data/dubbed.json
 data/story_memory.json
 data/dub_projects/
-data/projects/
 
 # OS & editor files
 .DS_Store
@@ -54,5 +53,3 @@ data/fonts.json
 
 # Giọng mẫu đi kèm repo (thư viện giọng dùng chung)
 !data/voices/*.wav
-# Giọng clone từ kênh của người khác: chỉ giữ trên máy, không đẩy lên git
-data/voices/longtieng.wav

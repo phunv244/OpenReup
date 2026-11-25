@@ -55,4 +55,4 @@ data/fonts.json
 # Giọng mẫu đi kèm repo (thư viện giọng dùng chung)
 !data/voices/*.wav
 # Giọng clone từ kênh của người khác: chỉ giữ trên máy, không đẩy lên git
-data/voices/tuncoi.wav
+data/voices/longtieng.wav

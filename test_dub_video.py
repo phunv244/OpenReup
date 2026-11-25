@@ -162,11 +162,11 @@ def test_cluster_speakers_and_voice_map():
 
     segs = [{"start": i, "end": i + du, "speaker": f"NV{l + 1}", "_f0": 120 if l == 0 else 280}
             for i, (l, du) in enumerate(zip(lab, durs))]
-    vm = d.auto_voice_map(segs, "vieneu-clone:tuncoi")
-    assert vm["NV1"]["voice"] == "vieneu-clone:tuncoi" and vm["NV1"]["gender"] == "male"
+    vm = d.auto_voice_map(segs, "vieneu-clone:longtieng")
+    assert vm["NV1"]["voice"] == "vieneu-clone:longtieng" and vm["NV1"]["gender"] == "male"
     assert vm["NV2"]["gender"] == "female" and vm["NV2"]["voice"] in d.AUTO_VOICES["female"]
     # Giọng của dự án được ưu tiên, nhưng không gán giọng nam cho nhân vật nữ khi còn giọng nữ khác
-    vm = d.auto_voice_map(segs, "vieneu-clone:tuncoi", ["vieneu-clone:tuncoi", "vieneu:Hải Đăng", "vieneu:Mai Anh"])
+    vm = d.auto_voice_map(segs, "vieneu-clone:longtieng", ["vieneu-clone:longtieng", "vieneu:Hải Đăng", "vieneu:Mai Anh"])
     assert vm["NV2"]["voice"] == "vieneu:Mai Anh", vm
 
     # Phân vai: NV1 nói chủ yếu câu của 江云 (đã cấu hình giọng), NV2 là nhân vật AI mới gặp; 1 câu lạc không đổi kết quả
@@ -176,7 +176,7 @@ def test_cluster_speakers_and_voice_map():
     cast = d.match_characters(segs, chars, {"江云"})
     assert cast["NV1"] == {"zh": "江云", "name": "Giang Vân", "is_new": False, "voice": "vieneu:Hải Đăng"}, cast
     assert cast["NV2"]["name"] == "Tiểu Hồng" and cast["NV2"]["is_new"] and cast["NV2"]["voice"] == "", cast
-    vm = d.auto_voice_map(segs, "vieneu-clone:tuncoi", None, {"NV1": "vieneu:Hải Đăng"})
+    vm = d.auto_voice_map(segs, "vieneu-clone:longtieng", None, {"NV1": "vieneu:Hải Đăng"})
     assert vm["NV1"]["voice"] == "vieneu:Hải Đăng" and vm["NV2"]["voice"] in d.AUTO_VOICES["female"], vm
     # Nhóm chỉ có 1 câu ghi tên: chưa đủ căn cứ, để "chưa rõ"
     assert d.match_characters([{"start": 0, "end": 2, "speaker": "NV1", "who": "江云"}], chars, set()) == {}

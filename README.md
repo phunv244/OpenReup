@@ -68,7 +68,7 @@ uv pip install --python .venv/bin/python vieneu   # bản CPU, không cần torc
   link video hoặc video đã tải. Giọng riêng của từng nhân vật đặt trong Ngữ cảnh AI → Nhân vật của dự án. Máy tự chọn đoạn nói 3–8,5 giây sạch nhất,
   hoặc tự nhập mốc giây. Thư viện giọng dùng chung mọi dự án (`data/voices.json` + `data/voices/<ten>.wav`);
   file `.wav` thả tay vào `data/voices/` cũng được tự nhận.
-- Có sẵn `data/voices/tuncoi.wav`: cắt từ video mẫu TunCoi Dub (giọng cao ~320 Hz, đọc nhanh ~4,2 tiếng/giây).
+- Giọng clone `longtieng` (`data/voices/longtieng.wav`, chỉ có trên máy, không nằm trong repo; giọng cao ~320 Hz, đọc nhanh ~4,2 tiếng/giây).
 - Giọng mẫu đi kèm repo (`data/voices/*.wav` + `data/voices.json`): Ông lão, Bà lão, Bé hoạt hình, Chuột chít, Gấu to, Cô tiên
   — tạo bằng cách đổi cao độ giọng VieNeu có sẵn.
 - **Mỗi nhân vật một giọng** (bật sẵn trong hộp thoại Lồng tiếng): sau khi dịch, máy nghe giọng gốc từng câu

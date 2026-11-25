@@ -19,9 +19,11 @@ Toàn bộ pipeline được thiết kế để chạy nhiều ngày liên tục
 | Tải video | `yt-dlp` + `aria2c` 16 kết nối (CDN Bilibili bóp mỗi kết nối ~1 MB/s), tự nối tiếp file `.part`, tự thử lại 5 lần, ước tính dung lượng và kiểm tra ổ cứng **trước** khi tải | `downloads/bilibili/` |
 | Nhận diện | Giải mã từng khối ~10 phút (cắt tại khoảng lặng, không cắt đôi câu), mỗi khối xong là ghi checkpoint | `data/dub_work/<job>/chunks/` |
 | Dịch | 3 lô chạy song song ngay khi khối vừa nhận diện xong; lỗi mạng thì thử lại, lô hỏng không làm mất cả video | cùng file khối |
-| Giọng đọc | 12 luồng chạy nền, cache theo nội dung câu (câu trùng / câu không sửa không phải tạo lại) | `tts/` |
+| Giọng đọc | Trên GPU chạy gộp lô (`infer_batch`), trên CPU chạy đa luồng; cache theo nội dung câu (câu trùng / câu không sửa không phải tạo lại) | `tts/` |
 | Track tiếng | Dựng theo từng phần FLAC khớp timeline chính xác từng mẫu | `audio/` |
-| Xuất video | Mã hóa theo từng phần 10 phút, cache theo nội dung phụ đề; trộn tiếng chạy song song | `parts/` |
+| Xuất video | Tự dùng **GPU NVIDIA NVENC (`h264_nvenc`)** khi khả dụng (tự lùi về `libx264` nếu không có); mã hóa từng phần 10 phút, cache theo nội dung phụ đề; trộn tiếng chạy song song | `parts/` |
+
+- **Luân chuyển GPU tuần tự cho card 4 GB VRAM (như GTX 1650):** Các bước dùng GPU chạy nối tiếp nhau và tự xả sạch VRAM (`unload` + `cuda.empty_cache`) sau mỗi bước: **Nhận diện (Whisper CUDA)** → **Dịch (Cloud `agy`, 0 VRAM)** → **Giọng đọc (VieNeu CUDA theo lô)** → **Xuất video (`h264_nvenc`)**, không bao giờ nạp chồng 2 mô hình lên VRAM cùng lúc.
 
 - **Dừng / mất điện / mất mạng:** bấm **Tiếp tục** ở video đó, mọi công đoạn chạy tiếp từ chỗ đang dở.
 - **Sửa 1 câu rồi xuất lại:** chỉ tạo lại giọng của câu đó và mã hóa lại đúng phần 10 phút chứa nó.

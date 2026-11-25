@@ -1,8 +1,13 @@
 /** Đường dẫn và hằng số dùng chung của server. */
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const VENV_BIN = path.join(ROOT, ".venv", "bin");
+if (fs.existsSync(VENV_BIN) && !(process.env.PATH || "").split(path.delimiter).includes(VENV_BIN)) {
+  process.env.PATH = `${VENV_BIN}${path.delimiter}${process.env.PATH || ""}`;
+}
 export const DATA_DIR = path.join(ROOT, "data");
 export const DATA_JSON = path.join(DATA_DIR, "videos.json");
 export const BILIBILI_JSON = path.join(DATA_DIR, "bilibili.json");

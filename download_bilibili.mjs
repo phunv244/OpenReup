@@ -17,6 +17,10 @@ import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const VENV_BIN = path.join(__dirname, ".venv", "bin");
+if (fs.existsSync(VENV_BIN) && !(process.env.PATH || "").split(path.delimiter).includes(VENV_BIN)) {
+  process.env.PATH = `${VENV_BIN}${path.delimiter}${process.env.PATH || ""}`;
+}
 const OUT_DIR = path.join(__dirname, "downloads", "bilibili");
 const META_JSON = path.join(__dirname, "data", "bilibili.json");
 const MIN_FREE_GB = 5;

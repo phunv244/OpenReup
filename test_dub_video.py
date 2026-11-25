@@ -220,6 +220,100 @@ def test_vieneu_voice_parsing():
             pass
 
 
+def test_gpu_batched_tts_dedup_and_unload():
+    """Trên GPU, ensure_all gộp câu trùng, chạy theo lô theo từng giọng, tự vớt câu lỗi và unload sạch mô hình."""
+    import numpy as np
+
+    sr = 24000
+    tone = np.sin(np.linspace(0, 80, int(sr * 0.5), dtype=np.float32)) * 0.2
+    batch_calls = []
+    closed = []
+
+    class DummyModel:
+        max_batch_size = 4
+
+        def close(self):
+            closed.append(True)
+
+    d.VieNeuEngine._model = DummyModel()
+    orig_gpu = d.tts_will_use_gpu
+    orig_model = d.VieNeuEngine.model
+    orig_batch = d.VieNeuEngine.synth_batch_wavs
+    orig_single = d.VieNeuEngine.synth_mp3
+    try:
+        d.tts_will_use_gpu = lambda: True
+        d.VieNeuEngine.model = classmethod(lambda cls: cls._model)
+
+        def fake_batch(self, texts):
+            batch_calls.append((self.preset, list(texts)))
+            # câu "lỗi lô" trả mảng rỗng để kiểm tra đường vớt lẻ từng câu
+            return [np.zeros(0, dtype=np.float32) if t == "lỗi lô" else tone for t in texts], sr
+
+        def fake_single(self, text, out):
+            return d.VieNeuEngine._wav_to_mp3(tone, sr, out)
+
+        d.VieNeuEngine.synth_batch_wavs = fake_batch
+        d.VieNeuEngine.synth_mp3 = fake_single
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            job = d.Job("test_gpu_tts")
+            job.work = tmp / "work"
+            prog = d.Progress(job, 60.0, False)
+            tts = d.TTS(tmp / "tts", "vieneu:Thiện Minh", 2, prog)
+            items = [
+                ("Xin chào", "vieneu:Thiện Minh"),
+                ("Xin chào", "vieneu:Thiện Minh"),  # câu lặp lại trong video dài -> chỉ tổng hợp 1 lần
+                ("Đi thôi", "vieneu:Thiện Minh"),
+                ("lỗi lô", "vieneu:Thiện Minh"),   # vớt lại bằng synth_mp3
+                ("", "vieneu:Thiện Minh"),
+            ]
+            outs = tts.ensure_all(items)
+            tts.pool.shutdown()
+            assert len(batch_calls) == 1 and batch_calls[0] == ("Thiện Minh", ["Xin chào", "Đi thôi", "lỗi lô"])
+            assert outs[0] == outs[1] and outs[0] is not None and outs[2] is not None and outs[3] is not None and outs[4] is None
+            assert prog.tts_done == len(items)
+            d.VieNeuEngine.unload()
+            assert d.VieNeuEngine._model is None and closed == [True]
+    finally:
+        d.VieNeuEngine._model = None
+        d.tts_will_use_gpu = orig_gpu
+        d.VieNeuEngine.model = orig_model
+        d.VieNeuEngine.synth_batch_wavs = orig_batch
+        d.VieNeuEngine.synth_mp3 = orig_single
+
+
+def test_video_encode_args_and_render_parts():
+    """Kiểm tra chọn NVENC/CPU và xuất thật 1 đoạn video có xóa logo + phụ đề."""
+    args_cpu, used = d.video_encode_args(1_200_000, "cpu")
+    assert not used and "libx264" in args_cpu and "1200000" in args_cpu
+    args_nv, used_nv = d.video_encode_args(1_200_000, "nvenc")
+    assert used_nv and "h264_nvenc" in args_nv and "-cq" in args_nv
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        src = tmp / "in.mp4"
+        subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=duration=1.5:size=640x360:rate=15",
+             "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast", str(src)],
+            check=True,
+        )
+        job = d.Job("test_render")
+        job.work = tmp / "work"
+        job.parts_dir = job.work / "parts"
+        prog = d.Progress(job, 1.5, True)
+        st = src.stat()
+        segs = [{"start": 0.1, "end": 1.2, "vi": "Thử xuất GPU"}]
+        concat = d.render_parts(
+            job, src, segs, 1.5, True, d.build_delogo_filter("top-right", 640, 360),
+            [st.st_size, int(st.st_mtime)], prog, size=(640, 360), encoder="auto",
+        )
+        lines = concat.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 1
+        part_mp4 = Path(lines[0].split("'")[1])
+        assert part_mp4.exists() and part_mp4.stat().st_size > 1000
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

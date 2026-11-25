@@ -36,6 +36,8 @@ export function safeJobId(value) {
 export const validVoice = (v) => /^(vieneu:[\p{L} ]{1,40}|vieneu-clone:[a-z0-9_-]{1,40})$/u.test(String(v));
 // Vị trí logo: preset hoặc vùng pixel "x,y,w,h". Đi thẳng vào filter ffmpeg nên phải chặn chuỗi lạ.
 export const validDelogo = (v) => /^(none|top-right|top-left|both-top|\d{1,5},\d{1,5},\d{1,5},\d{1,5})$/.test(String(v));
+// Vùng che phụ đề gốc: chỉ "none" hoặc vùng pixel x,y,w,h (đi vào filter ffmpeg).
+export const validSubcover = (v) => /^(none|\d{1,5},\d{1,5},\d{1,5},\d{1,5})$/.test(String(v));
 export const validModelId = (v) => /^[a-z0-9.-]{1,40}$/.test(String(v));
 
 /** Chỉ chấp nhận file nằm trong downloads/ (chống ../). Trả về đường dẫn tuyệt đối hoặc "". */

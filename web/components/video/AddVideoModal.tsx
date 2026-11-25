@@ -1,12 +1,10 @@
 "use client";
 /** Thêm video từ Bilibili / YouTube vào dự án đang mở. */
 import { useState } from "react";
-import { PERF_OPTIONS } from "@/lib/format";
 import { useStudio } from "@/lib/studio";
 import { Icon } from "../Icon";
 import { Modal } from "../Modal";
 import { useToast } from "../Toasts";
-import { Options } from "../ui";
 
 const PRESETS: [string, string][] = [
   ["Hợp tuyển tập 151–200 (~5 tiếng)", "https://www.bilibili.com/video/BV1teKEzeEfZ/"],
@@ -18,17 +16,10 @@ const SECTIONS: [string, string][] = [
   ["Giờ thứ 2", "01:00:00,02:00:00"],
   ["Cả video", ","],
 ];
-const LOGO_OPTS: [string, string, string, string[]][] = [
-  ["none", "Không xóa lúc tải", "Nhanh nhất. Xóa logo sau, ngay trong bước lồng tiếng", []],
-  ["top-right", "Góc trên phải", "Thường gặp ở video ngang", ["r"]],
-  ["top-left", "Góc trên trái", "Thường gặp ở video dọc", ["l"]],
-  ["both-top", "Cả 2 góc trên", "Khi không chắc vị trí", ["l", "r"]],
-];
-
 export function AddVideoModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const toast = useToast();
   const { startTask, system } = useStudio();
-  const [f, setF] = useState({ url: "", from: "", to: "", pitems: "", playlist: false, delogo: "none", quality: "720p", perf: "balanced" });
+  const [f, setF] = useState({ url: "", from: "", to: "", pitems: "", playlist: false, quality: "720p" });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setF({ ...f, [k]: e.target.type === "checkbox" ? (e.target as HTMLInputElement).checked : e.target.value });
 
@@ -41,7 +32,7 @@ export function AddVideoModal({ projectId, onClose }: { projectId: string; onClo
     const section = from && to ? `${from}-${to}` : "";
     const ok = await startTask(
       "/api/bilibili/download",
-      { url, section, playlist_items: f.pitems.trim(), playlist: f.playlist, quality: f.quality, delogo: f.delogo, perf: f.perf, project_id: projectId },
+      { url, section, playlist_items: f.pitems.trim(), playlist: f.playlist, quality: f.quality, project_id: projectId },
       section ? `Bắt đầu tải đoạn ${section}` : "Bắt đầu tải video"
     );
     if (ok) onClose();
@@ -94,24 +85,6 @@ export function AddVideoModal({ projectId, onClose }: { projectId: string; onClo
         </fieldset>
       </div>
 
-      <div className="field">
-        <span className="label">Logo của nền tảng</span>
-        <div className="opt-grid">
-          {LOGO_OPTS.map(([v, title, desc, marks]) => (
-            <label key={v} className={`opt ${f.delogo === v ? "checked" : ""}`}>
-              <input type="radio" name="av-delogo" value={v} checked={f.delogo === v} onChange={set("delogo")} />
-              <span className="screen">
-                {marks.map((m) => (
-                  <span key={m} className={`mark ${m}`} />
-                ))}
-              </span>
-              <span className="opt-title">{title}</span>
-              <span className="opt-desc">{desc}</span>
-            </label>
-          ))}
-        </div>
-      </div>
-
       <div className="form-grid">
         <div className="field">
           <label htmlFor="av-quality">Độ phân giải</label>
@@ -121,10 +94,8 @@ export function AddVideoModal({ projectId, onClose }: { projectId: string; onClo
           </select>
         </div>
         <div className="field">
-          <label htmlFor="av-perf">Mức dùng máy khi xóa logo</label>
-          <select id="av-perf" className="select" value={f.perf} onChange={set("perf")}>
-            <Options list={PERF_OPTIONS} />
-          </select>
+          <span className="label">Logo</span>
+          <div className="help">Tải về giữ nguyên hình. Muốn xóa logo thì bật <b>Xóa logo khi xuất</b> ở bước lồng tiếng và khoanh vùng trên khung hình.</div>
         </div>
       </div>
       <div className="modal-foot">

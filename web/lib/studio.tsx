@@ -6,7 +6,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/Toasts";
 import {
-  AsrInfo, BiliVideo, ChannelMeta, DouyinVideo, Dubbed, Project, Source, System, TaskState, Voice, getJSON, postJSON,
+  AsrInfo, BiliVideo, ChannelMeta, DouyinVideo, Dubbed, FontInfo, Project, Source, System, TaskState, Voice, getJSON, postJSON,
 } from "./api";
 import { normalizeVideo } from "./douyin";
 import { taskName } from "./format";
@@ -22,6 +22,8 @@ type Data = {
   system: System;
   voices: { clones: Voice[]; presets: Voice[] };
   asr: AsrInfo;
+  fonts: FontInfo[];
+  systemFonts: string[]; // họ font tiếng Việt có sẵn trong máy
 };
 
 type StartResult = { ok?: boolean; error?: string; queued?: boolean; position?: number };
@@ -49,6 +51,8 @@ const EMPTY: Data = {
   system: { free_gb: 0, total_gb: 0 },
   voices: { clones: [], presets: [] },
   asr: { gpu: {}, models: [], vads: [], vad: "" },
+  fonts: [],
+  systemFonts: [],
 };
 const StudioContext = createContext<Studio | null>(null);
 
@@ -69,7 +73,7 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
   const reload = useCallback(
     async (notify = false) => {
       try {
-        const [vd, bili, dubbed, sources, projects, system, voices, asr] = await Promise.all([
+        const [vd, bili, dubbed, sources, projects, system, voices, asr, fonts] = await Promise.all([
           getJSON<{ videos?: Omit<DouyinVideo, "_season" | "_status">[]; channel_meta?: ChannelMeta; updated_at?: string }>("/api/videos"),
           getJSON<{ videos?: BiliVideo[] }>("/api/bilibili"),
           getJSON<{ videos?: Dubbed[] }>("/api/dubbed"),
@@ -78,6 +82,7 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
           getJSON<System>("/api/system"),
           getJSON<{ clones?: Voice[]; presets?: Voice[] }>("/api/voices"),
           getJSON<Partial<AsrInfo>>("/api/asr-models").catch(() => ({}) as Partial<AsrInfo>),
+          getJSON<{ fonts?: FontInfo[]; system?: string[] }>("/api/fonts").catch(() => ({}) as { fonts?: FontInfo[]; system?: string[] }),
         ]);
         setData({
           videos: (vd.videos || []).map(normalizeVideo),
@@ -90,6 +95,8 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
           system,
           voices: { clones: voices.clones || [], presets: voices.presets || [] },
           asr: { gpu: asr.gpu || {}, models: asr.models || [], vads: asr.vads || [], vad: asr.vad || "" },
+          fonts: fonts.fonts || [],
+          systemFonts: fonts.system || [],
         });
         setLoaded(true);
         if (notify) toast("Đã làm mới dữ liệu", "success");

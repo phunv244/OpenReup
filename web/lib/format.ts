@@ -14,14 +14,6 @@ export const taskName = (type: string) => TASK_NAMES[type] || type || "Tiến tr
 
 export const DUB_STAGES = ["Nhận diện", "Dịch", "Giọng đọc", "Xuất video", "Ghép tiếng"];
 
-export const DELOGO_OPTIONS: [string, string][] = [
-  ["none", "Không xóa logo"],
-  ["top-right", "Góc trên bên phải"],
-  ["top-left", "Góc trên bên trái"],
-  ["both-top", "Cả 2 góc trên"],
-];
-// Khi đã có file video thì cho khoanh vùng tay; lúc tải video mới chưa có khung hình nên không có lựa chọn này.
-export const DELOGO_WITH_REGION: [string, string][] = [...DELOGO_OPTIONS, ["region", "Tự khoanh vùng trên khung hình…"]];
 export const isRegion = (s?: string) => /^\d+,\d+,\d+,\d+$/.test(String(s || ""));
 
 export const PERF_OPTIONS: [string, string][] = [

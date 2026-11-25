@@ -84,6 +84,62 @@ def test_part_srt_is_shifted_and_clipped():
     assert "25:00:00,000" in d.build_srt([{"start": 90000.0, "end": 90001.0, "vi": "giờ thứ 25"}])
 
 
+def test_subcover_filter():
+    assert d.build_subcover_filter("none", 1280, 720) == ""
+    vf = d.build_subcover_filter("129,577,1024,87", 1280, 720)
+    # số chẵn (yuv420) và bán kính làm mờ kênh màu không vượt 1/4 cạnh ngắn (ffmpeg báo lỗi nếu vượt)
+    assert "crop=1024:86:128:576" in vf and "overlay=128:576" in vf and "chroma_radius=20" in vf
+    # vùng vượt mép video thì cắt cho vừa
+    assert "crop=100:20:1180:700" in d.build_subcover_filter("1180,700,500,500", 1280, 720)
+
+
+def test_subtitle_style_and_ass():
+    import subtitles as sb
+
+    assert sb.clean_style(None) is None and sb.clean_style({}) is None
+    st = sb.clean_style({"font": "A,B{x}\nC", "color": "#ff0000", "bg": "javascript", "bg_opacity": 500, "outline_width": -3})
+    assert "," not in st["font"] and "{" not in st["font"] and "\n" not in st["font"]  # không phá được dòng Style của ASS
+    assert st["color"] == "#FF0000" and st["bg"] == "#000000" and st["bg_opacity"] == 100 and st["outline_width"] == 0
+    assert sb._ass_color("#FF8000", 100) == "&H000080FF" and sb._ass_color("#FF8000", 0) == "&HFF0080FF"
+    ass = sb.build_ass([(0, 2.5, "Xin {chào}\nbạn")], 1280, 720)
+    assert "PlayResY: 720" in ass and "Xin chào\\Nbạn" in ass
+    assert ass.count("Dialogue: 0,") == 1 and ass.count("Dialogue: 1,") == 1  # mặc định: có nền + chữ
+    assert "Dialogue: 0," not in sb.build_ass([(0, 1, "a")], 1280, 720, "none", sb.clean_style({"bg_opacity": 0}))
+    # vùng che: chữ căn giữa trong vùng: lề trái/phải theo vùng, đáy chữ phía trên mép dưới vùng
+    lay = sb.layout("128,576,1024,86", 1280, 720)
+    assert lay["ml"] == 132 and lay["mr"] == 132 and lay["cover"]
+    assert (lay["cx"], lay["cy"]) == (640, 619)  # tâm vùng
+    assert lay["size"] == round(86 / 2.6)  # vừa 2 dòng trong vùng
+    assert "{\\an5\\pos(640,619)}" in sb.build_ass([(0, 1, "a")], 1280, 720, "128,576,1024,86")
+    assert sb.layout("none", 1280, 720)["size"] == 40  # 16/288 chiều cao
+
+
+def test_agy_model_argument():
+    """Chọn model thì gọi `agy --model <id>` (id đã gồm mức suy nghĩ); chưa chọn thì giữ `--effort low` như cũ."""
+    import json as _json
+    import types
+
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        out = _json.dumps({"structured_output": {"translations": [{"id": 1, "vi": "x"}]}})
+        return types.SimpleNamespace(returncode=0, stdout=out, stderr="")
+
+    real = d.subprocess.run
+    d.subprocess.run = fake_run
+    try:
+        for model in ["", "gemini-4-neon-high"]:
+            t = d.Translator.__new__(d.Translator)
+            t.agy_model = model
+            t._call_agy("p")
+    finally:
+        d.subprocess.run = real
+    default, chosen = calls
+    assert "--effort" in default and "low" in default and "--model" not in default
+    assert chosen[chosen.index("--model") + 1] == "gemini-4-neon-high" and "--effort" not in chosen
+
+
 def test_delogo_matches_js():
     assert d.build_delogo_filter("top-right", 1920, 1080) == "delogo=x=1411:y=16:w=480:h=73:show=0"
     assert d.build_delogo_filter("none", 1920, 1080) == ""
@@ -112,6 +168,18 @@ def test_cluster_speakers_and_voice_map():
     # Giọng của dự án được ưu tiên, nhưng không gán giọng nam cho nhân vật nữ khi còn giọng nữ khác
     vm = d.auto_voice_map(segs, "vieneu-clone:tuncoi", ["vieneu-clone:tuncoi", "vieneu:Hải Đăng", "vieneu:Mai Anh"])
     assert vm["NV2"]["voice"] == "vieneu:Mai Anh", vm
+
+    # Phân vai: NV1 nói chủ yếu câu của 江云 (đã cấu hình giọng), NV2 là nhân vật AI mới gặp; 1 câu lạc không đổi kết quả
+    for s, who in zip(segs, ["江云", "小红", "江云", "小红", "江云", "小红", "江云", "", "小红"]):
+        s["who"] = who
+    chars = [{"zh": "江云", "vi": "Giang Vân", "voice": "vieneu:Hải Đăng"}, {"zh": "小红", "vi": "Tiểu Hồng"}]
+    cast = d.match_characters(segs, chars, {"江云"})
+    assert cast["NV1"] == {"zh": "江云", "name": "Giang Vân", "is_new": False, "voice": "vieneu:Hải Đăng"}, cast
+    assert cast["NV2"]["name"] == "Tiểu Hồng" and cast["NV2"]["is_new"] and cast["NV2"]["voice"] == "", cast
+    vm = d.auto_voice_map(segs, "vieneu-clone:tuncoi", None, {"NV1": "vieneu:Hải Đăng"})
+    assert vm["NV1"]["voice"] == "vieneu:Hải Đăng" and vm["NV2"]["voice"] in d.AUTO_VOICES["female"], vm
+    # Nhóm chỉ có 1 câu ghi tên: chưa đủ căn cứ, để "chưa rõ"
+    assert d.match_characters([{"start": 0, "end": 2, "speaker": "NV1", "who": "江云"}], chars, set()) == {}
 
 
 def test_segments_db_roundtrip():

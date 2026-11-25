@@ -1,5 +1,6 @@
 /** Bộ icon SVG nét mảnh dùng chung (chép từ giao diện cũ). */
 const ICONS: Record<string, string> = {
+  type: '<path d="M4 7V5h16v2M9 19h6M12 5v14"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   film: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',

@@ -44,7 +44,10 @@ export type TaskState = {
   history: HistoryItem[];
 };
 
-export type Character = { zh: string; vi: string; pronouns?: string; role?: string };
+/** voice: giọng riêng khi lồng tiếng nhiều giọng ("" = máy tự chọn); personality: tính cách (AI tự ghi từ lời thoại, sửa được). */
+export type Character = { zh: string; vi: string; pronouns?: string; role?: string; voice?: string; personality?: string };
+/** Nhóm giọng trong 1 video: name/zh = nhân vật trong truyện mà bước phân vai đoán ra; is_new = chưa có trong ngữ cảnh trước video này. */
+export type Speaker = { voice: string; lines?: number; f0?: number; name?: string; zh?: string; is_new?: boolean };
 export type GlossItem = { zh: string; vi: string };
 
 export type Project = {
@@ -62,14 +65,40 @@ export type Project = {
   updated_at?: string;
 };
 
+/** Kiểu phụ đề Việt in cứng (null = mặc định). Khớp subtitles.py (STYLE_DEFAULTS). */
+export type SubStyle = {
+  font: string;
+  size_pct: number;
+  bold: boolean;
+  color: string;
+  bg: string;
+  bg_opacity: number;
+  outline: string;
+  outline_width: number;
+};
+
+export type FontInfo = {
+  id: string;
+  file: string;
+  family: string;
+  style: string;
+  vi: boolean;
+  original_name: string;
+  size_kb: number;
+  created_at: string;
+};
+
 export type DubParams = {
   voice?: string;
   model?: string;
   speed?: number;
   bg_volume?: number;
   delogo?: string;
+  subcover?: string;
   burn_sub?: boolean;
   multi_voice?: boolean;
+  agy_model?: string;
+  sub_style?: SubStyle | null;
 };
 
 export type Job = {
@@ -103,6 +132,8 @@ export type Dubbed = DubParams & {
   segment_count?: number;
   untranslated?: number;
   cache_mb?: number;
+  size_mb?: number;
+  updated_at?: string;
 };
 
 export type BiliVideo = { local_file: string; title?: string; uploader?: string; delogo?: string };
@@ -160,5 +191,16 @@ export type AsrModel = {
 };
 export type VadModel = { id: string; name: string; installed: boolean; desc: string; extra?: string };
 export type AsrInfo = { gpu: { cuda?: boolean; name?: string; vram_gb?: number }; models: AsrModel[]; vads: VadModel[]; vad: string };
+
+export type AgyGroup = { base: string; name: string; efforts: { effort: string; id: string }[] };
+export type AgyModels = {
+  ok?: boolean;
+  error?: string;
+  fetched_at: string;
+  models: { id: string; name: string }[];
+  groups: AgyGroup[];
+  added?: string[];
+  removed?: string[];
+};
 
 export type System = { free_gb: number; total_gb: number };

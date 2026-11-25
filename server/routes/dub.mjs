@@ -3,9 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { DEFAULT_VOICE, DUBBED_DIR, DUB_WORK_DIR, ROOT, VENV_PYTHON } from "../config.mjs";
 import { db, inTransaction } from "../lib/db.mjs";
+import { getAgyModels, validAgyModel } from "../lib/agy.mjs";
+import { checkSubStyle } from "../lib/fonts.mjs";
 import { loadDubProject, readDubbed, removeDubJob, saveDubProject, updateDubbed } from "../lib/store.mjs";
 import { dubBusyError, spawnTask, task } from "../lib/tasks.mjs";
-import { fail, resolveDownload, safeJobId, validDelogo, validModelId, validVoice } from "../lib/util.mjs";
+import { fail, resolveDownload, safeJobId, validDelogo, validModelId, validSubcover, validVoice } from "../lib/util.mjs";
 
 const dubPy = path.join(ROOT, "dub_video.py");
 const send = (reply, result) => reply.code(result.ok ? 200 : 409).send(result);
@@ -16,6 +18,10 @@ export default async function dubRoutes(app) {
     return { total: videos.length, videos };
   });
 
+  // Model dịch của Antigravity: đọc từ cache; POST làm mới (hỏi lại `agy models`).
+  app.get("/api/agy-models", async () => getAgyModels());
+  app.post("/api/agy-models/refresh", async () => getAgyModels({ refresh: true }));
+
   app.post("/api/dub/start", async (req, reply) => {
     const body = req.body || {};
     const rel = String(body.rel_path || "");
@@ -24,8 +30,12 @@ export default async function dubRoutes(app) {
       return fail(reply, 400, "File video nguồn không hợp lệ.");
     }
     if (body.delogo !== undefined && !validDelogo(body.delogo)) return fail(reply, 400, "Vùng xóa logo không hợp lệ.");
+    if (body.subcover !== undefined && !validSubcover(body.subcover)) return fail(reply, 400, "Vùng che phụ đề gốc không hợp lệ.");
     if (body.voice && !validVoice(body.voice)) return fail(reply, 400, "Giọng đọc không hợp lệ.");
     if (body.model && !validModelId(body.model)) return fail(reply, 400, "Mô hình nhận diện không hợp lệ.");
+    if (body.agy_model && !validAgyModel(body.agy_model)) return fail(reply, 400, "Model dịch không hợp lệ.");
+    const subStyle = checkSubStyle(body.sub_style);
+    if (subStyle.error) return fail(reply, 400, subStyle.error);
     if (!fs.existsSync(VENV_PYTHON)) return fail(reply, 500, "Chưa cài môi trường Python (.venv). Xem mục Cài đặt trong README.");
     const args = [
       "-u", dubPy,
@@ -35,7 +45,10 @@ export default async function dubRoutes(app) {
       "--model", String(body.model || "sensevoice-small"),
       "--bg-volume", String(Number(body.bg_volume ?? 0.05) || 0),
       "--delogo", String(body.delogo || "none"),
+      "--subcover", String(body.subcover || "none"),
     ];
+    if (body.agy_model) args.push("--agy-model", String(body.agy_model));
+    if (subStyle.style) args.push("--sub-style", JSON.stringify(subStyle.style));
     if (body.burn_sub === false) args.push("--no-sub");
     if (body.multi_voice) args.push("--multi-voice");
     if (body.project_id) args.push("--story-project", String(body.project_id));
@@ -79,9 +92,12 @@ export default async function dubRoutes(app) {
     const speakers = proj.speakers || {};
     const spkVoices = body.speaker_voices && typeof body.speaker_voices === "object" ? body.speaker_voices : {};
     const spkEdits = body.speaker_edits && typeof body.speaker_edits === "object" ? body.speaker_edits : {};
+    const subStyle = checkSubStyle(body.sub_style);
     const bad =
+      (subStyle.error) ||
       (body.voice && !validVoice(body.voice) && "Giọng đọc không hợp lệ.") ||
       (body.delogo !== undefined && !validDelogo(body.delogo) && "Vùng xóa logo không hợp lệ.") ||
+      (body.subcover !== undefined && !validSubcover(body.subcover) && "Vùng che phụ đề gốc không hợp lệ.") ||
       (Object.entries(spkVoices).some(([spk, v]) => !speakers[spk] || !validVoice(v)) && "Giọng nhân vật không hợp lệ.") ||
       (Object.values(spkEdits).some((spk) => !speakers[spk]) && "Nhân vật không hợp lệ.");
     if (bad) return fail(reply, 400, bad);
@@ -92,13 +108,29 @@ export default async function dubRoutes(app) {
       for (const [id, vi] of Object.entries(edits)) setVi.run(String(vi).trim(), jobId, Number(id) || 0);
       for (const [id, spk] of Object.entries(spkEdits)) setSpk.run(String(spk), jobId, Number(id) || 0);
     });
+    // Chọn mức làm lại tối thiểu theo thứ thay đổi: chỉ đổi kiểu/vùng phụ đề thì không dựng lại tiếng,
+    // chỉ đổi giọng/âm lượng thì không mã hóa lại hình. Sửa lời mà có in phụ đề thì đổi cả hai.
+    const changed = (k, v) => v !== undefined && JSON.stringify(v) !== JSON.stringify(proj[k] ?? (k === "sub_style" ? null : undefined));
+    const editedText = Object.keys(edits).length > 0;
+    const videoChange =
+      changed("burn_sub", body.burn_sub) || changed("delogo", body.delogo) || changed("subcover", body.subcover) ||
+      (body.sub_style !== undefined && JSON.stringify(subStyle.style ?? null) !== JSON.stringify(proj.sub_style ?? null)) ||
+      (editedText && proj.burn_sub !== false && body.burn_sub !== false);
+    const audioChange =
+      editedText || Object.keys(spkEdits).length > 0 ||
+      (body.voice && body.voice !== proj.voice) ||
+      (body.bg_volume !== undefined && Number(body.bg_volume) !== Number(proj.bg_volume)) ||
+      Object.entries(spkVoices).some(([spk, v]) => speakers[spk].voice !== String(v));
+    const only = videoChange && !audioChange ? "video" : audioChange && !videoChange ? "audio" : "";
     for (const [spk, v] of Object.entries(spkVoices)) speakers[spk].voice = String(v);
     if (body.voice) proj.voice = String(body.voice);
     if (body.bg_volume !== undefined) proj.bg_volume = Number(body.bg_volume) || 0;
     if (body.burn_sub !== undefined) proj.burn_sub = Boolean(body.burn_sub);
     if (body.delogo !== undefined) proj.delogo = String(body.delogo);
+    if (body.subcover !== undefined) proj.subcover = String(body.subcover);
+    if (body.sub_style !== undefined) proj.sub_style = subStyle.style; // null = quay về kiểu mặc định
     saveDubProject(jobId, proj);
-    return send(reply, spawnTask("dub_rerender", VENV_PYTHON, ["-u", dubPy, "--project", jobId], jobId));
+    return send(reply, spawnTask("dub_rerender", VENV_PYTHON, ["-u", dubPy, "--project", jobId, ...(only ? ["--only", only] : [])], jobId));
   });
 
   app.post("/api/dub/assign", async (req) => {

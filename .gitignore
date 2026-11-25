@@ -49,3 +49,6 @@ web/node_modules/
 web/.next/
 web/out/
 web/next-env.d.ts
+data/agy_models.json
+data/fonts/
+data/fonts.json

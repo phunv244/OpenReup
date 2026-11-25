@@ -1,24 +1,26 @@
 "use client";
 /** Sửa lời dịch: phân trang phía server nên video 90 tiếng (>100k câu) vẫn mở tức thì. */
 import { useEffect, useRef, useState } from "react";
-import { dubFileUrl, getJSON } from "@/lib/api";
+import { Speaker, SubStyle, dubFileUrl, getJSON } from "@/lib/api";
 import { fmtDur } from "@/lib/format";
 import { useStudio } from "@/lib/studio";
 import { voiceOptions } from "@/lib/voices";
 import { Icon } from "../Icon";
 import { Modal } from "../Modal";
-import { DelogoField } from "../RegionPicker";
+import { RegionToggle } from "../RegionPicker";
 import { useToast } from "../Toasts";
 import { Options } from "../ui";
+import { SubtitleStudio } from "./SubtitleStudio";
 
 type Segment = { id: number; start: number; end: number; zh: string; vi: string; speaker: string };
-type Speaker = { voice: string; lines?: number; f0?: number };
 type Page = {
   ok?: boolean;
   error?: string;
   title: string;
   voice: string;
   delogo?: string;
+  subcover?: string;
+  sub_style?: SubStyle | null;
   burn_sub?: boolean;
   input_path?: string;
   project_id?: string;
@@ -47,6 +49,8 @@ export function DubEditorModal({ jobId, projectId, onClose }: { jobId: string; p
   const [voice, setVoice] = useState("");
   const [sub, setSub] = useState(true);
   const [delogo, setDelogo] = useState("none");
+  const [subcover, setSubcover] = useState("none");
+  const [subStyle, setSubStyle] = useState<SubStyle | null>(null);
   const video = useRef<HTMLVideoElement>(null);
   const table = useRef<HTMLDivElement>(null);
   const loadSeq = useRef(0);
@@ -72,6 +76,7 @@ export function DubEditorModal({ jobId, projectId, onClose }: { jobId: string; p
         setInfo(d);
         setVoice(d.voice);
         setSub(d.burn_sub !== false);
+        setSubStyle(d.sub_style || null);
       }
       setPage(d);
       if (table.current) table.current.scrollTop = 0;
@@ -89,9 +94,10 @@ export function DubEditorModal({ jobId, projectId, onClose }: { jobId: string; p
 
   async function save() {
     if (!delogo) return toast("Hãy kéo chuột trên khung hình để khoanh vùng logo", "error");
+    if (!subcover) return toast("Hãy kéo chuột trên khung hình để khoanh vùng phụ đề gốc", "error");
     const ok = await startTask(
       "/api/dub/rerender",
-      { job_id: jobId, edits, speaker_edits: spk, speaker_voices: spkVoices, voice, delogo, burn_sub: sub },
+      { job_id: jobId, edits, speaker_edits: spk, speaker_voices: spkVoices, voice, delogo, subcover, sub_style: sub ? subStyle : null, burn_sub: sub },
       "Đang xuất lại — chỉ những câu và đoạn video bị sửa mới phải làm lại"
     );
     if (ok) onClose();
@@ -125,7 +131,8 @@ export function DubEditorModal({ jobId, projectId, onClose }: { jobId: string; p
                 <div className="spk-row" key={k}>
                   <span className={`spk-tag spk-${spkIndex(k)}`}>{k}</span>
                   <span className="muted spk-meta">
-                    {s.lines || 0} câu · ~{s.f0 || "?"} Hz
+                    <b className="spk-name">{s.name || "Chưa rõ là ai"}</b>
+                    {s.is_new && <span className="badge amber">Nhân vật mới</span>} · {s.lines || 0} câu · ~{s.f0 || "?"} Hz
                   </span>
                   <select
                     className="select input-sm"
@@ -140,10 +147,19 @@ export function DubEditorModal({ jobId, projectId, onClose }: { jobId: string; p
               <div className="help">Đổi nhân vật của từng câu ở cột &quot;Nhân vật&quot; nếu máy tách nhầm.</div>
             </div>
           )}
-          {info && <DelogoField id="ed-delogo" label="Xóa logo" rel={info.input_path || ""} initial={info.delogo} onChange={setDelogo} />}
-          <label className="check">
-            <input type="checkbox" checked={sub} onChange={(e) => setSub(e.target.checked)} /> In cứng phụ đề lên video
-          </label>
+          {info && <RegionToggle label="Xóa logo" rel={info.input_path || ""} initial={info.delogo} onChange={setDelogo} />}
+          {info && (
+            <SubtitleStudio
+              rel={info.input_path || ""}
+              burn={sub}
+              onBurn={setSub}
+              subcover={subcover}
+              initialSubcover={info.subcover}
+              onSubcover={setSubcover}
+              style={subStyle}
+              onStyle={setSubStyle}
+            />
+          )}
         </div>
         <div className="editor-main">
           <div className="toolbar">
@@ -205,7 +221,7 @@ export function DubEditorModal({ jobId, projectId, onClose }: { jobId: string; p
                               value={who}
                               onChange={(e) => setMap(spk, setSpk, id, e.target.value, s.speaker || "NV1")}
                             >
-                              <Options list={spkKeys.map((k) => [k, k])} />
+                              <Options list={speakers.map(([k, s]) => [k, s.name ? `${k} · ${s.name}${s.is_new ? " (mới)" : ""}` : k])} />
                             </select>
                           </td>
                         )}

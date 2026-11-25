@@ -2,16 +2,18 @@
 /** Cấu hình rồi bắt đầu (hoặc chạy tiếp) lồng tiếng 1 video. */
 import Link from "next/link";
 import { useState } from "react";
-import { DubParams } from "@/lib/api";
+import { DubParams, SubStyle } from "@/lib/api";
 import { asrTag, pickModel } from "@/lib/asr";
 import { fmtHours, projHref } from "@/lib/format";
 import { useStudio } from "@/lib/studio";
 import { voiceOptions } from "@/lib/voices";
 import { Icon } from "../Icon";
 import { Modal } from "../Modal";
-import { DelogoField } from "../RegionPicker";
+import { RegionToggle } from "../RegionPicker";
 import { useToast } from "../Toasts";
 import { Callout, Options } from "../ui";
+import { AgyModelField } from "./AgyModelField";
+import { SubtitleStudio } from "./SubtitleStudio";
 import { WorkItem } from "./items";
 
 export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; projectId: string; onClose: () => void }) {
@@ -30,14 +32,17 @@ export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; project
     sub: prev.burn_sub !== false,
     multi: prev.multi_voice !== false,
     fresh: false,
+    agy: prev.agy_model || "",
   });
   const [delogo, setDelogo] = useState(prev.delogo || "none");
+  const [subcover, setSubcover] = useState(prev.subcover || "none");
+  const [subStyle, setSubStyle] = useState<SubStyle | null>(prev.sub_style || null);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setF({ ...f, [k]: e.target.type === "checkbox" ? (e.target as HTMLInputElement).checked : e.target.value });
 
   // Ước tính sơ bộ: chỉ để người dùng biết nên để máy chạy qua đêm hay không.
   const dur = Number(v.duration_sec || 0);
-  const encode = f.sub || delogo !== "none";
+  const encode = f.sub || delogo !== "none" || subcover !== "none";
   const slow = 0.5 / Number(f.speed);
   // VieNeu trên CPU: ~1,5 giây máy cho 1 giây lời, lời chiếm ~55% thời lượng video.
   const vieneu = f.voice.startsWith("vieneu") || f.multi ? 0.8 : 0;
@@ -52,6 +57,7 @@ export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; project
   async function run() {
     if (!asr.models.find((x) => x.id === f.model)?.installed) return toast("Mô hình nhận diện này chưa tải về. Mở mục Mô hình nhận diện để tải.", "error");
     if (!delogo) return toast("Hãy kéo chuột trên khung hình để khoanh vùng logo", "error");
+    if (!subcover) return toast("Hãy kéo chuột trên khung hình để khoanh vùng phụ đề gốc", "error");
     const ok = await startTask(
       "/api/dub/start",
       {
@@ -62,8 +68,11 @@ export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; project
         model: f.model,
         bg_volume: Number(f.bg),
         delogo,
+        subcover,
+        sub_style: f.sub ? subStyle : null,
         burn_sub: f.sub,
         multi_voice: f.multi,
+        agy_model: f.agy,
         fresh: f.fresh,
       },
       resumable ? "Đang chạy tiếp từ chỗ đang dở" : "Đã bắt đầu dịch & lồng tiếng"
@@ -113,6 +122,7 @@ export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; project
             Tải thêm / xem so sánh ở mục <Link href="/models/">Mô hình nhận diện</Link>.
           </div>
         </div>
+        <AgyModelField value={f.agy} onChange={(agy) => setF((x) => ({ ...x, agy }))} />
         <div className="field">
           <label htmlFor="mc-speed">Làm chậm khi tách lời</label>
           <select id="mc-speed" className="select" value={f.speed} onChange={set("speed")}>
@@ -127,13 +137,6 @@ export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; project
           </select>
         </div>
         <div className="field">
-          <span className="label">Phụ đề</span>
-          <label className="check">
-            <input type="checkbox" checked={f.sub} onChange={set("sub")} /> In cứng phụ đề Việt nền đen (che chữ Trung)
-          </label>
-          <div className="help">Tắt cả phụ đề lẫn xóa logo thì video được giữ nguyên hình, xuất gần như tức thì.</div>
-        </div>
-        <div className="field">
           <span className="label">Giọng nhân vật</span>
           <label className="check">
             <input type="checkbox" checked={f.multi} onChange={set("multi")} /> Mỗi nhân vật một giọng (tự nhận diện)
@@ -144,7 +147,17 @@ export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; project
           </div>
         </div>
       </div>
-      <DelogoField id="mc-delogo" label="Xóa logo khi xuất" rel={v.rel_path} initial={prev.delogo} onChange={setDelogo} />
+      <RegionToggle label="Xóa logo khi xuất" rel={v.rel_path} initial={prev.delogo} onChange={setDelogo} />
+      <SubtitleStudio
+        rel={v.rel_path}
+        burn={f.sub}
+        onBurn={(sub) => setF((x) => ({ ...x, sub }))}
+        subcover={subcover}
+        initialSubcover={prev.subcover}
+        onSubcover={setSubcover}
+        style={subStyle}
+        onStyle={setSubStyle}
+      />
       {dur > 600 && (
         <Callout tone="info" icon="clock">
           Video dài <b>{fmtHours(dur)}</b> — ước tính xử lý khoảng <b>{fmtHours(dur * factor)}</b> (tùy máy và mạng). Tiến độ được lưu liên tục: dừng, tắt máy

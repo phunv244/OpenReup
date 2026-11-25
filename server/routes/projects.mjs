@@ -60,7 +60,10 @@ export default async function projectRoutes(app) {
       type: body.type !== undefined ? String(body.type) : old.type,
       style: body.style !== undefined ? String(body.style) : old.style,
       synopsis: body.synopsis !== undefined ? String(body.synopsis) : old.synopsis,
-      characters: Array.isArray(body.characters) ? body.characters : old.characters || [],
+      // Giọng riêng của nhân vật (bước phân vai dùng khi lồng tiếng nhiều giọng): giọng không hợp lệ thì bỏ trống = máy tự chọn.
+      characters: Array.isArray(body.characters)
+        ? body.characters.map((c) => ({ ...c, voice: c?.voice && validVoice(c.voice) ? String(c.voice) : "" }))
+        : old.characters || [],
       glossary: Array.isArray(body.glossary) ? body.glossary : old.glossary || [],
       episode_notes: body.episode_notes && typeof body.episode_notes === "object" ? body.episode_notes : old.episode_notes || {},
       // Giọng đọc của dự án, giọng đầu tiên là giọng chính

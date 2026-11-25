@@ -31,7 +31,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
+
+from subtitles import build_ass, build_subcover_filter, clean_style, sub_events, subtitles_filter  # noqa: F401 (tests dùng d.build_subcover_filter)
 
 BASE_DIR = Path(__file__).resolve().parent
 DUB_OUT_DIR = BASE_DIR / "downloads" / "dubbed"
@@ -40,19 +42,16 @@ STORY_PROJECTS_DIR = BASE_DIR / "data" / "projects"
 DB_PATH = BASE_DIR / "data" / "openreup.db"  # câu thoại của mọi bản lồng tiếng (server.mjs đọc/sửa cùng file này)
 DUBBED_INDEX_JSON = BASE_DIR / "data" / "dubbed.json"
 WORK_ROOT = BASE_DIR / "data" / "dub_work"
-AGY_BIN = shutil.which("agy") or "/home/phu/.local/bin/agy"
+AGY_BIN = shutil.which("agy") or str(Path.home() / ".local" / "bin" / "agy")
 
 SAMPLE_RATE = 24000  # track lồng tiếng: PCM 16-bit mono
 STT_PAD_SEC = 30.0  # giải mã dư ra để tìm khoảng lặng mà cắt khối, không cắt giữa câu
 PART_SEC = 600.0  # độ dài mỗi phần video khi phải mã hóa lại (in phụ đề / xóa logo)
 TRANSLATE_BATCH = 45
 AUDIO_PART_SEGS = 150  # số câu thoại trong 1 phần track tiếng = số input của 1 lệnh ffmpeg
-SUB_STYLE = (
-    "FontName=DejaVu Sans,FontSize=16,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H22000000,"
-    "BackColour=&H22000000,BorderStyle=3,Outline=5,Shadow=0,MarginV=18"
-)
 ENCODE_ARGS = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p"]
 
+NARRATOR_ZH = "旁白"  # nhãn AI dùng cho lời dẫn truyện ở trường "who"
 AGY_TRANSLATION_SCHEMA = {
     "type": "object",
     "properties": {
@@ -63,6 +62,7 @@ AGY_TRANSLATION_SCHEMA = {
                 "properties": {
                     "id": {"type": "integer"},
                     "vi": {"type": "string"},
+                    "who": {"type": "string"},
                 },
                 "required": ["id", "vi"],
             },
@@ -77,8 +77,17 @@ AGY_TRANSLATION_SCHEMA = {
                     "vi": {"type": "string"},
                     "role": {"type": "string"},
                     "pronouns": {"type": "string"},
+                    "personality": {"type": "string"},
                 },
                 "required": ["zh", "vi"],
+            },
+        },
+        "character_notes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"zh": {"type": "string"}, "personality": {"type": "string"}},
+                "required": ["zh", "personality"],
             },
         },
         "new_glossary": {
@@ -567,8 +576,11 @@ def run_stt(
 class Translator:
     MAX_CHARS, MAX_GLOSS = 200, 600
 
-    def __init__(self, job: Job, story_ctx: Dict, project_id: str, workers: int, prog: Progress, on_chunk_done):
+    def __init__(self, job: Job, story_ctx: Dict, project_id: str, workers: int, prog: Progress, on_chunk_done, agy_model: str = "",
+                 ask_who: bool = False):
         self.job = job
+        self.ask_who = ask_who  # chỉ hỏi AI "ai nói câu này" khi lồng tiếng nhiều giọng (bước phân vai cần)
+        self.agy_model = agy_model  # "" = model mặc định của Antigravity (id đã gồm mức suy nghĩ, vd gemini-4-neon-high)
         self.ctx = story_ctx or {}
         self.project_id = project_id
         self.prog = prog
@@ -579,6 +591,7 @@ class Translator:
         self.gloss: List[Dict] = list(self.ctx.get("glossary") or [])
         self.new_chars: List[Dict] = []
         self.new_gloss: List[Dict] = []
+        self.new_notes: Dict[str, str] = {}  # {tên gốc: tính cách} AI vừa rút ra, chờ ghi vào dự án
         self.summaries: List[str] = list(job.meta.get("summaries") or [])
         self.fail_streak = 0
         self.failed_segs = 0
@@ -596,7 +609,8 @@ class Translator:
             gloss = self.gloss if len(self.gloss) <= 40 else [g for g in self.gloss if g.get("zh") and g["zh"] in batch_text][:60]
             recent = self.summaries[-3:]
         chars_txt = "\n".join(
-            f"- {c.get('zh')} -> {c.get('vi')} ({c.get('role', '')}; xưng hô: {c.get('pronouns', '')})" for c in chars
+            f"- {c.get('zh')} -> {c.get('vi')} ({c.get('role', '')}; xưng hô: {c.get('pronouns', '')}"
+            + (f"; tính cách: {c['personality']}" if c.get("personality") else "") + ")" for c in chars
         )
         gloss_txt = "\n".join(f"- {g.get('zh')} -> {g.get('vi')}" for g in gloss)
         ep_notes = self.ctx.get("episode_notes") or {}
@@ -621,8 +635,8 @@ class Translator:
             [
                 AGY_BIN,
                 "--disable-slash-commands",
-                "--effort",
-                "low",
+                # Model chọn tay: id đã chứa mức suy nghĩ. Chưa chọn thì giữ cách cũ: model mặc định, suy nghĩ thấp (nhanh).
+                *(["--model", self.agy_model] if self.agy_model else ["--effort", "low"]),
                 "--output-format",
                 "json",
                 "--json-schema",
@@ -659,7 +673,12 @@ class Translator:
             "3. Trả về đúng đủ số lượng 'id' trong mảng 'translations'.\n"
             "4. Viết 'episode_summary' (1-2 câu tóm tắt diễn biến đoạn này để giữ mạch truyện).\n"
             "5. Nếu có nhân vật mới hoặc thuật ngữ mới quan trọng chưa có trong ngữ cảnh trên, điền vào "
-            "'new_characters' / 'new_glossary' (nếu không có thì để mảng rỗng []).\n\n"
+            "'new_characters' / 'new_glossary' (nếu không có thì để mảng rỗng []).\n"
+            + ("6. Với mỗi câu, điền 'who' = tên gốc tiếng Trung của nhân vật ĐANG NÓI câu đó, viết đúng như trong danh sách "
+               f"Nhân vật (hoặc như trong 'new_characters' nếu là nhân vật mới). Lời dẫn truyện điền '{NARRATOR_ZH}'. Không chắc thì để ''.\n"
+               if self.ask_who else "6. KHÔNG điền trường 'who'.\n")
+            + "7. 'character_notes': tính cách / cách nói của nhân vật thể hiện qua lời thoại đoạn này (tối đa 15 từ mỗi nhân vật), "
+            "chỉ ghi cho nhân vật CHƯA có 'tính cách' ở ngữ cảnh trên; nhân vật mới thì điền luôn 'personality'.\n\n"
             + (f"=== CÁC CÂU NGAY TRƯỚC (chỉ để hiểu mạch, KHÔNG dịch lại) ===\n{prev_txt}" if prev_txt else "")
             + f"=== LỜI THOẠI CẦN DỊCH ===\n{payload}"
         )
@@ -672,13 +691,15 @@ class Translator:
                 vi_map = {}
                 for item in ai_out.get("translations") or []:
                     try:
-                        vi_map[int(item["id"])] = (item.get("vi") or "").strip()
+                        vi_map[int(item["id"])] = ((item.get("vi") or "").strip(), str(item.get("who") or "").strip())
                     except (KeyError, TypeError, ValueError):
                         continue
                 got = 0
                 for i, seg in enumerate(batch):
-                    if vi_map.get(i + 1):
-                        seg["vi"] = vi_map[i + 1]
+                    if vi_map.get(i + 1, ("",))[0]:
+                        seg["vi"] = vi_map[i + 1][0]
+                        if self.ask_who:
+                            seg["who"] = vi_map[i + 1][1]
                         got += 1
                 if got < len(batch) * 0.6:
                     raise RuntimeError(f"chỉ nhận được {got}/{len(batch)} câu dịch")
@@ -711,10 +732,18 @@ class Translator:
             for nc in (ai_out.get("new_characters") or [])[:3]:
                 zh, vi = (nc.get("zh") or "").strip(), (nc.get("vi") or "").strip()
                 if zh and vi and zh not in known and len(self.chars) < self.MAX_CHARS:
-                    item = {"zh": zh, "vi": vi, "role": (nc.get("role") or "").strip(), "pronouns": (nc.get("pronouns") or "").strip()}
+                    item = {"zh": zh, "vi": vi, "role": (nc.get("role") or "").strip(), "pronouns": (nc.get("pronouns") or "").strip(),
+                            "personality": (nc.get("personality") or "").strip()[:160]}
                     self.chars.append(item)
                     self.new_chars.append(item)
                     known.add(zh)
+            # Tính cách AI rút ra từ lời thoại: chỉ điền khi nhân vật chưa có ghi chú (không đè lời người dùng viết).
+            by_zh = {c.get("zh", "").strip(): c for c in self.chars}
+            for note in (ai_out.get("character_notes") or [])[:6]:
+                c, txt = by_zh.get(str(note.get("zh") or "").strip()), str(note.get("personality") or "").strip()[:160]
+                if c and txt and not c.get("personality"):
+                    c["personality"] = txt
+                    self.new_notes[c["zh"]] = txt
             known = {g.get("zh", "").strip() for g in self.gloss}
             for ng in (ai_out.get("new_glossary") or [])[:5]:
                 zh, vi = (ng.get("zh") or "").strip(), (ng.get("vi") or "").strip()
@@ -774,10 +803,10 @@ class Translator:
 
     def _persist_memory(self, final: bool) -> None:
         with self.lock:
-            add_chars, add_gloss = self.new_chars, self.new_gloss
-            self.new_chars, self.new_gloss = [], []
+            add_chars, add_gloss, notes_add = self.new_chars, self.new_gloss, self.new_notes
+            self.new_chars, self.new_gloss, self.new_notes = [], [], {}
             summaries = list(self.summaries)
-        if not (add_chars or add_gloss or final):
+        if not (add_chars or add_gloss or notes_add or final):
             return
         p = STORY_PROJECTS_DIR / f"{Path(self.project_id).name}.json"
         proj = read_json(p, None)
@@ -785,6 +814,9 @@ class Translator:
             return
         have = {c.get("zh", "").strip() for c in proj.get("characters") or []}
         proj["characters"] = (proj.get("characters") or []) + [c for c in add_chars if c["zh"] not in have]
+        for c in proj["characters"]:
+            if notes_add.get(c.get("zh", "").strip()) and not c.get("personality"):
+                c["personality"] = notes_add[c["zh"].strip()]
         have = {g.get("zh", "").strip() for g in proj.get("glossary") or []}
         proj["glossary"] = (proj.get("glossary") or []) + [g for g in add_gloss if g["zh"] not in have]
         if final and summaries:
@@ -969,7 +1001,52 @@ def voice_gender(voice: str) -> str:
     return ""
 
 
-def auto_voice_map(segments: List[Dict], main_voice: str, project_voices: Optional[List[str]] = None) -> Dict[str, Dict]:
+def match_characters(segments: List[Dict], characters: List[Dict], known_zh) -> Dict[str, Dict]:
+    """Phân vai: nhóm giọng NVk (máy tách theo âm sắc) là nhân vật nào trong truyện? Bỏ phiếu theo thời lượng các câu
+    AI đã ghi 'who' lúc dịch. Trả {"NV1": {"zh", "name", "is_new", "voice"}} — chỉ gồm nhóm đoán được (>= 2 câu và
+    >= 50% thời lượng có ghi tên). "is_new": nhân vật chưa có trong ngữ cảnh dự án trước video này."""
+    by_zh = {c.get("zh", "").strip(): c for c in characters if c.get("zh")}
+    votes: Dict[str, Dict[str, List[float]]] = {}
+    for s in segments:
+        who = str(s.get("who") or "").strip()
+        if who:
+            v = votes.setdefault(s.get("speaker", "NV1"), {}).setdefault(who, [0.0, 0])
+            v[0] += s["end"] - s["start"]
+            v[1] += 1
+    out: Dict[str, Dict] = {}
+    for spk, tally in votes.items():
+        who, (dur, n) = max(tally.items(), key=lambda kv: kv[1][0])
+        if n < 2 or dur < 0.5 * sum(v[0] for v in tally.values()):
+            continue
+        if who == NARRATOR_ZH:
+            out[spk] = {"zh": who, "name": "Dẫn truyện", "is_new": False, "voice": ""}
+        elif who in by_zh:
+            c = by_zh[who]
+            voice = c.get("voice") or ""
+            out[spk] = {"zh": who, "name": c.get("vi") or who, "is_new": who not in known_zh,
+                        "voice": voice if voice.startswith(("vieneu:", "vieneu-clone:")) else ""}
+    return out
+
+
+def save_character_voices(project_id: str, voices: Dict[str, str]) -> None:
+    """Ghi giọng máy vừa tự chọn vào nhân vật chưa có giọng trong dự án, để các video sau dùng lại đúng giọng đó."""
+    p = STORY_PROJECTS_DIR / f"{Path(project_id).name}.json"
+    proj = read_json(p, None) if project_id and voices else None
+    if not proj:
+        return
+    n = 0
+    for c in proj.get("characters") or []:
+        v = voices.get(c.get("zh", "").strip())
+        if v and not c.get("voice"):
+            c["voice"] = v
+            n += 1
+    if n:
+        write_json_atomic(p, proj, indent=2)
+        log(f"[Nhân vật] Đã ghi giọng tự chọn cho {n} nhân vật vào ngữ cảnh dự án (đổi được trong Ngữ cảnh AI).")
+
+
+def auto_voice_map(segments: List[Dict], main_voice: str, project_voices: Optional[List[str]] = None,
+                   fixed: Optional[Dict[str, str]] = None) -> Dict[str, Dict]:
     """{"NV1": {"voice", "gender", "f0", "lines"}, ...}: NV1 (nói nhiều nhất) giữ giọng đã chọn. Nhân vật khác
     nhận giọng chưa dùng, cùng giới tính đoán từ cao độ (> FEMALE_F0 Hz: nữ/trẻ em): ưu tiên giọng của dự án
     (để đồng bộ với kênh), hết mới lấy giọng VieNeu có sẵn."""
@@ -984,13 +1061,16 @@ def auto_voice_map(segments: List[Dict], main_voice: str, project_voices: Option
         st["dur"] += s["end"] - s["start"]
         if s.get("_f0"):
             st["f0"].append(s["_f0"])
-    used = {main_voice}
+    fixed = fixed or {}  # {"NV2": giọng đã cấu hình cho nhân vật trong ngữ cảnh dự án}
+    used = {main_voice, *fixed.values()}
     out: Dict[str, Dict] = {}
     for spk in sorted(stats, key=lambda k: -stats[k]["dur"]):
         st = stats[spk]
         f0 = round(float(np.median(st["f0"]))) if st["f0"] else 0
         gender = "female" if f0 > FEMALE_F0 else "male"
-        if not out:
+        if spk in fixed:
+            voice = fixed[spk]
+        elif not out:
             voice = main_voice
         else:
             other = "male" if gender == "female" else "female"
@@ -1234,22 +1314,9 @@ def fmt_srt_time(seconds: float) -> str:
 def build_srt(segments: List[Dict], offset: float = 0.0, window: Optional[float] = None) -> str:
     """SRT của cả video, hoặc của 1 phần [offset, offset+window) với mốc giờ dời về 0."""
     lines = []
-    n = 0
-    for seg in segments:
-        txt = (seg.get("vi") or seg.get("zh") or "").strip()
-        start, end = seg["start"] - offset, seg["end"] - offset
-        if not txt or (window is not None and (end <= 0 or start >= window)):
-            continue
-        if window is not None:
-            start, end = max(0.0, start), min(window, end)
-        n += 1
+    for n, (start, end, txt) in enumerate(sub_events(segments, offset, window), 1):
         lines += [str(n), f"{fmt_srt_time(start)} --> {fmt_srt_time(end)}", txt, ""]
     return "\n".join(lines)
-
-
-def escape_subtitles_path(p: Path) -> str:
-    s = str(p.resolve())
-    return s.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
 
 
 def run_ffmpeg(cmd: List[str], total_sec: float, on_frac, err_path: Path) -> None:
@@ -1279,7 +1346,8 @@ def run_ffmpeg(cmd: List[str], total_sec: float, on_frac, err_path: Path) -> Non
 
 
 def render_parts(
-    job: Job, input_mp4: Path, segments: List[Dict], duration: float, burn_sub: bool, delogo_vf: str, sig, prog: Progress
+    job: Job, input_mp4: Path, segments: List[Dict], duration: float, burn_sub: bool, delogo_vf: str, sig, prog: Progress,
+    cover_vf: str = "", subcover: str = "none", sub_style: Optional[Dict] = None, size: Tuple[int, int] = (0, 0),
 ) -> Path:
     # CRF 21 trên nguồn bitrate thấp (Bilibili ~1 Mbps) cho ra file to gấp 3 mà không đẹp hơn:
     # chặn trần ở 1.3 lần bitrate nguồn để video 90 tiếng không ngốn ổ cứng vô ích.
@@ -1297,8 +1365,8 @@ def render_parts(
         dur = min(PART_SEC, duration - t0)
         # chỉ xét các câu quanh phần này (câu dài nhất vài giây) thay vì quét cả 100k câu cho mỗi phần
         near = segments[bisect.bisect_left(starts, t0 - 60) : bisect.bisect_left(starts, t0 + dur)]
-        srt_txt = build_srt(near, offset=t0, window=dur) if burn_sub else ""
-        key = hashlib.sha1(json.dumps([sig, t0, dur, srt_txt, delogo_vf, SUB_STYLE, encode_args]).encode()).hexdigest()[:12]
+        ass_txt = build_ass(sub_events(near, offset=t0, window=dur), size[0], size[1], subcover, sub_style) if burn_sub else ""
+        key = hashlib.sha1(json.dumps([sig, t0, dur, ass_txt, delogo_vf, encode_args] + ([cover_vf] if cover_vf else [])).encode()).hexdigest()[:12]
         part = job.parts_dir / f"p{k:05d}_{key}.mp4"
         keep.append(part)
         if part.exists():
@@ -1307,11 +1375,11 @@ def render_parts(
             continue
         for stale in job.parts_dir.glob(f"p{k:05d}_*"):
             stale.unlink(missing_ok=True)
-        filters = [delogo_vf] if delogo_vf else []
-        if srt_txt:
-            srt_path = job.parts_dir / f"p{k:05d}.srt"
-            srt_path.write_text(srt_txt, encoding="utf-8")
-            filters.append(f"subtitles='{escape_subtitles_path(srt_path)}':force_style='{SUB_STYLE}'")
+        filters = [f for f in (delogo_vf, cover_vf) if f]
+        if ass_txt:
+            ass_path = job.parts_dir / f"p{k:05d}.ass"
+            ass_path.write_text(ass_txt, encoding="utf-8")
+            filters.append(subtitles_filter(ass_path))
         tmp = part.with_suffix(".tmp.mp4")
         prog.note = f"phần {k + 1}/{n_parts} ({fmt_clock(t0)} → {fmt_clock(t0 + dur)})"
 
@@ -1435,8 +1503,13 @@ def main() -> int:
     parser.add_argument("--bg-volume", type=float, default=0.06, help="Âm lượng âm thanh gốc giữ lại (0.0 = tắt hẳn)")
     parser.add_argument("--no-sub", action="store_true", help="Không in cứng phụ đề tiếng Việt lên video")
     parser.add_argument("--delogo", default="none", help="Xóa logo ngay khi xuất: none | top-right | top-left | both-top | x,y,w,h")
+    parser.add_argument("--subcover", default="none", help="Che phụ đề gốc (làm mờ) ở vùng x,y,w,h; phụ đề Việt hiện trong vùng này")
+    parser.add_argument("--sub-style", default="", help="Kiểu phụ đề Việt (JSON: font, color, bg, bg_opacity, outline, outline_width...); rỗng = mặc định")
+    parser.add_argument("--agy-model", default="", help="Model Antigravity dùng để dịch (xem: agy models); rỗng = mặc định")
     parser.add_argument("--multi-voice", action="store_true",
                         help="Tự phân biệt nhân vật theo giọng nói gốc, mỗi nhân vật một giọng VieNeu")
+    parser.add_argument("--only", choices=["video", "audio"], default="",
+                        help="Chỉ với --project: 'video' = chỉ mã hóa lại hình (giữ nguyên tiếng đã xuất), 'audio' = chỉ dựng lại tiếng (giữ nguyên hình đã xuất)")
     parser.add_argument("--fresh", action="store_true", help="Bỏ kết quả dở dang, nhận diện & dịch lại từ đầu")
     parser.add_argument("--chunk-min", type=float, default=10.0, help="Độ dài mỗi khối nhận diện (phút)")
     parser.add_argument("--translate-workers", type=int, default=3, help="Số lô dịch chạy song song")
@@ -1461,6 +1534,9 @@ def main() -> int:
         bg_volume = float(proj.get("bg_volume", 0.06))
         burn_sub = bool(proj.get("burn_sub", True))
         delogo = proj.get("delogo") or "none"
+        subcover = proj.get("subcover") or "none"
+        agy_model = proj.get("agy_model") or ""
+        sub_style = clean_style(proj.get("sub_style"))
         story_project_id = proj.get("project_id", "")
         multi_voice = bool(proj.get("multi_voice"))
         speakers = proj.get("speakers") or {}
@@ -1473,6 +1549,12 @@ def main() -> int:
         input_mp4 = Path(args.input).resolve()
         speed = max(0.25, min(1.5, args.speed))
         voice, bg_volume, burn_sub, delogo = args.voice, args.bg_volume, not args.no_sub, args.delogo
+        subcover = args.subcover
+        agy_model = args.agy_model
+        try:
+            sub_style = clean_style(json.loads(args.sub_style)) if args.sub_style else None
+        except json.JSONDecodeError:
+            raise RuntimeError("--sub-style không phải JSON hợp lệ")
         story_project_id = args.story_project or ""
         multi_voice = args.multi_voice
         speakers = {}
@@ -1495,7 +1577,8 @@ def main() -> int:
     if duration <= 0:
         raise RuntimeError("Không đọc được thời lượng video (file hỏng hoặc tải chưa xong).")
     delogo_vf = build_delogo_filter(delogo, media["w"], media["h"])
-    encode = burn_sub or bool(delogo_vf)
+    cover_vf = build_subcover_filter(subcover, media["w"], media["h"])
+    encode = burn_sub or bool(delogo_vf) or bool(cover_vf)
 
     if not rerender:
         if not media["has_audio"]:
@@ -1511,8 +1594,8 @@ def main() -> int:
             status="running", error="", input_path=str(input_mp4), title=input_mp4.name, duration=round(duration, 1),
             stt_params=stt_params,
             params={"speed": speed, "voice": voice, "model": args.model, "bg_volume": bg_volume, "burn_sub": burn_sub,
-                    "delogo": delogo, "project_id": story_project_id,
-                    "multi_voice": multi_voice},
+                    "delogo": delogo, "subcover": subcover, "project_id": story_project_id,
+                    "multi_voice": multi_voice, "agy_model": agy_model, "sub_style": sub_style},
         )
     else:
         # Xuất lại không đổi `status`: nếu lỗi/dừng, job vẫn là "done" và lời đã sửa trong project không bị
@@ -1535,10 +1618,16 @@ def main() -> int:
     out_srt = DUB_OUT_DIR / f"{job_id}.srt"
     proj_path = PROJECTS_DIR / f"{job_id}.json"
     untranslated = 0
+    # Xuất lại một nửa: lấy nửa còn lại từ bản đã xuất (copy, không mã hóa) — cần bản đã xuất còn nguyên.
+    only = args.only if rerender and out_mp4.exists() else ""
+    if args.only and not only:
+        log("[Xuất lại] Không có bản đã xuất để tái sử dụng — chạy lại đầy đủ.")
+    if only:
+        log(f"[Xuất lại] Chỉ làm lại {'phần HÌNH' if only == 'video' else 'phần TIẾNG'}; {'tiếng' if only == 'video' else 'hình'} lấy lại từ bản đã xuất.")
 
     if not rerender:
         translator = Translator(
-            job, story_ctx, story_project_id, args.translate_workers, prog,
+            job, story_ctx, story_project_id, args.translate_workers, prog, agy_model=agy_model, ask_who=multi_voice,
             # Nhiều giọng: chưa biết câu nào của ai cho tới khi nghe hết video, nên không tạo giọng trước.
             on_chunk_done=None if multi_voice else lambda c: tts.prewarm([tts.item(s) for s in c["segments"]]),
         )
@@ -1571,16 +1660,29 @@ def main() -> int:
                 prog.set_stage("tts")
                 log("[Nhân vật] Đang phân biệt người nói theo giọng gốc...")
                 n = diarize(input_mp4, segments, prog)
-                speakers = auto_voice_map(segments, voice, story_ctx.get("voices"))
+                # Phân vai: nhóm giọng nào là nhân vật nào trong truyện; nhân vật đã cấu hình giọng thì dùng đúng giọng đó.
+                cast = match_characters(segments, translator.chars, {c.get("zh", "").strip() for c in story_ctx.get("characters") or []})
+                speakers = auto_voice_map(segments, voice, story_ctx.get("voices"), {k: c["voice"] for k, c in cast.items() if c["voice"]})
+                # Máy hay tách 1 người thành 2 nhóm giọng (giọng thường / giọng hét): cùng 1 nhân vật thì dùng chung 1 giọng,
+                # lấy theo nhóm nói nhiều nhất (speakers đã xếp theo thời lượng giảm dần).
+                char_voice: Dict[str, str] = {}
+                for k in speakers:
+                    if k in cast:
+                        c = cast[k]
+                        speakers[k].update(zh=c["zh"], name=c["name"], is_new=c["is_new"])
+                        speakers[k]["voice"] = char_voice.setdefault(c["zh"], speakers[k]["voice"])
+                save_character_voices(story_project_id, {c["zh"]: speakers[k]["voice"] for k, c in cast.items() if not c["voice"] and c["zh"] != NARRATOR_ZH})
                 tts.voice_map = {k: v["voice"] for k, v in speakers.items()}
                 for k, v in speakers.items():
-                    log(f"[Nhân vật] {k}: {v['lines']} câu, ~{v['f0']} Hz ({'nữ/trẻ' if v['gender'] == 'female' else 'nam'}) → {v['voice']}")
+                    who = f" = {v['name']}{' (NHÂN VẬT MỚI)' if v.get('is_new') else ''}" if v.get("name") else " (chưa rõ là ai)"
+                    log(f"[Nhân vật] {k}{who}: {v['lines']} câu, ~{v['f0']} Hz ({'nữ/trẻ' if v['gender'] == 'female' else 'nam'}) → {v['voice']}")
                 log(f"[Nhân vật] Tìm thấy {n} nhân vật. Đổi giọng từng nhân vật trong 'Sửa lời' rồi xuất lại nếu cần.")
             except Exception as e:  # thiếu VieNeu / lỗi đọc audio: vẫn lồng tiếng được bằng 1 giọng
                 log(f"[Nhân vật] ⚠ Không phân biệt được nhân vật ({e}) — dùng 1 giọng cho cả video.")
                 multi_voice, speakers = False, {}
             for s in segments:
                 s.pop("_f0", None)
+                s.pop("who", None)
     else:
         prog.stt = 1.0
 
@@ -1597,6 +1699,9 @@ def main() -> int:
             "bg_volume": bg_volume,
             "burn_sub": burn_sub,
             "delogo": delogo,
+            "subcover": subcover,
+            "agy_model": agy_model,
+            "sub_style": sub_style,
             "multi_voice": multi_voice,
             "speakers": speakers,
             "orig_duration_sec": round(duration, 1),
@@ -1607,23 +1712,40 @@ def main() -> int:
     )
     save_segments(job_id, segments)
 
-    prog.set_stage("tts")
-    log(f"[Giọng đọc] Tạo giọng tiếng Việt ({voice}) cho {len(segments)} câu (câu đã có trong cache được dùng lại)...")
-    mp3_files = tts.ensure_all([tts.item(s) for s in segments])
-    if tts.failed:
-        log(f"[Giọng đọc] ⚠ {tts.failed} câu không tạo được âm thanh (sẽ im lặng ở các câu đó).")
+    if only != "video":
+        prog.set_stage("tts")
+        log(f"[Giọng đọc] Tạo giọng tiếng Việt ({voice}) cho {len(segments)} câu (câu đã có trong cache được dùng lại)...")
+        mp3_files = tts.ensure_all([tts.item(s) for s in segments])
+        if tts.failed:
+            log(f"[Giọng đọc] ⚠ {tts.failed} câu không tạo được âm thanh (sẽ im lặng ở các câu đó).")
 
     # Track tiếng được dựng + trộn ở luồng nền trong lúc luồng chính mã hóa video.
     audio_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="audio")
-    audio_future = audio_pool.submit(
-        build_audio, job, input_mp4, segments, tts, duration, bg_volume, media["has_audio"], prog
-    )
+    if only == "video":
+        mix_keep = job.work / "mix.m4a"
+
+        def reuse_audio() -> Path:
+            run_ffmpeg(["-i", str(out_mp4), "-vn", "-map", "0:a:0", "-c:a", "copy", "-f", "mp4", str(mix_keep)],
+                       duration, lambda f: None, job.work / "mix_err.log")
+            return mix_keep
+
+        audio_future = audio_pool.submit(reuse_audio)
+    else:
+        audio_future = audio_pool.submit(
+            build_audio, job, input_mp4, segments, tts, duration, bg_volume, media["has_audio"], prog
+        )
     concat_list = None
     prog.set_stage("render")
-    if encode:
-        what = " + ".join(x for x in ["in phụ đề" if burn_sub else "", "xóa logo" if delogo_vf else ""] if x)
+    if only == "audio":
+        concat_list = job.work / "parts.txt"
+        concat_list.write_text(f"file '{out_mp4}'\n", encoding="utf-8")
+    elif encode:
+        what = " + ".join(x for x in ["in phụ đề" if burn_sub else "", "xóa logo" if delogo_vf else "",
+                                      "che phụ đề gốc" if cover_vf else ""] if x)
         log(f"[Xuất video] Mã hóa lại theo từng phần {int(PART_SEC // 60)} phút ({what})...")
-        concat_list = render_parts(job, input_mp4, segments, duration, burn_sub, delogo_vf, sig, prog)
+        concat_list = render_parts(
+            job, input_mp4, segments, duration, burn_sub, delogo_vf, sig, prog, cover_vf, subcover, sub_style, (media["w"], media["h"])
+        )
     prog.render = 1.0
     prog.note = ""
     mix = audio_future.result()
@@ -1647,6 +1769,9 @@ def main() -> int:
             "bg_volume": bg_volume,
             "burn_sub": burn_sub,
             "delogo": delogo,
+            "subcover": subcover,
+            "agy_model": agy_model,
+            "sub_style": sub_style,
             "segment_count": len(segments),
             "untranslated": untranslated,
             "duration_sec": round(duration),

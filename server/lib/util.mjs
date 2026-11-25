@@ -1,0 +1,58 @@
+/** Đọc/ghi JSON, kiểm tra dữ liệu đầu vào, gọi tiến trình con. */
+import fs from "node:fs";
+import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { DOWNLOADS_DIR, ROOT, STORY_PROJECTS_DIR } from "../config.mjs";
+
+export const execFileP = promisify(execFile);
+
+export function readJson(file, fallback) {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+/** Ghi qua file tạm rồi đổi tên: server bị tắt giữa chừng cũng không làm hỏng file dữ liệu. */
+export function writeJson(file, data, indent = 2) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(data, null, indent), "utf8");
+  fs.renameSync(tmp, file);
+}
+
+/** Trả lỗi dạng {ok:false, error} mà giao diện đang đọc. */
+export const fail = (reply, code, error) => reply.code(code).send({ ok: false, error });
+
+/** job_id chỉ gồm chữ/số/_/- : chặn "." và ".." (path.basename không chặn) trước khi dùng để xóa thư mục. */
+export function safeJobId(value) {
+  const id = path.basename(String(value || ""));
+  return /^[0-9A-Za-z_-]+$/.test(id) ? id : "";
+}
+
+// Giọng đọc: preset VieNeu hoặc giọng clone trong data/voices (đi thẳng vào tham số dòng lệnh).
+export const validVoice = (v) => /^(vieneu:[\p{L} ]{1,40}|vieneu-clone:[a-z0-9_-]{1,40})$/u.test(String(v));
+// Vị trí logo: preset hoặc vùng pixel "x,y,w,h". Đi thẳng vào filter ffmpeg nên phải chặn chuỗi lạ.
+export const validDelogo = (v) => /^(none|top-right|top-left|both-top|\d{1,5},\d{1,5},\d{1,5},\d{1,5})$/.test(String(v));
+export const validModelId = (v) => /^[a-z0-9.-]{1,40}$/.test(String(v));
+
+/** Chỉ chấp nhận file nằm trong downloads/ (chống ../). Trả về đường dẫn tuyệt đối hoặc "". */
+export function resolveDownload(rel) {
+  const resolved = path.resolve(ROOT, String(rel || ""));
+  return resolved.startsWith(DOWNLOADS_DIR + path.sep) ? resolved : "";
+}
+
+/** Đường dẫn tương đối kiểu "downloads/bilibili/x.mp4" (khóa trong video_projects.json). */
+export const relOf = (full) => path.relative(ROOT, full).split(path.sep).join("/");
+
+export const projectFile = (id) => path.join(STORY_PROJECTS_DIR, `${path.basename(String(id || ""))}.json`);
+
+/** project_id gửi kèm khi tải video — chỉ nhận dự án có thật. */
+export function projectIdOf(body) {
+  const pid = path.basename(String(body.project_id || ""));
+  return pid && fs.existsSync(projectFile(pid)) ? pid : "";
+}
+
+export const nowIso = () => new Date().toISOString().slice(0, 19);

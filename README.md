@@ -46,11 +46,61 @@ PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install
 
 # 2. Tạo Python venv cho Whisper & TTS
 uv venv .venv
-uv pip install --python .venv/bin/python faster-whisper edge-tts requests
+uv pip install --python .venv/bin/python faster-whisper requests vieneu
 ```
+
+### Mô hình nhận diện tiếng Trung
+Mục **Mô hình nhận diện** (thanh trái, ngoài dự án) liệt kê các mô hình kèm ghi chú, mô hình chưa có thì có nút **Tải về**.
+Danh mục nằm ở `asr.py` (`CATALOG`); mô hình sherpa-onnx lưu ở `data/asr_models/`, mô hình Whisper ở cache Hugging Face.
+- **SenseVoice-Small** (mặc định): nhanh nhất trên CPU, có dấu câu. Đo trên video 8 phút: 31 giây, sót ~4% lời thoại
+  (Whisper base: 145 giây, sót 21%; Whisper small: 464 giây, sót 22%).
+- Whisper (medium, large-v3-turbo, BELLE large-v3-zh) tự chạy trên GPU NVIDIA khi có; FireRedASR chạy qua sherpa-onnx (CPU).
+- Cần `uv pip install --python .venv/bin/python sherpa-onnx` cho SenseVoice / Paraformer / FireRedASR.
+- **Bộ lọc giọng nói (VAD)** chọn ở cùng trang. Đo trên video 8 phút với SenseVoice: FireRedVAD 1178 chữ (khuyên dùng,
+  cần PyTorch CPU ~760 MB), Silero 2 lượt 1072 chữ (nhẹ, không cần cài thêm), TEN VAD 933 chữ.
+
+### Giọng đọc VieNeu-TTS (offline, clone giọng)
+```bash
+uv pip install --python .venv/bin/python vieneu   # bản CPU, không cần torch/GPU
+```
+- Chọn giọng `VieNeu · ...` (25 giọng có sẵn) hoặc giọng clone trong hộp thoại Lồng tiếng.
+- **Mục "Giọng đọc" của dự án**: tick các giọng dự án dùng (giọng đầu là giọng chính), nghe thử bằng câu tự gõ,
+  và **Clone giọng mới** từ file tải lên, link video hoặc video trong dự án. Máy tự chọn đoạn nói 3–8,5 giây sạch nhất,
+  hoặc tự nhập mốc giây. Thư viện giọng dùng chung mọi dự án (`data/voices.json` + `data/voices/<ten>.wav`);
+  file `.wav` thả tay vào `data/voices/` cũng được tự nhận.
+- Có sẵn `data/voices/tuncoi.wav`: cắt từ video mẫu TunCoi Dub (giọng cao ~320 Hz, đọc nhanh ~4,2 tiếng/giây).
+- **Mỗi nhân vật một giọng** (bật sẵn trong hộp thoại Lồng tiếng): sau khi dịch, máy nghe giọng gốc từng câu
+  (bộ trích đặc trưng giọng của VieNeu) và gom thành NV1, NV2… NV1 (nói nhiều nhất) dùng giọng đã chọn, nhân vật khác
+  tự nhận giọng VieNeu nam/nữ theo cao độ (> 185 Hz coi là nữ/trẻ em). Trong **Sửa lời**: đổi giọng từng nhân vật,
+  đổi nhân vật của từng câu nếu máy tách nhầm, rồi **Lưu & xuất lại** (chỉ câu bị đổi mới phải đọc lại).
+- Tốc độ trên CPU 4 nhân (Ryzen 5 2400G): ~1,5 giây máy cho 1 giây lời. Video 13 phút mất thêm ~10 phút;
+  video vài chục tiếng nên chạy trên máy có GPU NVIDIA (`uv pip install "vieneu[cuda]"`, nhanh ~25 lần).
+
+### Dữ liệu
+- Câu thoại của các bản lồng tiếng nằm trong SQLite `data/openreup.db` (bảng `segments`), cần Node ≥ 22.13 (`node:sqlite`).
+  File `data/dub_projects/<job>.json` chỉ còn thông tin chung. File đời cũ được tự chuyển lúc khởi động server,
+  bản gốc giữ ở `data/dub_projects/_backup_json/`.
 
 ### Khởi chạy giao diện Web
 ```bash
-DISPLAY=:0 node server.mjs
+npm --prefix web install          # lần đầu: cài thư viện giao diện
+npm run build:web                 # build giao diện (chạy lại sau mỗi lần sửa web/)
+DISPLAY=:0 node server.mjs        # hoặc: npm start
 ```
 Mở trình duyệt tại **http://localhost:3456**.
+
+### Cấu trúc code
+- **Server (Fastify)**: `server.mjs` chỉ khởi động `server/index.mjs`. Mỗi nhóm API một file trong `server/routes/`
+  (`tasks`, `sources`, `projects`, `voices`, `dub`); phần dùng chung trong `server/lib/` (hàng đợi tiến trình, SQLite,
+  dữ liệu JSON, ảnh xem trước, giọng đọc). Thêm API mới: thêm `app.get/post(...)` vào file route tương ứng.
+- **Giao diện (Next.js + React, thư mục `web/`)**: build thành file tĩnh (`web/out`), server Fastify phục vụ ở `/`.
+  - `web/app/` — mỗi trang một thư mục: `/` Dự án, `/models`, `/logs`, `/help`, và trong dự án
+    `/project/videos|douyin|voices|logs/?id=<dự án>`.
+  - `web/components/` — khung trang, cột tiến trình, hộp thoại, bộ khoanh vùng logo; `components/video/` là các hộp thoại
+    của trang Video (lồng tiếng, sửa lời, thêm video...).
+  - `web/lib/studio.tsx` — dữ liệu dùng chung (dự án, video, giọng, mô hình, tiến trình); mọi trang đọc qua `useStudio()`.
+- Sửa giao diện có tải lại tức thì: chạy 2 lệnh ở 2 terminal rồi mở **http://localhost:3000**
+  ```bash
+  npm run dev:api
+  npm run dev:web
+  ```

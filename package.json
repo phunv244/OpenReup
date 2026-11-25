@@ -1,15 +1,20 @@
 {
-  "name": "reupdouyin",
+  "name": "openreup-studio",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.mjs",
+    "build:web": "npm --prefix web run build",
+    "dev:api": "DEV_WEB_ORIGIN=localhost:3000 node --watch server.mjs",
+    "dev:web": "npm --prefix web run dev",
+    "test": ".venv/bin/python test_dub_video.py"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@fastify/static": "^10.1.12",
+    "fastify": "^5.12.8",
     "playwright-core": "^1.65.1"
   }
 }

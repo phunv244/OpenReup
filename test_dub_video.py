@@ -88,6 +88,68 @@ def test_delogo_matches_js():
     assert d.build_delogo_filter("top-right", 1920, 1080) == "delogo=x=1411:y=16:w=480:h=73:show=0"
     assert d.build_delogo_filter("none", 1920, 1080) == ""
     assert d.build_delogo_filter("both-top", 1280, 720).count("delogo=") == 2
+    assert d.build_delogo_filter("10,20,300,60", 1920, 1080) == "delogo=x=10:y=20:w=300:h=60:show=0"
+
+
+def test_cluster_speakers_and_voice_map():
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    a, b = rng.normal(size=192), rng.normal(size=192)
+    # 2 người nói xen kẽ + 1 câu rất ngắn: câu ngắn phải được gán theo nhóm gần nhất, không thành nhân vật mới
+    raw = [a, b, a, b, a, b, a, b, a * 0.9 + b * 0.1]
+    emb = np.stack([v + rng.normal(scale=0.15, size=192) for v in raw])
+    emb /= np.linalg.norm(emb, axis=1, keepdims=True)
+    durs = np.array([3.0, 2, 3, 2, 3, 2, 3, 2, 0.4])
+    lab = d.cluster_speakers(emb, durs)
+    assert list(lab) == [0, 1, 0, 1, 0, 1, 0, 1, 0], lab  # 0 = người nói nhiều nhất
+
+    segs = [{"start": i, "end": i + du, "speaker": f"NV{l + 1}", "_f0": 120 if l == 0 else 280}
+            for i, (l, du) in enumerate(zip(lab, durs))]
+    vm = d.auto_voice_map(segs, "vieneu-clone:tuncoi")
+    assert vm["NV1"]["voice"] == "vieneu-clone:tuncoi" and vm["NV1"]["gender"] == "male"
+    assert vm["NV2"]["gender"] == "female" and vm["NV2"]["voice"] in d.AUTO_VOICES["female"]
+    # Giọng của dự án được ưu tiên, nhưng không gán giọng nam cho nhân vật nữ khi còn giọng nữ khác
+    vm = d.auto_voice_map(segs, "vieneu-clone:tuncoi", ["vieneu-clone:tuncoi", "vieneu:Hải Đăng", "vieneu:Mai Anh"])
+    assert vm["NV2"]["voice"] == "vieneu:Mai Anh", vm
+
+
+def test_segments_db_roundtrip():
+    old = d.DB_PATH
+    with tempfile.TemporaryDirectory() as tmp:
+        d.DB_PATH = Path(tmp) / "t.db"
+        try:
+            segs = [{"id": 1, "start": 0.0, "end": 1.5, "zh": "大家好", "vi": "Chào mọi người", "speaker": "NV2"},
+                    {"id": 2, "start": 2.0, "end": 3.0, "zh": "走", "vi": ""}]
+            d.save_segments("job_a", segs)
+            d.save_segments("job_b", segs[:1])
+            d.save_segments("job_a", segs)  # ghi lại không nhân đôi
+            assert d.load_segments("job_a") == segs
+            assert len(d.load_segments("job_b")) == 1 and d.load_segments("khong_co") == []
+        finally:
+            d.DB_PATH = old
+
+
+def test_voice_ref_candidates():
+    import voice_tool as vt
+
+    sr = 16000
+    sp = lambda a, b: {"start": int(a * sr), "end": int(b * sr)}
+    # 2 câu sát nhau gộp thành 1 cụm 5 giây; câu lẻ 2 giây bị loại; khoảng nói 20 giây chỉ lấy 7 giây đầu
+    got = vt.pick_candidates([sp(0, 2.5), sp(2.7, 5.0), sp(10, 12), sp(30, 50)], sr)
+    assert got == [(0.0, 5.0), (30.0, 37.0)], got
+    assert vt.pick_candidates([sp(0, 3.4)], sr) == [] and vt.pick_candidates([sp(0, 3.4)], sr, vt.MIN_REF) == [(0.0, 3.4)]
+
+
+def test_vieneu_voice_parsing():
+    # Không nạp mô hình: chỉ kiểm tra cách hiểu tên giọng và chặn đường dẫn lạ.
+    assert d.VieNeuEngine("vieneu:Hải Đăng").preset == "Hải Đăng"
+    for bad in ["vieneu-clone:../x", "vieneu-clone:Abc", "vieneu-clone:", "vi-VN-NamMinhNeural", "vieneu:"]:
+        try:
+            d.VieNeuEngine(bad)
+            raise AssertionError(bad)
+        except ValueError:
+            pass
 
 
 if __name__ == "__main__":

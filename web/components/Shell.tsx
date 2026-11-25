@@ -51,7 +51,6 @@ function Nav() {
           count={sources.filter((s) => s.project_id === pid).length} />
         <NavLink href={projHref(pid, "douyin")} icon="list" label="Kho Douyin" active={sub === "douyin"} count={videos.length} />
         <NavLink href={projHref(pid, "voices")} icon="mic" label="Giọng đọc" active={sub === "voices"} count={(proj.voices || []).length} />
-        <NavLink href={projHref(pid, "resources")} icon="type" label="Tài nguyên" active={sub === "resources"} count={fonts.length} />
         <button className="nav-link" type="button" onClick={() => openDrawer(pid)}>
           <Icon name="brain" />
           <span>Ngữ cảnh AI</span>
@@ -64,6 +63,7 @@ function Nav() {
   return (
     <nav className="nav" aria-label="Điều hướng chính">
       <NavLink href="/" icon="folder" label="Dự án" count={projects.length} active={path === "/" || path.startsWith("/project")} />
+      <NavLink href="/resources/" icon="type" label="Tài nguyên" active={path === "/resources"} count={fonts.length} />
       <NavLink href="/models/" icon="brain" label="Mô hình nhận diện" active={path === "/models"} count={asr.models.filter((m) => m.installed).length} />
       <NavLink href="/logs/" icon="terminal" label="Nhật ký" active={path === "/logs"} />
     </nav>

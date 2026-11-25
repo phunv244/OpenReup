@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
-import { ProjectTopbar } from "@/components/ProjectTopbar";
+import { Topbar } from "@/components/Shell";
 import { useToast } from "@/components/Toasts";
 import { Callout } from "@/components/ui";
 import { FontInfo, postJSON } from "@/lib/api";
@@ -80,7 +80,7 @@ export default function ResourcesPage() {
 
   return (
     <>
-      <ProjectTopbar title="Tài nguyên" sub="Font chữ và các tài nguyên dùng chung cho mọi dự án" />
+      <Topbar title="Tài nguyên" sub="Font chữ và các tài nguyên dùng chung cho mọi dự án" />
       {/* @font-face cho chữ mẫu */}
       <style>{fonts.map((f) => `@font-face{font-family:"rf-${f.id}";src:url("/api/fonts/file?id=${f.id}")}`).join("")}</style>
       <main className="content">

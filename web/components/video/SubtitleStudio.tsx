@@ -6,8 +6,6 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { SubStyle } from "@/lib/api";
-import { projHref } from "@/lib/format";
-import { useProjectId } from "@/lib/project";
 import { useStudio } from "@/lib/studio";
 import { isRegionValue, startingStyle } from "@/lib/subtitle";
 import { Icon } from "../Icon";
@@ -63,7 +61,6 @@ type Props = {
 };
 
 export function SubtitleStudio({ rel, burn, onBurn, subcover, initialSubcover, onSubcover, style, onStyle }: Props) {
-  const pid = useProjectId();
   const { fonts, systemFonts } = useStudio();
   const coverOn = subcover !== "none";
   const region = isRegionValue(subcover) ? subcover : "none";
@@ -263,7 +260,7 @@ export function SubtitleStudio({ rel, burn, onBurn, subcover, initialSubcover, o
                 <button type="button" className={`chip bold-chip ${cur.bold ? "active" : ""}`} aria-pressed={cur.bold} title="In đậm" onClick={() => set("bold", !cur.bold)}>
                   B
                 </button>
-                <Link className="sub-more" href={projHref(pid, "resources")} title="Tải thêm font ở mục Tài nguyên">
+                <Link className="sub-more" href="/resources/" title="Tải thêm font ở mục Tài nguyên">
                   <Icon name="type" size={15} /> Thêm font
                 </Link>
               </div>

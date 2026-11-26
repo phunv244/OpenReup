@@ -2,6 +2,7 @@
 /** Sửa lời dịch: phân trang phía server nên video 90 tiếng (>100k câu) vẫn mở tức thì. */
 import { useEffect, useRef, useState } from "react";
 import { Speaker, SubStyle, dubFileUrl, getJSON } from "@/lib/api";
+import { setMap } from "@/lib/editMap";
 import { fmtDur } from "@/lib/format";
 import { useStudio } from "@/lib/studio";
 import { voiceOptions } from "@/lib/voices";
@@ -11,6 +12,7 @@ import { RegionToggle } from "../RegionPicker";
 import { useToast } from "../Toasts";
 import { Options } from "../ui";
 import { SubtitleStudio } from "./SubtitleStudio";
+import { TimelineEditor } from "./TimelineEditor";
 
 type Segment = { id: number; start: number; end: number; zh: string; vi: string; speaker: string };
 type Page = {
@@ -103,11 +105,11 @@ export function DubEditorModal({ jobId, projectId, onClose }: { jobId: string; p
     if (ok) onClose();
   }
 
-  const setMap = (map: Record<string, string>, setter: (m: Record<string, string>) => void, key: string, val: string, orig: string) => {
-    const next = { ...map };
-    if (val !== orig) next[key] = val;
-    else delete next[key];
-    setter(next);
+  const onStructuralChange = (removedIds: number[]) => {
+    const dropIds = new Set(removedIds.map(String));
+    setEdits((m) => Object.fromEntries(Object.entries(m).filter(([k]) => !dropIds.has(k))) as Record<string, string>);
+    setSpk((m) => Object.fromEntries(Object.entries(m).filter(([k]) => !dropIds.has(k))) as Record<string, string>);
+    setQ((q) => ({ ...q }));
   };
 
   return (
@@ -162,6 +164,18 @@ export function DubEditorModal({ jobId, projectId, onClose }: { jobId: string; p
           )}
         </div>
         <div className="editor-main">
+          {info && (
+            <TimelineEditor
+              jobId={jobId}
+              video={video}
+              speakers={speakers}
+              edits={edits}
+              setEdits={setEdits}
+              spk={spk}
+              setSpk={setSpk}
+              onStructuralChange={onStructuralChange}
+            />
+          )}
           <div className="toolbar">
             <input
               className="input"

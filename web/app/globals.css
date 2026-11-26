@@ -1011,6 +1011,35 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .editor-table td.zh { color: var(--text-2); font-size: 13px; width: 34%; }
 .editor-table tr.edited td:last-child .input { border-color: var(--amber); background: var(--amber-soft); }
 .editor-pager { display: flex; align-items: center; justify-content: center; gap: 14px; padding-top: 10px; font-size: 12.5px; }
+
+/* Timeline cắt-ghép (TimelineEditor) */
+.tl-wrap { border: 1px solid var(--surface-3); border-radius: var(--radius); background: var(--surface-2); padding: 10px; margin-bottom: 12px; flex: none; }
+.tl-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.tl-time { font-size: 12.5px; font-variant-numeric: tabular-nums; min-width: 92px; }
+.tl-scroll { overflow-x: auto; overflow-y: hidden; border-radius: var(--radius-sm); background: var(--surface); }
+.tl-ruler { position: relative; height: 20px; border-bottom: 1px solid var(--surface-3); }
+.tl-tick { position: absolute; top: 0; font-size: 10.5px; color: var(--text-2); padding-left: 4px; border-left: 1px solid var(--surface-3); height: 100%; display: flex; align-items: center; white-space: nowrap; }
+.tl-track { position: relative; height: 56px; cursor: pointer; }
+.tl-loading { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12.5px; }
+.tl-block {
+  position: absolute; top: 6px; height: 44px; border-radius: 9px; background: var(--spk, var(--accent)); opacity: 0.82;
+  display: flex; align-items: center; overflow: hidden; cursor: pointer; transition: opacity 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.tl-block:hover { opacity: 1; }
+.tl-block.sel { opacity: 1; box-shadow: 0 0 0 2px var(--text), inset 0 0 0 1px rgba(0, 0, 0, 0.15); z-index: 2; }
+.tl-block.edited { box-shadow: 0 0 0 2px var(--amber); }
+.tl-block-text { color: #fff; font-size: 11.5px; padding: 0 10px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; pointer-events: none; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); }
+.tl-handle { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; }
+.tl-handle-l { left: 0; border-radius: 9px 0 0 9px; }
+.tl-handle-r { right: 0; border-radius: 0 9px 9px 0; }
+.tl-handle:hover { background: rgba(255, 255, 255, 0.35); }
+.tl-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--red, #e53935); pointer-events: none; z-index: 3; }
+.tl-detail { margin-top: 10px; padding: 10px; border-radius: var(--radius-sm); background: var(--surface); display: flex; flex-direction: column; gap: 8px; }
+.tl-detail-head { display: flex; align-items: center; gap: 8px; }
+.tl-detail-head .select { max-width: 220px; }
+.tl-detail-zh { font-size: 12.5px; }
+.tl-detail-vi { resize: vertical; }
 .time-btn {
   border: 0;
   background: var(--surface-3);

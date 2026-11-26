@@ -133,6 +133,102 @@ export default async function dubRoutes(app) {
     return send(reply, spawnTask("dub_rerender", VENV_PYTHON, ["-u", dubPy, "--project", jobId, ...(only ? ["--only", only] : [])], jobId));
   });
 
+  // Toàn bộ câu thoại để vẽ thanh timeline (tối đa 4000 câu đầu — đủ cho video thường, video siêu dài dùng bảng tìm kiếm bên dưới).
+  app.get("/api/dub/outline", async (req, reply) => {
+    const jobId = safeJobId(req.query.id);
+    const proj = loadDubProject(jobId);
+    if (!proj) return fail(reply, 404, "Không tìm thấy dữ liệu phụ đề của bản lồng tiếng này.");
+    const total = db.prepare("SELECT count(*) AS n FROM segments WHERE job_id = ?").get(jobId).n;
+    const CAP = 4000;
+    const items = db
+      .prepare(`SELECT id, start_s AS start, end_s AS "end", zh, vi, speaker FROM segments WHERE job_id = ? ORDER BY start_s, id LIMIT ?`)
+      .all(jobId, CAP);
+    return { total, truncated: total > CAP, items };
+  });
+
+  // Sửa mốc giờ (kéo mép khối trên timeline) hoặc người nói của 1 câu — ghi ngay, chưa cần "Lưu & xuất lại" mới thấy trên timeline.
+  app.post("/api/dub/segment/update", async (req, reply) => {
+    const body = req.body || {};
+    const jobId = safeJobId(body.job_id);
+    const id = Number(body.id);
+    const proj = loadDubProject(jobId);
+    if (!proj || !Number.isInteger(id)) return fail(reply, 400, "Thiếu job_id hoặc id câu.");
+    if (task.proc && task.type.startsWith("dub_")) return fail(reply, 409, "Đang có tiến trình lồng tiếng chạy. Hãy chờ xong hoặc dừng trước.");
+    const row = db.prepare('SELECT start_s AS start, end_s AS "end" FROM segments WHERE job_id = ? AND id = ?').get(jobId, id);
+    if (!row) return fail(reply, 404, "Không tìm thấy câu này.");
+    let start = body.start !== undefined ? Number(body.start) : row.start;
+    let end = body.end !== undefined ? Number(body.end) : row.end;
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) return fail(reply, 400, "Mốc giờ không hợp lệ.");
+    const prev = db.prepare('SELECT end_s AS "end" FROM segments WHERE job_id = ? AND start_s < ? ORDER BY start_s DESC LIMIT 1').get(jobId, row.start);
+    const next = db.prepare("SELECT start_s AS start FROM segments WHERE job_id = ? AND start_s > ? ORDER BY start_s ASC LIMIT 1").get(jobId, row.start);
+    if (prev && start < prev.end) start = prev.end;
+    if (next && end > next.start) end = next.start;
+    if (end <= start) return fail(reply, 400, "Khoảng thời gian chạm vào câu bên cạnh.");
+    const sets = ["start_s = ?", "end_s = ?"];
+    const params = [start, end];
+    if (body.speaker !== undefined) {
+      sets.push("speaker = ?");
+      params.push(String(body.speaker));
+    }
+    db.prepare(`UPDATE segments SET ${sets.join(", ")} WHERE job_id = ? AND id = ?`).run(...params, jobId, id);
+    return { ok: true, id, start, end };
+  });
+
+  // Cắt 1 câu làm 2 tại mốc giờ `at` (kéo từ thanh timeline): câu đầu giữ lời cũ, câu sau để trống cho người dùng gõ lại.
+  app.post("/api/dub/segment/split", async (req, reply) => {
+    const body = req.body || {};
+    const jobId = safeJobId(body.job_id);
+    const id = Number(body.id);
+    const at = Number(body.at);
+    const proj = loadDubProject(jobId);
+    if (!proj || !Number.isInteger(id) || !Number.isFinite(at)) return fail(reply, 400, "Thiếu tham số.");
+    if (task.proc && task.type.startsWith("dub_")) return fail(reply, 409, "Đang có tiến trình lồng tiếng chạy. Hãy chờ xong hoặc dừng trước.");
+    const row = db.prepare('SELECT start_s AS start, end_s AS "end", speaker FROM segments WHERE job_id = ? AND id = ?').get(jobId, id);
+    if (!row) return fail(reply, 404, "Không tìm thấy câu này.");
+    if (at <= row.start + 0.05 || at >= row.end - 0.05) return fail(reply, 400, "Mốc cắt phải nằm giữa câu, cách 2 đầu ít nhất 0,05 giây.");
+    const newId = (db.prepare("SELECT max(id) AS m FROM segments WHERE job_id = ?").get(jobId).m || 0) + 1;
+    inTransaction(() => {
+      db.prepare("UPDATE segments SET end_s = ? WHERE job_id = ? AND id = ?").run(at, jobId, id);
+      db.prepare("INSERT INTO segments (job_id, id, start_s, end_s, zh, vi, speaker) VALUES (?, ?, ?, ?, '', '', ?)").run(jobId, newId, at, row.end, row.speaker);
+    });
+    return { ok: true, first_id: id, second_id: newId, at };
+  });
+
+  // Nhập 2 câu liền kề làm 1 (ghép lời Trung + Việt, giữ người nói của câu trước).
+  app.post("/api/dub/segment/merge", async (req, reply) => {
+    const body = req.body || {};
+    const jobId = safeJobId(body.job_id);
+    const id = Number(body.id);
+    const withId = Number(body.with_id);
+    const proj = loadDubProject(jobId);
+    if (!proj || !Number.isInteger(id) || !Number.isInteger(withId)) return fail(reply, 400, "Thiếu tham số.");
+    if (task.proc && task.type.startsWith("dub_")) return fail(reply, 409, "Đang có tiến trình lồng tiếng chạy. Hãy chờ xong hoặc dừng trước.");
+    const a = db.prepare('SELECT * FROM segments WHERE job_id = ? AND id = ?').get(jobId, id);
+    const b = db.prepare('SELECT * FROM segments WHERE job_id = ? AND id = ?').get(jobId, withId);
+    if (!a || !b) return fail(reply, 404, "Không tìm thấy câu cần ghép.");
+    const [first, second] = a.start_s <= b.start_s ? [a, b] : [b, a];
+    inTransaction(() => {
+      db.prepare("UPDATE segments SET end_s = ?, zh = ?, vi = ? WHERE job_id = ? AND id = ?").run(
+        second.end_s, [first.zh, second.zh].filter(Boolean).join(" "), [first.vi, second.vi].filter(Boolean).join(" "), jobId, first.id
+      );
+      db.prepare("DELETE FROM segments WHERE job_id = ? AND id = ?").run(jobId, second.id);
+    });
+    return { ok: true, id: first.id };
+  });
+
+  // Xóa 1 câu khỏi timeline (không xóa đoạn hình/tiếng — chỉ bỏ dòng này khi xuất lại).
+  app.post("/api/dub/segment/delete", async (req, reply) => {
+    const body = req.body || {};
+    const jobId = safeJobId(body.job_id);
+    const id = Number(body.id);
+    const proj = loadDubProject(jobId);
+    if (!proj || !Number.isInteger(id)) return fail(reply, 400, "Thiếu tham số.");
+    if (task.proc && task.type.startsWith("dub_")) return fail(reply, 409, "Đang có tiến trình lồng tiếng chạy. Hãy chờ xong hoặc dừng trước.");
+    const info = db.prepare("DELETE FROM segments WHERE job_id = ? AND id = ?").run(jobId, id);
+    if (!info.changes) return fail(reply, 404, "Không tìm thấy câu này.");
+    return { ok: true };
+  });
+
   app.post("/api/dub/assign", async (req) => {
     const body = req.body || {};
     const jobId = safeJobId(body.job_id);

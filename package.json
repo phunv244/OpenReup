@@ -5,8 +5,6 @@
   "scripts": {
     "start": "node server.mjs",
     "start:all": "node start-all.mjs",
-    "agy": "node agy-proxy/server.mjs",
-    "agy:login": "node agy-proxy/cli.mjs login",
     "mcp": "node mcp-server.mjs",
     "build:web": "npm --prefix web run build",
     "dev:api": "DEV_WEB_ORIGIN=localhost:3000 node --watch server.mjs",

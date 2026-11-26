@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { DATA_DIR, DOWNLOADS_DIR, PORT, ROOT, TASK_LOG } from "../config.mjs";
+import { DATA_DIR, DOWNLOADS_DIR, ROOT, TASK_LOG } from "../config.mjs";
 import { relOf } from "./util.mjs";
 import { setVideoProject } from "./store.mjs";
 
@@ -116,7 +116,6 @@ function runTask({ taskId = 0, type, cmd, args, target = "", projectId = "" }) {
     env: {
       ...process.env,
       DISPLAY: process.env.DISPLAY || ":0",
-      AGY_PROXY_URL: process.env.AGY_PROXY_URL || `http://127.0.0.1:${PORT}`,
     },
     detached: true,
   });

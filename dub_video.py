@@ -53,8 +53,6 @@ DB_PATH = BASE_DIR / "data" / "openreup.db"  # câu thoại của mọi bản l�
 DUBBED_INDEX_JSON = BASE_DIR / "data" / "dubbed.json"
 WORK_ROOT = BASE_DIR / "data" / "dub_work"
 AGY_BIN = shutil.which("agy") or str(Path.home() / ".local" / "bin" / "agy")
-AGY_PROXY_URL = (os.environ.get("AGY_PROXY_URL") or f"http://127.0.0.1:{os.environ.get('PORT', '3456')}").rstrip("/")
-AGY_PROXY_DATA_DIR = Path(os.environ.get("AGY_DATA_DIR") or (BASE_DIR / "agy-proxy" / "data"))
 
 SAMPLE_RATE = 24000  # track lồng tiếng: PCM 16-bit mono
 STT_PAD_SEC = 30.0  # giải mã dư ra để tìm khoảng lặng mà cắt khối, không cắt giữa câu
@@ -678,36 +676,6 @@ def run_stt(
     return chunks
 
 
-def _has_active_agy_proxy() -> bool:
-    """Tự động dùng AGY Multi-Account Proxy nếu đã có ít nhất 1 tài khoản đang bật."""
-    if os.environ.get("AGY_USE_CLI") == "1":
-        return False
-    acc_file = AGY_PROXY_DATA_DIR / "accounts.json"
-    if not acc_file.is_file():
-        return False
-    try:
-        data = json.loads(acc_file.read_text(encoding="utf-8"))
-        if not any(a.get("isActive", True) is not False for a in (data.get("accounts") or [])):
-            return False
-        # Server tắt (chạy dub_video.py trực tiếp) thì quay về agy CLI thay vì để mọi lô dịch thất bại.
-        u = urllib.parse.urlsplit(AGY_PROXY_URL)
-        socket.create_connection((u.hostname, u.port or 80), timeout=1.5).close()
-        return True
-    except Exception:
-        return False
-
-
-def _read_agy_proxy_api_key() -> str:
-    cfg_file = AGY_PROXY_DATA_DIR / "settings.json"
-    if not cfg_file.is_file():
-        return ""
-    try:
-        cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
-        return str(cfg.get("apiKey") or "").strip() if cfg.get("requireApiKey") else ""
-    except Exception:
-        return ""
-
-
 def _extract_json_object(text: str) -> Dict:
     raw = (text or "").strip()
     if raw.startswith("```"):
@@ -738,9 +706,6 @@ class Translator:
         self.job = job
         self.ask_who = ask_who  # chỉ hỏi AI "ai nói câu này" khi lồng tiếng nhiều giọng (bước phân vai cần)
         self.agy_model = agy_model  # "" = model mặc định của Antigravity (id đã gồm mức suy nghĩ, vd gemini-4-neon-high)
-        self.use_proxy = _has_active_agy_proxy()
-        if self.use_proxy:
-            log(f"[Dịch] Tự động dùng AGY Multi-Account Proxy ({AGY_PROXY_URL}/v1/ask) — hết quota tự chuyển tài khoản.")
         self.ctx = story_ctx or {}
         self.project_id = project_id
         self.prog = prog
@@ -790,52 +755,7 @@ class Translator:
             f"Diễn biến ngay trước đoạn này trong video:\n{' '.join(recent) or '(đây là đoạn đầu)'}"
         )
 
-    def _call_agy_proxy(self, prompt: str) -> Dict:
-        payload: Dict = {
-            "prompt": prompt,
-            "system": (
-                "Chỉ trả về DUY NHẤT một JSON object hợp lệ khớp chính xác JSON Schema sau "
-                "(không thêm lời giải thích, không bọc markdown ```):\n"
-                + json.dumps(AGY_TRANSLATION_SCHEMA, ensure_ascii=False)
-            ),
-            "json": True,
-        }
-        if self.agy_model:
-            payload["model"] = self.agy_model
-        headers = {"Content-Type": "application/json"}
-        api_key = _read_agy_proxy_api_key()
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-
-        req = urllib.request.Request(
-            f"{AGY_PROXY_URL}/v1/ask",
-            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=240) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            err_body = e.read().decode("utf-8", errors="ignore")[-300:]
-            raise RuntimeError(f"AGY Proxy lỗi HTTP {e.code}: {err_body}") from e
-        except Exception as e:
-            raise RuntimeError(f"Không kết nối được AGY Proxy ({AGY_PROXY_URL}): {e}") from e
-
-        if not data.get("ok"):
-            raise RuntimeError(f"AGY Proxy báo lỗi: {data.get('error') or 'Unknown error'}")
-        if data.get("fallbackCount", 0) > 0 and data.get("account"):
-            acc = data["account"]
-            log(f"[Dịch] ⇄ Tự động fallback sang TK #{acc.get('priority')} ({acc.get('email')})")
-
-        ai_out = _extract_json_object(data.get("text") or "")
-        if not isinstance(ai_out, dict) or not ai_out.get("translations"):
-            raise RuntimeError("AGY Proxy trả về kết quả rỗng")
-        return ai_out
-
     def _call_agy(self, prompt: str) -> Dict:
-        if getattr(self, "use_proxy", False):
-            return self._call_agy_proxy(prompt)
         proc = subprocess.run(
             [
                 AGY_BIN,

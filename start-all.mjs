@@ -1,13 +1,11 @@
 #!/usr/bin/env node
 /**
- * Khởi động toàn bộ hệ thống bằng 1 lệnh duy nhất:
- *   1. AGY Multi-Account Proxy (cổng mặc định 3457)
- *   2. OpenReup Studio Server  (cổng mặc định 3456)
+ * Khởi động OpenReup Studio Server (cổng mặc định 3456).
  *
  * Dùng:
  *   npm run start:all
  *   hoặc: node start-all.mjs
- *   hoặc: PORT=3456 AGY_PORT=3457 node start-all.mjs
+ *   hoặc: PORT=3456 node start-all.mjs
  */
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -15,24 +13,13 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STUDIO_PORT = process.env.PORT || "3456";
-const AGY_PORT = process.env.AGY_PORT || "3457";
 
 const services = [
-  {
-    name: "AGY-PROXY",
-    color: "\x1b[33m", // yellow
-    script: path.join(__dirname, "agy-proxy", "server.mjs"),
-    env: { ...process.env, PORT: AGY_PORT },
-  },
   {
     name: "OPENREUP ",
     color: "\x1b[36m", // cyan
     script: path.join(__dirname, "server.mjs"),
-    env: {
-      ...process.env,
-      PORT: STUDIO_PORT,
-      AGY_PROXY_URL: `http://127.0.0.1:${AGY_PORT}`,
-    },
+    env: { ...process.env, PORT: STUDIO_PORT },
   },
 ];
 
@@ -77,11 +64,9 @@ function shutdown(signal = "SIGTERM") {
   }, 5000).unref();
 }
 
-console.log("🚀 Đang khởi động toàn bộ hệ thống...");
+console.log("🚀 Đang khởi động OpenReup Studio...");
 console.log(`   • OpenReup Studio : http://localhost:${STUDIO_PORT}`);
-console.log(`   • AGY Proxy + UI  : http://localhost:${AGY_PORT}`);
-console.log(`   • AGY OpenAI API  : http://localhost:${AGY_PORT}/v1/chat/completions`);
-console.log("   (Nhấn Ctrl+C để dừng đồng thời cả 2 dịch vụ)\n");
+console.log("   (Nhấn Ctrl+C để dừng)\n");
 
 for (const svc of services) {
   const child = spawn(process.execPath, [svc.script], {

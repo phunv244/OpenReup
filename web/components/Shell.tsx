@@ -4,7 +4,6 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, createContext, useContext, useEffect, useState } from "react";
 import { projHref, taskName } from "@/lib/format";
 import { useStudio } from "@/lib/studio";
-import { FunctionRail } from "./FunctionRail";
 import { Icon } from "./Icon";
 import { ProjectDrawer } from "./ProjectDrawer";
 import { Resizer } from "./Resizer";
@@ -65,7 +64,6 @@ function Nav() {
       <NavLink href="/" icon="folder" label="Dự án" count={projects.length} active={path === "/" || path.startsWith("/project")} />
       <NavLink href="/resources/" icon="type" label="Tài nguyên" active={path === "/resources"} count={fonts.length + voices.clones.length} />
       <NavLink href="/models/" icon="brain" label="Mô hình nhận diện" active={path === "/models"} count={asr.models.filter((m) => m.installed).length} />
-      <NavLink href="/agy-proxy/" icon="key" label="Tài khoản AGY" active={path === "/agy-proxy"} />
       <NavLink href="/logs/" icon="terminal" label="Nhật ký" active={path === "/logs"} />
     </nav>
   );
@@ -135,7 +133,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </aside>
 
         <div className="main">{children}</div>
-        {clean(path) === "/agy-proxy" ? <FunctionRail /> : <TaskRail />}
+        <TaskRail />
         <div className="sb-backdrop" onClick={() => document.body.classList.remove("sb-open")} />
       </div>
       {drawerProj && <ProjectDrawer project={drawerProj} onClose={() => setDrawerPid("")} />}

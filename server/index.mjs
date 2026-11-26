@@ -17,8 +17,6 @@ import sourceRoutes from "./routes/sources.mjs";
 import taskRoutes from "./routes/tasks.mjs";
 import resourceRoutes from "./routes/resources.mjs";
 import voiceRoutes from "./routes/voices.mjs";
-import agyProxyRoutes from "./routes/agyProxy.mjs";
-import agyCliChatRoutes from "./routes/agyCliChat.mjs";
 import functionRoutes from "./routes/functions.mjs";
 
 runMigrations();
@@ -84,8 +82,6 @@ await app.register(projectRoutes);
 await app.register(voiceRoutes);
 await app.register(resourceRoutes);
 await app.register(dubRoutes);
-await app.register(agyProxyRoutes);
-await app.register(agyCliChatRoutes);
 await app.register(functionRoutes);
 
 for (const sig of ["SIGINT", "SIGTERM"]) {

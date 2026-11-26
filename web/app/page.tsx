@@ -146,8 +146,8 @@ export default function ProjectsPage() {
   return (
     <>
       <Topbar
-        title="Dự án"
-        sub="Mỗi bộ truyện / phim một dự án — AI nhớ nhân vật, xưng hô và mạch truyện"
+        title="Reup"
+        sub="Mỗi bộ truyện / phim một dự án Reup — AI nhớ nhân vật, xưng hô và mạch truyện"
         actions={
           <button className="btn btn-primary btn-sm" type="button" onClick={() => setCreating(true)}>
             <Icon name="plus" size={16} /> <span className="lbl">Tạo dự án</span>

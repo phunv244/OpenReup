@@ -22,7 +22,10 @@ import {
   getOAuthSessionStatus,
   completeOAuthSessionManually,
   ensureFreshToken,
+  activeOAuthCreds,
+  hasOAuthCredentials,
 } from "../../agy-proxy/src/oauth.mjs";
+import { ANTIGRAVITY_OAUTH } from "../../agy-proxy/src/constants.mjs";
 import {
   getCachedAccountQuotas,
   refreshAccountQuota,
@@ -190,6 +193,11 @@ export default async function agyProxyRoutes(app) {
   });
 
   // ─── 2. Management APIs (/api/agy-proxy/*) ────────────────────────────────
+  app.get("/api/agy-proxy/models", async () => ({
+    ok: true,
+    data: ANTIGRAVITY_MODELS.map((m) => ({ id: m.id, name: m.name })),
+  }));
+
   app.get("/api/agy-proxy/accounts", async () => ({
     ok: true,
     accounts: listAccounts().map((a) => maskAccountForApi(a, getCachedAccountQuotas(a.id))),
@@ -262,7 +270,15 @@ export default async function agyProxyRoutes(app) {
     return { ok: true, id: acc.id, email: acc.email, plan: q.plan, quotas: q.quotas };
   });
 
-  app.post("/api/agy-proxy/oauth/start", async (req) => {
+  app.post("/api/agy-proxy/oauth/start", async (req, reply) => {
+    if (!hasOAuthCredentials()) {
+      return reply.code(400).send({
+        ok: false,
+        error:
+          "Chưa cấu hình AGY_CLIENT_ID / AGY_CLIENT_SECRET. Nhập Client ID và Client Secret của Antigravity ở ô bên dưới rồi thử lại.",
+        needCredentials: true,
+      });
+    }
     const session = await startOAuthSession({ customName: req.body?.name || "" });
     return {
       ok: true,
@@ -287,10 +303,27 @@ export default async function agyProxyRoutes(app) {
     }
   });
 
-  app.get("/api/agy-proxy/settings", async () => ({ ok: true, settings: getSettings() }));
+  // Không trả secret ra client: thay bằng cờ "đã đặt". oauth cho biết credential OAuth đã đủ chưa và đến từ đâu.
+  function publicSettings() {
+    const s = getSettings();
+    const creds = activeOAuthCreds();
+    return {
+      ...s,
+      apiKey: s.apiKey ? s.apiKey : "",
+      oauthClientSecret: undefined,
+      oauthClientSecretSet: Boolean(s.oauthClientSecret),
+      oauth: {
+        configured: hasOAuthCredentials(),
+        clientId: creds.clientId, // client_id không phải bí mật, hiển thị để đối chiếu
+        fromEnv: Boolean(ANTIGRAVITY_OAUTH.clientId && ANTIGRAVITY_OAUTH.clientSecret),
+      },
+    };
+  }
+
+  app.get("/api/agy-proxy/settings", async () => ({ ok: true, settings: publicSettings() }));
 
   app.post("/api/agy-proxy/settings", async (req) => {
-    const next = await updateSettings(req.body || {});
-    return { ok: true, settings: next };
+    await updateSettings(req.body || {});
+    return { ok: true, settings: publicSettings() };
   });
 }

@@ -1358,3 +1358,104 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 @media (max-width: 980px) { .detail-grid { grid-template-columns: 1fr; } .detail-side { position: static; order: -1; } }
 .spk-name { color: var(--text); font-weight: 600; margin-right: 4px; }
 .spk-meta .badge { margin: 0 2px; }
+
+/* ===== Trang Tài khoản AGY (/agy-proxy) ===== */
+.agy-tabs { margin-bottom: 16px; }
+.agy-cols { align-items: start; }
+.agy-cols > .card { margin: 0; }
+.agy-endpoint { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; font-size: 13px; }
+.agy-endpoint > span { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.agy-endpoint code, .agy-acc-sub code, .agy-remote code { padding: 2px 7px; border-radius: 6px; background: var(--fill); font-size: 12.5px; word-break: break-all; }
+.agy-acc { display: flex; flex-direction: column; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--border); }
+.agy-acc:first-of-type { border-top: 0; }
+.agy-acc.off { opacity: 0.55; }
+.agy-acc-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.agy-acc-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.agy-acc-name { font-weight: 600; font-size: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; word-break: break-all; }
+.agy-acc-sub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.agy-acc-err { font-size: 12.5px; color: var(--red); margin-top: 3px; word-break: break-word; }
+.agy-acc-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.agy-quotas { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.agy-quota { --tone: var(--green); background: var(--surface-2); padding: 8px 11px; border-radius: 10px; font-size: 12px; }
+.agy-quota.amber { --tone: var(--amber); }
+.agy-quota.red { --tone: var(--red); }
+.agy-quota-top { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
+.agy-quota-top strong { color: var(--tone); font-variant-numeric: tabular-nums; }
+.agy-quota .progress { height: 5px; }
+.agy-quota .progress > div { background: var(--tone); min-width: 0; }
+.agy-quota-reset { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.agy-test-bar { gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.agy-test-bar a.btn { text-decoration: none; }
+.agy-row .input { flex: 1; min-width: 0; }
+.agy-test-meta { font-size: 12.5px; color: var(--accent-text); margin-bottom: 8px; }
+.agy-out { margin: 0; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; min-height: 88px; max-height: 360px; overflow: auto; }
+.agy-out.small { font-size: 11.5px; min-height: 0; }
+.agy-snippet-head { display: flex; justify-content: space-between; align-items: center; margin: 18px 0 6px; font-size: 12.5px; }
+.agy-remote { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-top: 6px; }
+.agy-remote > label { font-size: 13px; font-weight: 600; }
+.agy-remote > p { font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
+@media (max-width: 900px) { .agy-cols { grid-template-columns: 1fr; } .agy-acc-actions { width: 100%; } }
+
+/* Cột phải trang Tài khoản AGY: danh sách hàm AI gọi được */
+.fn-lead { font-size: 12px; line-height: 1.5; margin: 0 0 8px; }
+.fn-lead code, .fn code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; }
+.fn-lead code { padding: 1px 5px; border-radius: 5px; background: var(--fill); }
+.fn-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.fn { background: var(--surface-2); border-radius: 8px; font-size: 12.5px; }
+.fn > summary { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; list-style: none; border-radius: 8px; }
+.fn > summary::-webkit-details-marker { display: none; }
+.fn > summary:hover { background: var(--fill); }
+.fn > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.fn > summary .ic, .fn > summary svg { flex: none; transition: transform 0.15s var(--ease); color: var(--muted); }
+.fn[open] > summary svg { transform: rotate(90deg); }
+.fn > summary code { font-weight: 600; color: var(--text); font-size: 12.5px; }
+.fn-count { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.fn-body { padding: 2px 10px 10px; }
+.fn-body > p { margin: 0 0 8px; color: var(--text-2); line-height: 1.5; font-size: 12px; }
+.fn-params { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.fn-params.nested { margin-top: 6px; padding-left: 10px; border-left: 2px solid var(--border); }
+.fn-param { font-size: 12px; }
+.fn-param-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.fn-param-head > code { color: var(--accent-text); font-weight: 600; }
+.fn-type { font-size: 11px; color: var(--muted); }
+.fn-param-head .badge { font-size: 10px; padding: 0 6px; }
+.fn-param p { margin: 2px 0 0; color: var(--text-2); line-height: 1.45; font-size: 11.5px; }
+.fn-enum { display: flex; flex-wrap: wrap; gap: 4px; }
+.fn-enum code { padding: 1px 6px; border-radius: 5px; background: var(--fill); }
+.fn-example { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 5px; font-size: 11.5px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .fn > summary svg { transition: none; } }
+
+/* Tab Chat agy CLI của trang Tài khoản AGY */
+.cli { display: flex; flex-direction: column; gap: 18px; }
+.cli > .card { margin: 0; }
+.cli-config { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) minmax(0, 1.4fr); gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.cli-config .field { margin: 0; }
+.cli-warn { padding: 12px 18px 0; }
+.cli-warn .callout { margin: 0; }
+.cli-log { height: clamp(300px, calc(100vh - 430px), 760px); overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; background: var(--surface-2); }
+.cli-empty { margin: auto; text-align: center; color: var(--muted); font-size: 13.5px; max-width: 520px; }
+.cli-empty p { margin: 8px 0 4px; line-height: 1.55; }
+.cli-empty .chips { justify-content: center; }
+.cli-empty button.chip { cursor: pointer; font: inherit; font-size: 12.5px; }
+.cli-empty code, .cli-conv code { padding: 1px 6px; border-radius: 5px; background: var(--fill); font-size: 12px; word-break: break-all; }
+.cli-msg { max-width: min(88%, 860px); border-radius: 14px; padding: 10px 14px; font-size: 13.5px; }
+.cli-msg.user { align-self: flex-end; background: var(--accent); color: var(--on-accent); border-bottom-right-radius: 5px; }
+.cli-msg.assistant { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 5px; }
+.cli-msg.error { border-color: var(--red); background: var(--red-soft); }
+.cli-text { white-space: pre-wrap; word-break: break-word; line-height: 1.6; }
+.cli-tools { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.cli-tools .badge { font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cli-think { margin-bottom: 8px; font-size: 12.5px; color: var(--text-2); }
+.cli-think > summary { cursor: pointer; color: var(--muted); }
+.cli-think > div { margin-top: 6px; padding-left: 10px; border-left: 2px solid var(--border); white-space: pre-wrap; word-break: break-word; line-height: 1.55; }
+.cli-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 11px; color: var(--muted); }
+.cli-meta .icon-btn { width: 24px; height: 24px; }
+.cli-composer { padding: 12px 18px 14px; border-top: 1px solid var(--border); }
+.cli-composer .agy-row { align-items: stretch; }
+.cli-composer textarea { resize: vertical; min-height: 44px; }
+.cli-conv { font-size: 12px; margin-bottom: 8px; }
+.cli-api > summary { cursor: pointer; list-style: none; border-bottom: 0; }
+.cli-api > summary::-webkit-details-marker { display: none; }
+.cli-api[open] > summary { border-bottom: 1px solid var(--border); }
+.cli-api .agy-snippet-head { margin-top: 0; }
+@media (max-width: 900px) { .cli-config { grid-template-columns: 1fr; } .cli-msg { max-width: 96%; } }

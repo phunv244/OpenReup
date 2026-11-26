@@ -293,7 +293,7 @@ export function renderDashboardHtml() {
     }
 
     async function loadModels() {
-      const res = await fetch("/v1/models");
+      const res = await fetch("/api/models");
       const data = await res.json();
       currentModels = data.data || [];
       const opts = currentModels.map(m => \`<option value="\${escapeHtml(m.id)}">\${escapeHtml(m.name || m.id)} (\${escapeHtml(m.id)})</option>\`).join("");

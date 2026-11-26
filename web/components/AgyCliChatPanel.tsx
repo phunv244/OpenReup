@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/Toasts";
+import { Callout, copyText } from "@/components/ui";
 
 type ToolBadge = {
   stepIndex: number;
@@ -24,7 +25,7 @@ type AgyModel = { id: string; name?: string };
 
 export function AgyCliChatPanel({ models, origin }: { models: AgyModel[]; origin: string }) {
   const toast = useToast();
-  const [cwd, setCwd] = useState("/var/www/html/reupDouyin");
+  const [cwd, setCwd] = useState(""); // server trả thư mục mặc định ở /api/agy-cli/status
   const [mode, setMode] = useState<"accept-edits" | "full-auto" | "plan">("accept-edits");
   const [model, setModel] = useState("");
   const [conversationId, setConversationId] = useState("");
@@ -34,6 +35,7 @@ export function AgyCliChatPanel({ models, origin }: { models: AgyModel[]; origin
   const [activeRunId, setActiveRunId] = useState("");
   const [cliAvailable, setCliAvailable] = useState<boolean | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stick = useRef(true); // chỉ tự cuộn khi người dùng đang ở cuối khung chat
 
   useEffect(() => {
     fetch("/api/agy-cli/status")
@@ -46,7 +48,7 @@ export function AgyCliChatPanel({ models, origin }: { models: AgyModel[]; origin
   }, []);
 
   useEffect(() => {
-    if (scrollRef.current) {
+    if (scrollRef.current && stick.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
@@ -76,6 +78,7 @@ export function AgyCliChatPanel({ models, origin }: { models: AgyModel[]; origin
     const botId = `a_${Date.now() + 1}`;
     const botMsg: ChatMsg = { id: botId, role: "assistant", content: "", tools: [] };
 
+    stick.current = true;
     setMessages((prev) => [...prev, userMsg, botMsg]);
     setInput("");
     setBusy(true);
@@ -115,6 +118,9 @@ export function AgyCliChatPanel({ models, origin }: { models: AgyModel[]; origin
         buf += dec.decode(value, { stream: true });
         const lines = buf.split("\n");
         buf = lines.pop() || "";
+        // Gộp chữ của cả gói mạng rồi mới vẽ lại 1 lần (agy CLI gửi rất nhiều delta nhỏ).
+        let txtAcc = "";
+        let thinkAcc = "";
 
         for (const rawLine of lines) {
           if (!rawLine.startsWith("data:")) continue;
@@ -132,13 +138,8 @@ export function AgyCliChatPanel({ models, origin }: { models: AgyModel[]; origin
           } else if (evt.type === "init" && typeof evt.conversationId === "string" && evt.conversationId) {
             setConversationId(evt.conversationId);
           } else if (evt.type === "delta") {
-            const txtDelta = String(evt.text || "");
-            const thinkDelta = String(evt.thinking || "");
-            updateBot((m) => ({
-              ...m,
-              content: m.content + txtDelta,
-              thinking: thinkDelta ? (m.thinking || "") + thinkDelta : m.thinking,
-            }));
+            txtAcc += String(evt.text || "");
+            thinkAcc += String(evt.thinking || "");
           } else if (evt.type === "tool") {
             const tb: ToolBadge = {
               stepIndex: Number(evt.stepIndex || 0),
@@ -174,6 +175,9 @@ export function AgyCliChatPanel({ models, origin }: { models: AgyModel[]; origin
             }));
           }
         }
+        if (txtAcc || thinkAcc) {
+          updateBot((m) => ({ ...m, content: m.content + txtAcc, thinking: thinkAcc ? (m.thinking || "") + thinkAcc : m.thinking }));
+        }
       }
     } catch (e: unknown) {
       updateBot((m) => ({
@@ -197,167 +201,141 @@ curl -X POST ${origin}/api/agy-cli/chat \\
   }'`;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      {/* Thanh cấu hình phiên agy CLI */}
-      <div className="card" style={{ marginTop: 0 }}>
+    <div className="cli">
+      <div className="card">
         <div className="card-head">
           <h3>
-            <Icon name="terminal" size={16} /> Phiên làm việc trực tiếp với agy CLI
+            <Icon name="terminal" size={16} /> Chat với agy CLI
           </h3>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div className="agy-row">
             {cliAvailable === true && <span className="badge green">agy CLI sẵn sàng</span>}
             {cliAvailable === false && <span className="badge red">Không thấy lệnh agy</span>}
-            <button className="btn btn-light btn-sm" type="button" onClick={startNewConversation} disabled={busy}>
+            <button className="btn btn-light btn-sm" type="button" onClick={startNewConversation} disabled={busy || !messages.length}>
               <Icon name="plus" size={14} /> Hội thoại mới
             </button>
           </div>
         </div>
-        <div className="card-body">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-            <div className="field" style={{ marginBottom: 0 }}>
-              <label>Thư mục mã nguồn (cwd)</label>
-              <input
-                type="text"
-                value={cwd}
-                onChange={(e) => setCwd(e.target.value)}
-                disabled={busy}
-                placeholder="/var/www/html/reupDouyin"
-              />
-            </div>
-            <div className="field" style={{ marginBottom: 0 }}>
-              <label>Quyền thao tác của agy CLI</label>
-              <select
-                value={mode}
-                onChange={(e) => setMode(e.target.value as "accept-edits" | "full-auto" | "plan")}
-                disabled={busy}
-              >
-                <option value="accept-edits">Tự động sửa file (accept-edits — khuyên dùng)</option>
-                <option value="full-auto">Toàn quyền sửa file & chạy lệnh (full-auto)</option>
-                <option value="plan">Chỉ đọc & phân tích, không sửa file (plan)</option>
-              </select>
-            </div>
-            <div className="field" style={{ marginBottom: 0 }}>
-              <label>Model agy CLI</label>
-              <select value={model} onChange={(e) => setModel(e.target.value)} disabled={busy}>
-                <option value="">Mặc định của agy CLI</option>
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name || m.id} ({m.id})
-                  </option>
-                ))}
-              </select>
-            </div>
+
+        <div className="cli-config">
+          <div className="field">
+            <label htmlFor="cli-cwd">Thư mục mã nguồn</label>
+            <input id="cli-cwd" className="input" type="text" value={cwd} onChange={(e) => setCwd(e.target.value)} disabled={busy} placeholder="/đường/dẫn/dự-án" />
           </div>
-
-          {conversationId && (
-            <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted)" }}>
-              Đang nối tiếp hội thoại: <code>{conversationId}</code> (các tin nhắn tiếp theo sẽ giữ nguyên ngữ cảnh)
-            </div>
-          )}
+          <div className="field">
+            <label htmlFor="cli-mode">Quyền của agy CLI</label>
+            <select id="cli-mode" className="select" value={mode} onChange={(e) => setMode(e.target.value as typeof mode)} disabled={busy}>
+              <option value="accept-edits">Tự sửa file (khuyên dùng)</option>
+              <option value="full-auto">Toàn quyền: sửa file và chạy lệnh</option>
+              <option value="plan">Chỉ đọc và phân tích</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="cli-model">Model</label>
+            <select id="cli-model" className="select" value={model} onChange={(e) => setModel(e.target.value)} disabled={busy}>
+              <option value="">Mặc định của agy CLI</option>
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name ? `${m.name} (${m.id})` : m.id}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-      </div>
+        {mode === "full-auto" && (
+          <div className="cli-warn">
+            <Callout tone="warn" icon="alert">
+              Toàn quyền: agy CLI tự chạy mọi lệnh trong thư mục trên mà không hỏi lại, kể cả lệnh xóa file. Chỉ dùng với thư mục có git hoặc đã sao lưu.
+            </Callout>
+          </div>
+        )}
 
-      {/* Khung Chat trực tiếp */}
-      <div className="card" style={{ marginTop: 0 }}>
-        <div className="card-head">
-          <h3>
-            <Icon name="sparkles" size={15} /> Khung Chat điều khiển agy CLI (đọc / sửa mã nguồn trực tiếp)
-          </h3>
-          <span className="hint">Tách biệt hoàn toàn với luồng reup video</span>
-        </div>
-        <div className="card-body">
-          <div
-            ref={scrollRef}
-            style={{
-              minHeight: 300,
-              maxHeight: 500,
-              overflowY: "auto",
-              background: "var(--fill)",
-              border: "1px solid var(--border)",
-              borderRadius: 10,
-              padding: 14,
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-              marginBottom: 12,
-            }}
-          >
-            {messages.length === 0 ? (
-              <div style={{ margin: "auto", textAlign: "center", color: "var(--muted)", fontSize: 13.5, maxWidth: 480 }}>
-                Nhập yêu cầu bên dưới để giao trực tiếp cho <strong>agy CLI</strong> thực thi trong thư mục{" "}
-                <code>{cwd}</code>.<br />
-                Ví dụ: <em>&ldquo;Đọc file package.json và giải thích các script&rdquo;</em> hoặc{" "}
-                <em>&ldquo;Sửa lỗi nhỏ ở file ...&rdquo;</em>.
+        <div
+          className="cli-log"
+          ref={scrollRef}
+          role="log"
+          aria-label="Hội thoại với agy CLI"
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+          }}
+        >
+          {messages.length === 0 ? (
+            <div className="cli-empty">
+              <Icon name="sparkles" size={22} />
+              <p>
+                Giao việc cho <strong>agy CLI</strong> trong thư mục <code>{cwd || "..."}</code>. Tách biệt với luồng reup video.
+              </p>
+              <div className="chips">
+                {["Đọc package.json và giải thích các script", "Kiểm tra git status và tóm tắt thay đổi mới nhất"].map((ex) => (
+                  <button key={ex} className="chip" type="button" onClick={() => setInput(ex)}>
+                    {ex}
+                  </button>
+                ))}
               </div>
-            ) : (
-              messages.map((m) => (
-                <div
-                  key={m.id}
-                  style={{
-                    alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-                    maxWidth: "88%",
-                    background: m.role === "user" ? "var(--accent)" : "var(--surface)",
-                    color: m.role === "user" ? "#fff" : "var(--text)",
-                    border: m.role === "user" ? "none" : "1px solid var(--border)",
-                    borderRadius: 12,
-                    padding: "10px 14px",
-                    fontSize: 13.5,
-                  }}
-                >
+            </div>
+          ) : (
+            messages.map((m) => {
+              const waiting = busy && m.role === "assistant" && !m.content && m.id === messages[messages.length - 1].id;
+              return (
+                <div key={m.id} className={`cli-msg ${m.role}${m.error ? " error" : ""}`}>
                   {m.tools && m.tools.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                    <div className="cli-tools">
                       {m.tools.map((t, idx) => (
-                        <span
-                          key={`${t.stepIndex}-${idx}`}
-                          className={`badge ${t.state === "DONE" ? "green" : "amber"}`}
-                          style={{ fontSize: 11 }}
-                        >
-                          {t.state === "DONE" ? "✓" : "⏳"} {t.stepType}
+                        <span key={`${t.stepIndex}-${idx}`} className={`badge ${t.state === "DONE" ? "green" : "amber"}`} title={t.detail || undefined}>
+                          <Icon name={t.state === "DONE" ? "check" : "clock"} size={11} /> {t.stepType}
                           {t.detail ? `: ${t.detail}` : ""}
                         </span>
                       ))}
                     </div>
                   )}
-                  <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.55 }}>
-                    {m.content || (busy && m.role === "assistant" ? "Đang xử lý..." : "")}
-                  </div>
-                  {m.meta && (
-                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, textAlign: "right" }}>
-                      {m.meta}
+                  {m.thinking && (
+                    <details className="cli-think">
+                      <summary>Suy nghĩ của model</summary>
+                      <div>{m.thinking}</div>
+                    </details>
+                  )}
+                  <div className="cli-text">{waiting ? <span className="muted">Đang xử lý...</span> : m.content}</div>
+                  {m.role === "assistant" && m.content && !waiting && (
+                    <div className="cli-meta">
+                      <span>{m.meta}</span>
+                      <button className="icon-btn" type="button" title="Chép câu trả lời" aria-label="Chép câu trả lời" onClick={() => copyText(m.content, toast)}>
+                        <Icon name="copy" size={13} />
+                      </button>
                     </div>
                   )}
                 </div>
-              ))
-            )}
-          </div>
+              );
+            })
+          )}
+        </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+        <div className="cli-composer">
+          {conversationId && (
+            <div className="cli-conv muted">
+              Đang nối tiếp hội thoại <code>{conversationId}</code>
+            </div>
+          )}
+          <div className="agy-row">
             <textarea
+              className="input"
               rows={2}
               value={input}
+              aria-label="Yêu cầu cho agy CLI"
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
                   sendMessage();
                 }
               }}
-              placeholder="Nhập yêu cầu cho agy CLI... (Enter để gửi, Shift+Enter xuống dòng)"
-              disabled={busy}
-              style={{ flex: 1, margin: 0 }}
+              placeholder="Nhập yêu cầu... (Enter để gửi, Shift+Enter xuống dòng)"
             />
             {busy ? (
-              <button className="btn btn-danger btn-sm" type="button" onClick={abortRun} style={{ height: 42 }}>
+              <button className="btn btn-danger" type="button" onClick={abortRun} disabled={!activeRunId}>
                 <Icon name="stop" size={14} /> Dừng
               </button>
             ) : (
-              <button
-                className="btn btn-primary btn-sm"
-                type="button"
-                onClick={sendMessage}
-                disabled={!input.trim()}
-                style={{ height: 42 }}
-              >
+              <button className="btn btn-primary" type="button" onClick={sendMessage} disabled={!input.trim() || !cwd.trim() || cliAvailable === false}>
                 <Icon name="play" size={14} /> Gửi
               </button>
             )}
@@ -365,40 +343,23 @@ curl -X POST ${origin}/api/agy-cli/chat \\
         </div>
       </div>
 
-      {/* Ví dụ gọi API từ script ngoài */}
-      <div className="card" style={{ marginTop: 0 }}>
-        <div className="card-head">
+      <details className="card cli-api">
+        <summary className="card-head">
           <h3>
-            <Icon name="book" size={15} /> Gọi API agy CLI từ script / công cụ ngoài
+            <Icon name="book" size={15} /> Gọi agy CLI từ script ngoài
           </h3>
-          <button
-            className="btn btn-light btn-sm"
-            type="button"
-            onClick={() => {
-              navigator.clipboard.writeText(apiExample);
-              toast("Đã sao chép lệnh mẫu API agy CLI", "success");
-            }}
-          >
-            <Icon name="copy" size={13} /> Chép
-          </button>
-        </div>
+          <span className="hint">POST /api/agy-cli/chat</span>
+        </summary>
         <div className="card-body">
-          <pre
-            style={{
-              background: "var(--fill)",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              padding: 12,
-              fontSize: 12,
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              margin: 0,
-            }}
-          >
-            {apiExample}
-          </pre>
+          <div className="agy-snippet-head">
+            <strong>Lệnh mẫu</strong>
+            <button className="btn btn-light btn-sm" type="button" onClick={() => copyText(apiExample, toast)}>
+              <Icon name="copy" size={13} /> Chép
+            </button>
+          </div>
+          <pre className="agy-out small">{apiExample}</pre>
         </div>
-      </div>
+      </details>
     </div>
   );
 }

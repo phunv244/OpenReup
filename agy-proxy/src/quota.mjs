@@ -45,14 +45,8 @@ function parseResetTime(raw) {
 }
 
 async function fetchJsonWithTimeout(url, options, timeoutMs = 10_000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
-    return res;
-  } finally {
-    clearTimeout(timer);
-  }
+  // AbortSignal.timeout phủ cả lúc đọc body (.json()), không chỉ lúc chờ header.
+  return fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
 }
 
 export function parseWeeklyQuotaSummary(data) {
@@ -65,6 +59,7 @@ export function parseWeeklyQuotaSummary(data) {
   if (!groups) return {};
 
   const result = {};
+  const fallbackFamily = {};
   for (const group of groups) {
     if (!group || typeof group !== "object") continue;
     const displayName = group.displayName || "";
@@ -81,29 +76,55 @@ export function parseWeeklyQuotaSummary(data) {
         bucketText.includes("five hour") ||
         bucketText.includes("5h") ||
         bucketText.includes("daily");
-      if (!isWeekly && !isSession) continue;
-      if (bucket.disabled === true && isWeekly) continue;
 
       const remainingFraction = bucket.disabled === true ? 0 : Number(bucket.remainingFraction);
       if (!Number.isFinite(remainingFraction)) continue;
 
-      for (const cfg of GROUP_CONFIGS) {
-        if (cfg.pattern.test(displayName)) {
-          const target = isWeekly ? cfg.weekly : cfg.session;
-          if (result[target.key]) break;
-          const total = 1000;
-          const remaining = Math.round(total * remainingFraction);
-          result[target.key] = {
-            used: Math.max(0, total - remaining),
-            total,
-            resetAt: parseResetTime(bucket.resetTime),
-            remainingPercentage: Math.round(remainingFraction * 1000) / 10,
-            displayName: target.displayName,
-          };
+      if (isWeekly || isSession) {
+        if (bucket.disabled === true && isWeekly) continue;
+        for (const cfg of GROUP_CONFIGS) {
+          if (cfg.pattern.test(displayName)) {
+            const target = isWeekly ? cfg.weekly : cfg.session;
+            if (result[target.key]) break;
+            const total = 1000;
+            const remaining = Math.round(total * remainingFraction);
+            result[target.key] = {
+              used: Math.max(0, total - remaining),
+              total,
+              resetAt: parseResetTime(bucket.resetTime),
+              remainingPercentage: Math.round(remainingFraction * 1000) / 10,
+              displayName: target.displayName,
+            };
+            break;
+          }
+        }
+      } else {
+        // Format mới ("All Models"): mỗi bucket là 1 model, không có trường window -> gom theo họ model (lấy % thấp nhất).
+        const matchText = `${bucket.bucketId || ""} ${bucket.displayName || ""} ${displayName}`;
+        for (const cfg of GROUP_CONFIGS) {
+          if (!cfg.pattern.test(matchText)) continue;
+          const key = cfg.session.key;
+          const pct = Math.round(remainingFraction * 1000) / 10;
+          const resetAt = parseResetTime(bucket.resetTime);
+          const prev = fallbackFamily[key];
+          if (!prev || pct < prev.remainingPercentage || (!prev.resetAt && resetAt)) {
+            const total = 1000;
+            const remaining = Math.round(total * remainingFraction);
+            fallbackFamily[key] = {
+              used: Math.max(0, total - remaining),
+              total,
+              resetAt: resetAt || prev?.resetAt || null,
+              remainingPercentage: prev ? Math.min(prev.remainingPercentage, pct) : pct,
+              displayName: cfg.session.displayName.replace(/\s*\(5h\)$/, ""),
+            };
+          }
           break;
         }
       }
     }
+  }
+  for (const [k, v] of Object.entries(fallbackFamily)) {
+    if (!result[k]) result[k] = v;
   }
   return result;
 }
@@ -160,7 +181,6 @@ export async function fetchLiveAntigravityQuota(accessToken, projectId = "") {
   ]);
 
   const quotas = {};
-  const isFreeTier = !paidTierId || paidTierId === "free-tier";
   const discoveredModels = [];
 
   if (modelsRes.status === "fulfilled" && modelsRes.value.ok) {
@@ -170,8 +190,9 @@ export async function fetchLiveAntigravityQuota(accessToken, projectId = "") {
         if (!info?.isInternal) {
           discoveredModels.push({ id: modelKey, name: info?.displayName || modelKey });
         }
-        if (!isFreeTier && info?.quotaInfo && !info.isInternal) {
-          const frac = Number(info.quotaInfo.remainingFraction ?? 0);
+        if (info?.quotaInfo && !info.isInternal && info.quotaInfo.remainingFraction !== undefined) {
+          const frac = Number(info.quotaInfo.remainingFraction);
+          if (!Number.isFinite(frac)) continue;
           const total = 1000;
           const remaining = Math.round(total * frac);
           quotas[modelKey] = {
@@ -321,7 +342,8 @@ export async function refreshAccountQuota(accountId, accessToken, projectId = ""
   if (inflightRefresh.has(accountId)) return inflightRefresh.get(accountId);
 
   const last = lastRefreshAt.get(accountId) || 0;
-  if (!force && now - last < MIN_REFRESH_INTERVAL_MS && quotaCache.has(accountId)) {
+  // force chỉ bỏ qua giãn cách 30 giây, vẫn giữ tối thiểu 3 giây để bấm liên tục không dội upstream
+  if (now - last < (force ? 3000 : MIN_REFRESH_INTERVAL_MS) && quotaCache.has(accountId)) {
     return { quotas: quotaCache.get(accountId), cached: true };
   }
 

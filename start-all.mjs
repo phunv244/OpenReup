@@ -66,7 +66,15 @@ function shutdown(signal = "SIGTERM") {
       } catch {}
     }
   }
-  setTimeout(() => process.exit(0), 1500).unref();
+  // Chờ tiến trình con tự dọn (dừng ffmpeg, đóng stream); quá 5 giây mới ép tắt để không bỏ lại tiến trình mồ côi.
+  const alive = () => children.filter((c) => c.exitCode === null && c.signalCode === null);
+  const done = () => process.exit(process.exitCode || 0);
+  for (const c of alive()) c.once("exit", () => alive().length || done());
+  if (!alive().length) return done();
+  setTimeout(() => {
+    for (const c of alive()) c.kill("SIGKILL");
+    done();
+  }, 5000).unref();
 }
 
 console.log("🚀 Đang khởi động toàn bộ hệ thống...");
@@ -91,8 +99,8 @@ for (const svc of services) {
       console.error(
         `\n⚠️  [${svc.name.trim()}] đã dừng đột ngột (code=${code}, signal=${sig || "none"}). Đang dừng tiến trình còn lại...`
       );
-      shutdown("CHILD_EXIT");
       process.exitCode = code || 1;
+      shutdown("CHILD_EXIT");
     }
   });
 }

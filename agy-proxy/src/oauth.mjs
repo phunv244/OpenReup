@@ -3,12 +3,26 @@ import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import os from "node:os";
 import { ANTIGRAVITY_OAUTH, ANTIGRAVITY_IDE_USER_AGENT, getClientMetadata } from "./constants.mjs";
-import { upsertAccount, updateAccount } from "./store.mjs";
+import { upsertAccount, updateAccount, getAccountById, getSettings } from "./store.mjs";
+
+/** Credential OAuth: ưu tiên biến môi trường (.env), rồi tới giá trị lưu qua giao diện Web (settings.json). */
+export function activeOAuthCreds() {
+  const s = getSettings();
+  return {
+    clientId: ANTIGRAVITY_OAUTH.clientId || s.oauthClientId || "",
+    clientSecret: ANTIGRAVITY_OAUTH.clientSecret || s.oauthClientSecret || "",
+  };
+}
+
+export function hasOAuthCredentials() {
+  const c = activeOAuthCreds();
+  return Boolean(c.clientId && c.clientSecret);
+}
 
 function assertOAuthCredentials() {
-  if (!ANTIGRAVITY_OAUTH.clientId || !ANTIGRAVITY_OAUTH.clientSecret) {
+  if (!hasOAuthCredentials()) {
     throw new Error(
-      "Thiếu AGY_CLIENT_ID hoặc AGY_CLIENT_SECRET trong file .env (xem .env.example để cấu hình)."
+      "Thiếu AGY_CLIENT_ID hoặc AGY_CLIENT_SECRET. Nhập trong giao diện Web (mục Kết nối tài khoản) hoặc đặt trong file .env."
     );
   }
 }
@@ -19,7 +33,7 @@ function assertOAuthCredentials() {
 export function buildAuthUrl(redirectUri, state) {
   assertOAuthCredentials();
   const params = new URLSearchParams({
-    client_id: ANTIGRAVITY_OAUTH.clientId,
+    client_id: activeOAuthCreds().clientId,
     response_type: "code",
     redirect_uri: redirectUri,
     scope: ANTIGRAVITY_OAUTH.scopes.join(" "),
@@ -34,6 +48,8 @@ export function buildAuthUrl(redirectUri, state) {
  * Exchange authorization code for access_token & refresh_token
  */
 export async function exchangeCodeForTokens(code, redirectUri) {
+  assertOAuthCredentials();
+  const creds = activeOAuthCreds();
   const res = await fetch(ANTIGRAVITY_OAUTH.tokenUrl, {
     method: "POST",
     headers: {
@@ -42,8 +58,8 @@ export async function exchangeCodeForTokens(code, redirectUri) {
     },
     body: new URLSearchParams({
       grant_type: "authorization_code",
-      client_id: ANTIGRAVITY_OAUTH.clientId,
-      client_secret: ANTIGRAVITY_OAUTH.clientSecret,
+      client_id: creds.clientId,
+      client_secret: creds.clientSecret,
       code,
       redirect_uri: redirectUri,
     }),
@@ -137,12 +153,13 @@ export async function loadAndOnboardProject(accessToken, waitOnboard = false) {
   if (waitOnboard) {
     const finalPid = await runOnboard();
     if (finalPid) projectId = finalPid;
-  } else {
+  } else if (!onboardInflight.has(accessToken)) {
+    // Chạy nền 1 lượt cho mỗi token: request kế tiếp không khởi động thêm vòng onboard trùng.
+    // Onboard xong thì loadCodeAssist ở request sau tự trả projectId.
+    onboardInflight.add(accessToken);
     runOnboard()
-      .then((finalPid) => {
-        if (finalPid && finalPid !== projectId) projectId = finalPid;
-      })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => onboardInflight.delete(accessToken));
   }
 
   return { projectId, tierId };
@@ -173,6 +190,7 @@ export async function finalizeOAuthCode(code, redirectUri, { waitOnboard = false
 
 // In-flight token refresh dedup per account
 const refreshInflight = new Map();
+const onboardInflight = new Set();
 
 /**
  * Refresh access token for an account (or return current if still fresh)
@@ -194,6 +212,13 @@ export async function ensureFreshToken(account, { force = false } = {}) {
     return refreshInflight.get(account.id);
   }
 
+  // Request khác vừa refresh xong: dùng token mới đó, không đốt lại refresh token cũ (có thể đã bị xoay vòng).
+  const latest = getAccountById(account.id);
+  if (latest) {
+    if (latest.accessToken && latest.accessToken !== account.accessToken) return latest;
+    account = latest;
+  }
+
   const promise = (async () => {
     const res = await fetch(ANTIGRAVITY_OAUTH.tokenUrl, {
       method: "POST",
@@ -204,9 +229,10 @@ export async function ensureFreshToken(account, { force = false } = {}) {
       body: new URLSearchParams({
         grant_type: "refresh_token",
         refresh_token: account.refreshToken,
-        client_id: ANTIGRAVITY_OAUTH.clientId,
-        client_secret: ANTIGRAVITY_OAUTH.clientSecret,
+        client_id: activeOAuthCreds().clientId,
+        client_secret: activeOAuthCreds().clientSecret,
       }),
+      signal: AbortSignal.timeout(15_000), // socket treo không được giữ refreshInflight mãi
     });
 
     if (!res.ok) {
@@ -284,6 +310,8 @@ function renderCallbackHtml(ok, title, detail) {
  * Supports BOTH automatic localhost browser redirect AND manual callback URL paste (for remote VPS/SSH).
  */
 export async function startOAuthSession({ customName = "", timeoutMs = 5 * 60 * 1000 } = {}) {
+  // Kiểm tra trước khi mở cổng callback: ném lỗi bên trong callback "listening" sẽ làm sập cả server.
+  assertOAuthCredentials();
   const state = crypto.randomBytes(24).toString("base64url");
 
   return new Promise((resolve, reject) => {

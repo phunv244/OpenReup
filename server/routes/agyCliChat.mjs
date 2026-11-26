@@ -231,7 +231,7 @@ export default async function agyCliChatRoutes(app) {
       });
 
       child.stderr.on("data", (chunk) => {
-        stderrText += chunk.toString("utf8");
+        stderrText = (stderrText + chunk.toString("utf8")).slice(-4000);
       });
 
       child.on("error", (err) => {
@@ -305,7 +305,7 @@ export default async function agyCliChatRoutes(app) {
       });
 
       child.stderr.on("data", (chunk) => {
-        stderrText += chunk.toString("utf8");
+        stderrText = (stderrText + chunk.toString("utf8")).slice(-4000);
       });
 
       child.on("error", (err) => {

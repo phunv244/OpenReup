@@ -116,6 +116,7 @@ function runStreamingCmd(cmd, args, { niceLevel = 0, onLine = null, onSavedFile 
     const finalArgs = niceLevel > 0 ? ["-n", String(niceLevel), cmd, ...args] : args;
 
     const proc = spawn(finalCmd, finalArgs, { cwd: __dirname });
+    proc.on("error", reject); // thiếu yt-dlp / nice (ENOENT): báo lỗi thay vì crash cả tiến trình
     const savedFiles = [];
     let partial = "";
 
@@ -542,6 +543,7 @@ async function healStuckAria2Parts(outDir, baseUrl) {
                   Referer: "https://www.bilibili.com/",
                   Range: `bytes=${start}-${end}`,
                 },
+                signal: AbortSignal.timeout(60_000), // CDN treo thì thử host kế tiếp
               });
               if (res.status === 206) {
                 const chunk = Buffer.from(await res.arrayBuffer());
@@ -748,8 +750,9 @@ async function main() {
       // Thử vá ngay các mảnh .aria2 bị kẹt trên Akamai trước khi vào vòng kế tiếp
       const healed = await healStuckAria2Parts(args.outDir, args.url);
       if (attempt >= MAX_TRIES && !healed) throw err;
-      console.log(`[Thử lại] Lần ${attempt}/${MAX_TRIES} bị gián đoạn (${err.message}). Tự nối tiếp sau 5 giây...`);
-      await new Promise((r) => setTimeout(r, 5_000));
+      const waitSec = Math.min(60, 5 * 2 ** (attempt - 1)); // 5, 10, 20, 40, 60 giây
+      console.log(`[Thử lại] Lần ${attempt}/${MAX_TRIES} bị gián đoạn (${err.message}). Tự nối tiếp sau ${waitSec} giây...`);
+      await new Promise((r) => setTimeout(r, waitSec * 1000));
     }
   }
   const savedFiles = [...saved];

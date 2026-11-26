@@ -30,7 +30,9 @@ import subprocess
 import sys
 import threading
 import time
+import socket
 import urllib.error
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -134,7 +136,8 @@ def free_gpu_memory(stage: str = "") -> None:
     torch_mod = sys.modules.get("torch")
     if torch_mod is not None:
         try:
-            if torch_mod.cuda.is_available():
+            # is_initialized: Whisper chạy bằng ctranslate2, đừng bắt torch dựng CUDA context chỉ để xả cache rỗng
+            if torch_mod.cuda.is_available() and torch_mod.cuda.is_initialized():
                 torch_mod.cuda.synchronize()
                 torch_mod.cuda.empty_cache()
                 if hasattr(torch_mod.cuda, "ipc_collect"):
@@ -611,24 +614,37 @@ def run_stt(
 
                 words = asr.sherpa_words(model_size, audio, t, on_progress)
             elif len(audio) > 1600:
-                seg_iter, _ = model.transcribe(
-                    audio,
-                    language="zh",
-                    initial_prompt=prompt,
-                    beam_size=4,
-                    word_timestamps=True,
-                    vad_filter=True,
-                    vad_parameters={"min_silence_duration_ms": 280},
-                )
-                # Mốc giờ trên âm thanh chậm -> nhân speed và cộng t để về mốc giờ video gốc.
-                for seg in seg_iter:
-                    if seg.words:
-                        for w in seg.words:
-                            words.append({"w": w.word, "s": t + float(w.start) * speed, "e": t + float(w.end) * speed})
-                    elif (seg.text or "").strip():
-                        words.append({"w": seg.text.strip(), "s": t + float(seg.start) * speed, "e": t + float(seg.end) * speed})
-                    prog.stt = min(1.0, min(t + float(seg.end) * speed, t + chunk_sec) / prog.duration)
-                    prog.emit()
+                while True:
+                    words = []
+                    try:
+                        seg_iter, _ = model.transcribe(
+                            audio,
+                            language="zh",
+                            initial_prompt=prompt,
+                            beam_size=4,
+                            word_timestamps=True,
+                            vad_filter=True,
+                            vad_parameters={"min_silence_duration_ms": 280},
+                        )
+                        # Mốc giờ trên âm thanh chậm -> nhân speed và cộng t để về mốc giờ video gốc.
+                        for seg in seg_iter:
+                            if seg.words:
+                                for w in seg.words:
+                                    words.append({"w": w.word, "s": t + float(w.start) * speed, "e": t + float(w.end) * speed})
+                            elif (seg.text or "").strip():
+                                words.append({"w": seg.text.strip(), "s": t + float(seg.start) * speed, "e": t + float(seg.end) * speed})
+                            prog.stt = min(1.0, min(t + float(seg.end) * speed, t + chunk_sec) / prog.duration)
+                            prog.emit()
+                        break
+                    except RuntimeError as e:
+                        if not gpu or "out of memory" not in str(e).lower():
+                            raise
+                        # Hết VRAM giữa chừng: làm lại khối này và phần còn lại trên CPU thay vì hỏng cả lượt chạy.
+                        log(f"[Nhận diện] ⚠ Hết VRAM ở {fmt_clock(t)}, chuyển {spec['name']} sang CPU cho phần còn lại...")
+                        gpu = False
+                        model = None
+                        free_gpu_memory()
+                        model = WhisperModel(spec["repo"], device="cpu", compute_type="int8", cpu_threads=threads)
             del audio
 
             cut = duration if is_last else pick_cut(words, t + chunk_sec, win_end)
@@ -671,7 +687,12 @@ def _has_active_agy_proxy() -> bool:
         return False
     try:
         data = json.loads(acc_file.read_text(encoding="utf-8"))
-        return any(a.get("isActive", True) is not False for a in (data.get("accounts") or []))
+        if not any(a.get("isActive", True) is not False for a in (data.get("accounts") or [])):
+            return False
+        # Server tắt (chạy dub_video.py trực tiếp) thì quay về agy CLI thay vì để mọi lô dịch thất bại.
+        u = urllib.parse.urlsplit(AGY_PROXY_URL)
+        socket.create_connection((u.hostname, u.port or 80), timeout=1.5).close()
+        return True
     except Exception:
         return False
 
@@ -1327,6 +1348,12 @@ class TTS:
         self.engine(voice)  # báo lỗi cài đặt / tên giọng ngay từ đầu
         self.failed = 0
         self.prewarmed: List = []
+        # GPU: đọc theo lô ở 1 luồng riêng (chỉ chạy sau gpu_go), nén mp3 ở save_pool để GPU không phải chờ ffmpeg.
+        self.gpu = False
+        self.gpu_ready = False
+        self.gpu_queue: List = []
+        self.batch_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tts-gpu")
+        self.save_pool = ThreadPoolExecutor(max_workers=max(2, min(6, (os.cpu_count() or 4) - 2)), thread_name_prefix="tts-mp3")
 
     def engine(self, voice: str) -> "VieNeuEngine":
         with self.lock:
@@ -1381,6 +1408,11 @@ class TTS:
         items = [it for it in items if it[0]]
         with self.prog.lock:
             self.prog.tts_total += len(items)
+        if self.gpu:
+            with self.lock:
+                self.gpu_queue += items
+            self._drain_gpu()
+            return
         self.prewarmed += [self.pool.submit(self._ensure_counted, it) for it in items]
 
     def _ensure_counted(self, item) -> Optional[Path]:
@@ -1397,8 +1429,29 @@ class TTS:
             self.prog.tts_total, self.prog.tts_done = len(items), 0
         if not items or not tts_will_use_gpu():
             return list(self.pool.map(self._ensure_counted, items))
+        self._ensure_batched(items)
+        return [self.cached(t, v or self.voice) for t, v in items]
 
-        # Trên GPU: gom các câu chưa có cache theo từng giọng để chạy infer_batch (nhanh gấp nhiều lần từng câu lẻ).
+    def gpu_go(self) -> None:
+        """Bước Nhận diện đã nhả VRAM: bắt đầu đọc theo lô các khối đã dịch xong, song song với phần dịch còn lại."""
+        self.gpu_ready = True
+        self._drain_gpu()
+
+    def _drain_gpu(self) -> None:
+        if not self.gpu_ready:
+            return
+
+        def run() -> None:
+            with self.lock:
+                items, self.gpu_queue = self.gpu_queue, []
+            if items:
+                self._ensure_batched(items)
+
+        self.prewarmed.append(self.batch_pool.submit(run))
+
+    def _ensure_batched(self, items) -> None:
+        """GPU: gom các câu chưa có cache theo từng giọng để chạy infer_batch (nhanh gấp nhiều lần từng câu lẻ).
+        mp3 của lô trước được nén ở luồng nền trong lúc GPU chạy lô sau."""
         counts: Dict[Tuple[str, str], int] = {}
         by_voice: Dict[str, List[str]] = {}
         done_now = 0
@@ -1420,8 +1473,7 @@ class TTS:
         if done_now:
             self.prog.bump("tts_done", done_now)
 
-        def save_wav(args_tuple) -> bool:
-            text, voice, wav, sr = args_tuple
+        def save_wav(text, voice, wav, sr) -> bool:
             out = self.path(text, voice)
             out.parent.mkdir(parents=True, exist_ok=True)
             tmp = out.with_name(f"{out.stem}.{threading.get_ident()}.tmp.mp3")
@@ -1435,35 +1487,42 @@ class TTS:
             finally:
                 tmp.unlink(missing_ok=True)
 
+        def single(t: str, voice: str) -> None:
+            try:
+                self.ensure(t, voice)
+            finally:
+                self.prog.bump("tts_done", counts[(t, voice)])
+
+        def settle(voice: str, texts: List[str], futs) -> None:
+            for t, f in zip(texts, futs):
+                if f.result():
+                    self.prog.bump("tts_done", counts[(t, voice)])
+                else:  # lô trả âm thanh hỏng cho câu này -> vớt lại bằng đọc lẻ
+                    single(t, voice)
+
+        pending = None  # (giọng, các câu, future lưu mp3) của lô trước
         for voice, texts in by_voice.items():
             eng = self.engine(voice)
             bs = max(8, int(getattr(eng.model(), "max_batch_size", 8)) * 2)
             for i in range(0, len(texts), bs):
                 batch_texts = texts[i : i + bs]
-                fallback = batch_texts
+                res = None
                 if len(batch_texts) >= 2:
                     try:
                         res = eng.synth_batch_wavs(batch_texts)
-                        if res is not None:
-                            wavs, sr = res
-                            oks = list(self.pool.map(save_wav, [(t, voice, w, sr) for t, w in zip(batch_texts, wavs)]))
-                            fallback = []
-                            for t, ok in zip(batch_texts, oks):
-                                if ok:
-                                    self.prog.bump("tts_done", counts[(t, voice)])
-                                else:
-                                    fallback.append(t)
                     except Exception as e:
                         log(f"[Giọng đọc] ⚠ Lô GPU {len(batch_texts)} câu gặp lỗi ({e}), chuyển sang đọc lẻ từng câu...")
                         free_gpu_memory()
-                        fallback = batch_texts
-                for t in fallback:
-                    try:
-                        self.ensure(t, voice)
-                    finally:
-                        self.prog.bump("tts_done", counts[(t, voice)])
-
-        return [self.cached(t, v or self.voice) for t, v in items]
+                if pending:
+                    settle(*pending)
+                    pending = None
+                if res is None:  # lô lỗi, lô 1 câu, hoặc VieNeu không chạy backend PyTorch (ONNX)
+                    list(self.pool.map(lambda t: single(t, voice), batch_texts))
+                else:
+                    wavs, sr = res
+                    pending = (voice, batch_texts, [self.save_pool.submit(save_wav, t, voice, w, sr) for t, w in zip(batch_texts, wavs)])
+        if pending:
+            settle(*pending)
 
 
 MP3_BITRATES = {
@@ -1657,63 +1716,72 @@ def render_parts(
     job.parts_dir.mkdir(parents=True, exist_ok=True)
     n_parts = max(1, math.ceil((duration - 0.05) / PART_SEC))
     threads = max(2, min(8, (os.cpu_count() or 4) - 2))
-    log(f"[Xuất video] Bộ mã hóa: {'GPU NVIDIA NVENC (h264_nvenc)' if use_nvenc else f'CPU libx264 ({threads} luồng)'}.")
-    keep, done_before = [], 0
     starts = [s["start"] for s in segments]
+    plan = []  # (k, t0, dur, ass_txt) của từng phần — không phụ thuộc bộ mã hóa
     for k in range(n_parts):
         t0 = k * PART_SEC
         dur = min(PART_SEC, duration - t0)
         # chỉ xét các câu quanh phần này (câu dài nhất vài giây) thay vì quét cả 100k câu cho mỗi phần
         near = segments[bisect.bisect_left(starts, t0 - 60) : bisect.bisect_left(starts, t0 + dur)]
         ass_txt = build_ass(sub_events(near, offset=t0, window=dur), size[0], size[1], subcover, sub_style) if burn_sub else ""
-        key = hashlib.sha1(json.dumps([sig, t0, dur, ass_txt, delogo_vf, encode_args] + ([cover_vf] if cover_vf else [])).encode()).hexdigest()[:12]
-        part = job.parts_dir / f"p{k:05d}_{key}.mp4"
-        keep.append(part)
-        if part.exists():
-            done_before += 1
-            prog.render = (k + 1) / n_parts
-            continue
-        for stale in job.parts_dir.glob(f"p{k:05d}_*"):
-            stale.unlink(missing_ok=True)
-        filters = [f for f in (delogo_vf, cover_vf) if f]
-        if ass_txt:
-            ass_path = job.parts_dir / f"p{k:05d}.ass"
-            ass_path.write_text(ass_txt, encoding="utf-8")
-            filters.append(subtitles_filter(ass_path))
-        tmp = part.with_suffix(".tmp.mp4")
-        prog.note = f"phần {k + 1}/{n_parts} ({fmt_clock(t0)} → {fmt_clock(t0 + dur)})"
+        plan.append((k, t0, dur, ass_txt))
 
-        def on_frac(f, k=k):
-            prog.render = (k + f) / n_parts
-            prog.emit()
+    def part_path(k: int, t0: float, dur: float, ass_txt: str, enc: List[str]) -> Path:
+        key = hashlib.sha1(json.dumps([sig, t0, dur, ass_txt, delogo_vf, enc] + ([cover_vf] if cover_vf else [])).encode()).hexdigest()[:12]
+        return job.parts_dir / f"p{k:05d}_{key}.mp4"
 
+    # Mọi phần của 1 video phải cùng 1 bộ mã hóa (ghép copy 2 loại SPS/PPS dễ vỡ hình ở điểm nối). Nếu phần lớn video
+    # đã mã hóa sẵn bằng CPU (dự án cũ / lần trước NVENC hỏng) thì làm nốt bằng CPU thay vì mã hóa lại tất cả bằng NVENC.
+    if use_nvenc and encoder == "auto":
+        cpu_args, _ = video_encode_args(cap, "cpu")
+        n_cpu = sum(part_path(*p, cpu_args).exists() for p in plan)
+        if n_cpu * 2 >= n_parts and n_cpu > sum(part_path(*p, encode_args).exists() for p in plan):
+            encode_args, use_nvenc = cpu_args, False
+    log(f"[Xuất video] Bộ mã hóa: {'GPU NVIDIA NVENC (h264_nvenc)' if use_nvenc else f'CPU libx264 ({threads} luồng)'}.")
+
+    while True:
+        keep, done_before = [], 0
         try:
-            run_ffmpeg(
-                ["-ss", f"{t0:.3f}", "-t", f"{dur:.3f}", "-i", str(input_mp4), "-map", "0:v:0", "-an",
-                 "-vf", ",".join(filters) or "null", *encode_args, "-threads", str(threads), str(tmp)],
-                dur, on_frac, job.work / "render_err.log",
-            )
+            for k, t0, dur, ass_txt in plan:
+                part = part_path(k, t0, dur, ass_txt, encode_args)
+                keep.append(part)
+                if part.exists():
+                    done_before += 1
+                    prog.render = (k + 1) / n_parts
+                    continue
+                for stale in job.parts_dir.glob(f"p{k:05d}_*"):
+                    stale.unlink(missing_ok=True)
+                filters = [f for f in (delogo_vf, cover_vf) if f]
+                if ass_txt:
+                    ass_path = job.parts_dir / f"p{k:05d}.ass"
+                    ass_path.write_text(ass_txt, encoding="utf-8")
+                    filters.append(subtitles_filter(ass_path))
+                tmp = part.with_suffix(".tmp.mp4")
+                prog.note = f"phần {k + 1}/{n_parts} ({fmt_clock(t0)} → {fmt_clock(t0 + dur)})"
+
+                def on_frac(f, k=k):
+                    prog.render = (k + f) / n_parts
+                    prog.emit()
+
+                run_ffmpeg(
+                    ["-ss", f"{t0:.3f}", "-t", f"{dur:.3f}", "-i", str(input_mp4), "-map", "0:v:0", "-an",
+                     "-vf", ",".join(filters) or "null", *encode_args, "-threads", str(threads), str(tmp)],
+                    dur, on_frac, job.work / "render_err.log",
+                )
+                os.replace(tmp, part)
+                prog.render = (k + 1) / n_parts
+                prog.emit(force=True)
+                if n_parts > 1:
+                    log(f"[Xuất video] Xong phần {k + 1}/{n_parts}.")
+            break
         except RuntimeError:
             if not use_nvenc or encoder == "nvenc":
                 raise
-            log("[Xuất video] ⚠ NVENC gặp lỗi, tự động chuyển sang CPU libx264 cho phần này và các phần sau...")
-            _nvenc_ok = False
+            _nvenc_ok = None
+            if has_working_nvenc():  # NVENC vẫn chạy được -> lỗi do nguyên nhân khác (ổ đầy, filter...), không đổi bộ mã hóa
+                raise
+            log("[Xuất video] ⚠ NVENC ngừng hoạt động, mã hóa lại toàn bộ bằng CPU libx264 để các phần đồng nhất...")
             encode_args, use_nvenc = video_encode_args(cap, "cpu")
-            key = hashlib.sha1(json.dumps([sig, t0, dur, ass_txt, delogo_vf, encode_args] + ([cover_vf] if cover_vf else [])).encode()).hexdigest()[:12]
-            part = job.parts_dir / f"p{k:05d}_{key}.mp4"
-            keep[-1] = part
-            tmp.unlink(missing_ok=True)
-            tmp = part.with_suffix(".tmp.mp4")
-            run_ffmpeg(
-                ["-ss", f"{t0:.3f}", "-t", f"{dur:.3f}", "-i", str(input_mp4), "-map", "0:v:0", "-an",
-                 "-vf", ",".join(filters) or "null", *encode_args, "-threads", str(threads), str(tmp)],
-                dur, on_frac, job.work / "render_err.log",
-            )
-        os.replace(tmp, part)
-        prog.render = (k + 1) / n_parts
-        prog.emit(force=True)
-        if n_parts > 1:
-            log(f"[Xuất video] Xong phần {k + 1}/{n_parts}.")
     for f in job.parts_dir.iterdir():
         if f not in keep:
             f.unlink(missing_ok=True)
@@ -1945,17 +2013,19 @@ def main() -> int:
         log(f"[Xuất lại] Chỉ làm lại {'phần HÌNH' if only == 'video' else 'phần TIẾNG'}; {'tiếng' if only == 'video' else 'hình'} lấy lại từ bản đã xuất.")
 
     if not rerender:
-        gpu_tts = tts_will_use_gpu()
+        # Máy có GPU: câu đã dịch chỉ xếp hàng, đợi Nhận diện xong và xả VRAM (gpu_go) rồi mới nạp VieNeu chạy theo lô
+        # (infer_batch) để không tranh VRAM 4 GB với Whisper — từ đó giọng đọc chạy song song với phần dịch còn lại.
+        tts.gpu = tts_will_use_gpu()
         translator = Translator(
             job, story_ctx, story_project_id, args.translate_workers, prog, agy_model=agy_model, ask_who=multi_voice,
-            # Nhiều giọng cần nghe hết video mới phân vai; máy có GPU thì đợi Nhận diện xong và xả VRAM rồi mới nạp VieNeu
-            # chạy theo lô (infer_batch) để không tranh VRAM 4 GB với Whisper.
-            on_chunk_done=None if (multi_voice or gpu_tts) else lambda c: tts.prewarm([tts.item(s) for s in c["segments"]]),
+            # Nhiều giọng cần nghe hết video mới phân vai nên không tạo giọng trước.
+            on_chunk_done=None if multi_voice else lambda c: tts.prewarm([tts.item(s) for s in c["segments"]]),
         )
         chunks = run_stt(
             job, input_mp4, duration, speed, args.model, story_ctx, max(60.0, args.chunk_min * 60), prog,
             on_chunk=translator.submit_chunk,
         )
+        tts.gpu_go()
         prog.stt = 1.0
         prog.set_stage("translate")
         translator.wait()

@@ -19,6 +19,7 @@ import resourceRoutes from "./routes/resources.mjs";
 import voiceRoutes from "./routes/voices.mjs";
 import agyProxyRoutes from "./routes/agyProxy.mjs";
 import agyCliChatRoutes from "./routes/agyCliChat.mjs";
+import functionRoutes from "./routes/functions.mjs";
 
 runMigrations();
 clearVoiceTmp();
@@ -85,6 +86,7 @@ await app.register(resourceRoutes);
 await app.register(dubRoutes);
 await app.register(agyProxyRoutes);
 await app.register(agyCliChatRoutes);
+await app.register(functionRoutes);
 
 for (const sig of ["SIGINT", "SIGTERM"]) {
   process.on(sig, () => {

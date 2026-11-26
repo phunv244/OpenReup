@@ -226,12 +226,19 @@ async function callAntigravityUpstream(envelope, accessToken, stream, signal) {
     ...(stream ? { Accept: "text/event-stream" } : {}),
   };
 
-  return fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(envelope),
-    signal,
-  });
+  // Chỉ giới hạn thời gian chờ header (upstream treo); body/stream sau đó không bị cắt.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new Error("Antigravity upstream không phản hồi sau 300 giây")), 300_000);
+  try {
+    return await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(envelope),
+      signal: signal ? AbortSignal.any([signal, ctrl.signal]) : ctrl.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -428,11 +435,11 @@ export async function routeChatCompletion(body, { preferredAccountId = null, ses
         // Clear any old locks/strikes & record usage
         clearAccountStrikes(account.id, modelMeta.cleanModel);
         await clearAccountLocks(account.id, modelMeta.cleanModel);
-        await updateAccount(account.id, {
-          totalRequests: (account.totalRequests || 0) + 1,
+        await updateAccount(account.id, (cur) => ({
+          totalRequests: (cur.totalRequests || 0) + 1,
           lastUsedAt: new Date().toISOString(),
           status: "active",
-        });
+        }));
 
         const metaHeaders = {
           "X-AGY-Account-Id": account.id,
@@ -510,13 +517,17 @@ export async function routeChatCompletion(body, { preferredAccountId = null, ses
     // Account/Quota error -> determine exact cooldown & switch immediately to next account!
     let resetMs = parseUpstreamResetMs(upstreamRes, errorBodyText);
     if (status === 429 || status === 409) {
-      const liveResetMs = await handleQuotaErrorAndResolveReset(
-        account.id,
-        status,
-        modelMeta.cleanModel,
-        account.accessToken,
-        account.projectId
-      );
+      // Chờ quota live tối đa 3 giây rồi chuyển tài khoản; lượt lấy quota vẫn chạy tiếp ở nền và cập nhật cache.
+      const liveResetMs = await Promise.race([
+        handleQuotaErrorAndResolveReset(
+          account.id,
+          status,
+          modelMeta.cleanModel,
+          account.accessToken,
+          account.projectId
+        ).catch(() => null),
+        new Promise((r) => setTimeout(r, 3000, null)),
+      ]);
       if (liveResetMs && (!resetMs || liveResetMs > resetMs)) {
         resetMs = liveResetMs;
       }

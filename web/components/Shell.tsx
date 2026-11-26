@@ -4,6 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, createContext, useContext, useEffect, useState } from "react";
 import { projHref, taskName } from "@/lib/format";
 import { useStudio } from "@/lib/studio";
+import { FunctionRail } from "./FunctionRail";
 import { Icon } from "./Icon";
 import { ProjectDrawer } from "./ProjectDrawer";
 import { Resizer } from "./Resizer";
@@ -134,7 +135,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </aside>
 
         <div className="main">{children}</div>
-        <TaskRail />
+        {clean(path) === "/agy-proxy" ? <FunctionRail /> : <TaskRail />}
         <div className="sb-backdrop" onClick={() => document.body.classList.remove("sb-open")} />
       </div>
       {drawerProj && <ProjectDrawer project={drawerProj} onClose={() => setDrawerPid("")} />}

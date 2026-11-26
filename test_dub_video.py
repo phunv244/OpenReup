@@ -306,7 +306,13 @@ def test_gpu_batched_tts_dedup_and_unload():
                 ("lỗi lô", "vieneu:Thiện Minh"),   # vớt lại bằng synth_mp3
                 ("", "vieneu:Thiện Minh"),
             ]
+            # Có GPU: câu dịch xong chỉ xếp hàng, tới khi Nhận diện nhả VRAM (gpu_go) mới được đọc.
+            tts.gpu = True
+            tts.prewarm([("Đọc sớm", "vieneu:Thiện Minh")])
+            assert not tts.prewarmed and not tts.path("Đọc sớm").exists()
+            tts.gpu_go()
             outs = tts.ensure_all(items)
+            assert tts.path("Đọc sớm").exists()
             tts.pool.shutdown()
             assert len(batch_calls) == 1 and batch_calls[0] == ("Thiện Minh", ["Xin chào", "Đi thôi", "lỗi lô"])
             assert outs[0] == outs[1] and outs[0] is not None and outs[2] is not None and outs[3] is not None and outs[4] is None

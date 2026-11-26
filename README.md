@@ -108,3 +108,30 @@ Mở trình duyệt tại **http://localhost:3456**.
   npm run dev:api
   npm run dev:web
   ```
+
+## Cho model gọi hàm (function calling / MCP)
+
+Mọi thao tác chính của Studio có sẵn dạng hàm kèm JSON Schema tham số, để model tự tải video, cấu hình và reup.
+
+| Hàm | Việc làm |
+|---|---|
+| `download_video` | Tải Bilibili / YouTube: `url`, `quality`, `playlist`, `playlist_items`, `section`, `delogo`, `perf`, `project_id` |
+| `douyin_scan_channel`, `douyin_download` | Quét kênh và tải video Douyin |
+| `dub_video` | Reup 1 video: `rel_path`, `voice`, `model`, `speed`, `bg_volume`, `delogo`, `subcover`, `burn_sub`, `multi_voice`, `agy_model`, `sub_style`, `project_id`, `fresh` |
+| `rerender_video` | Xuất lại sau khi đổi cấu hình / sửa lời thoại |
+| `delogo_video` | Xóa logo trên video đã tải |
+| `list_sources`, `list_dubbed`, `list_options` | Video nguồn, bản đã xuất, các giá trị hợp lệ (giọng, mô hình, dự án, font) |
+| `get_task`, `stop_task`, `get_call`, `list_calls` | Theo dõi / dừng tác vụ, xem kết quả và nhật ký lần gọi |
+
+- `GET /api/functions`: danh sách hàm theo định dạng `tools` của OpenAI.
+- `POST /api/functions/call` với `{"name": "...", "arguments": {...}, "wait_sec": 0}`: chạy hàm.
+- `GET /api/functions/calls`, `GET /api/functions/calls/<call_id>`: nhật ký lần gọi.
+
+Tác vụ dài (tải, lồng tiếng) chạy nền: hàm trả `call_id` ngay, gọi `get_call` (thêm `wait_sec` để chờ) để lấy kết quả.
+Kết quả luôn kèm đường dẫn file (`path`, `rel_path`, `url`); khi lỗi, `error` chứa nguyên văn thông báo và `log_file` trỏ tới nhật ký đầy đủ trong `data/function_logs/`.
+
+Dùng qua MCP (Claude Code, agy CLI...), khi Studio đang chạy:
+
+```json
+{ "mcpServers": { "openreup": { "command": "node", "args": ["/đường/dẫn/OpenReup/mcp-server.mjs"] } } }
+```

@@ -122,6 +122,14 @@ export function createProxyServer() {
       }
 
       // ─── Unified Gateway Endpoints (/v1/*) ───────────────────────────────
+      if (pathname === "/api/models") {
+        sendJson(res, 200, {
+          ok: true,
+          data: ANTIGRAVITY_MODELS.map((m) => ({ id: m.id, name: m.name })),
+        });
+        return;
+      }
+
       if (pathname === "/v1/models" || pathname === "/models") {
         if (!checkGatewayApiKey(req)) {
           sendJson(res, 401, { error: { message: "Invalid or missing API key", type: "authentication_error" } });

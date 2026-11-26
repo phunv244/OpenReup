@@ -19,13 +19,14 @@ function ensureDataDir() {
 }
 
 function readJsonSafe(filePath, fallback) {
+  if (!fs.existsSync(filePath)) return structuredClone(fallback);
+  const raw = fs.readFileSync(filePath, "utf8");
+  if (!raw.trim()) return structuredClone(fallback);
   try {
-    if (!fs.existsSync(filePath)) return structuredClone(fallback);
-    const raw = fs.readFileSync(filePath, "utf8");
-    if (!raw.trim()) return structuredClone(fallback);
     return JSON.parse(raw);
-  } catch {
-    return structuredClone(fallback);
+  } catch (e) {
+    // Không trả fallback: lần ghi kế tiếp sẽ đè file và xóa sạch tài khoản + token.
+    throw new Error(`File ${filePath} bị hỏng (JSON không hợp lệ: ${e.message}). Sửa hoặc khôi phục file rồi thử lại.`);
   }
 }
 
@@ -42,7 +43,28 @@ const DEFAULT_SETTINGS = {
   defaultModel: DEFAULT_MODEL,
   requireApiKey: false,
   apiKey: "",
+  oauthClientId: "", // Antigravity OAuth client_id (nhập qua Web nếu không đặt AGY_CLIENT_ID trong .env)
+  oauthClientSecret: "",
 };
+
+// Lockfile O_EXCL: CLI và server (2 tiến trình) không ghi đè cập nhật của nhau.
+const LOCK_FILE = path.join(DATA_DIR, ".store.lock");
+async function acquireFileLock() {
+  ensureDataDir();
+  for (;;) {
+    try {
+      fs.closeSync(fs.openSync(LOCK_FILE, "wx"));
+      return;
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+      try {
+        // Mọi thao tác trong khóa đều đồng bộ (vài ms): khóa cũ hơn 5 giây là của tiến trình đã chết.
+        if (Date.now() - fs.statSync(LOCK_FILE).mtimeMs > 5000) fs.rmSync(LOCK_FILE, { force: true });
+      } catch {}
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+}
 
 // Serialize state mutations so concurrent requests or CLI + Server updates never clobber
 let writeQueue = Promise.resolve();
@@ -52,7 +74,16 @@ function withLock(fn) {
   writeQueue = new Promise((r) => {
     release = r;
   });
-  return prev.then(fn).finally(() => release());
+  return prev
+    .then(async () => {
+      await acquireFileLock();
+      try {
+        return await fn();
+      } finally {
+        fs.rmSync(LOCK_FILE, { force: true });
+      }
+    })
+    .finally(() => release());
 }
 
 export function getSettings() {
@@ -79,6 +110,12 @@ export async function updateSettings(patch) {
     }
     if (typeof patch.apiKey === "string") {
       next.apiKey = patch.apiKey.trim();
+    }
+    if (typeof patch.oauthClientId === "string") {
+      next.oauthClientId = patch.oauthClientId.trim();
+    }
+    if (typeof patch.oauthClientSecret === "string") {
+      next.oauthClientSecret = patch.oauthClientSecret.trim();
     }
     if (patch.regenerateApiKey === true) {
       next.apiKey = `sk-agy-${crypto.randomBytes(18).toString("base64url")}`;
@@ -193,6 +230,8 @@ export async function updateAccount(id, patch) {
     const accounts = listAccounts();
     const idx = accounts.findIndex((a) => a.id === id);
     if (idx === -1) return null;
+    // patch có thể là hàm (cur) => patch để tính trên bản ghi mới nhất (bộ đếm không bị mất khi chạy song song)
+    if (typeof patch === "function") patch = patch(accounts[idx]);
     const next = { ...accounts[idx], ...patch, updatedAt: new Date().toISOString() };
     for (const [k, v] of Object.entries(next)) {
       if (k.startsWith(MODEL_LOCK_PREFIX) && v === null) {

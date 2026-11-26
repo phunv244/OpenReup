@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { DATA_DIR, DOWNLOADS_DIR, PORT, ROOT, TASK_LOG } from "../config.mjs";
 import { relOf } from "./util.mjs";
 import { setVideoProject } from "./store.mjs";
@@ -24,6 +25,9 @@ export const history = []; // các tác vụ đã xong gần đây, mới nhất
 const MAX_QUEUE = 30;
 const MAX_HISTORY = 15;
 let queueSeq = 0;
+// Mỗi tác vụ có 1 mã (task_id) trả về lúc gọi; "start"/"end" báo cho lớp gọi hàm (routes/functions.mjs) biết kết quả.
+let taskSeq = 0;
+export const taskEvents = new EventEmitter();
 
 const DL_LINE = /^\[download\]\s+(\d+(?:\.\d+)?)%(?:\s+of\s+~?\s*(\S+))?(?:\s+at\s+(\S+))?(?:\s+ETA\s+(\S+))?/;
 // Dòng tiến độ của aria2c: [#4c3a6a 304MiB/787MiB(38%) CN:16 DL:10MiB ETA:44s]
@@ -74,21 +78,23 @@ function appendLog(line) {
 
 /** Chạy ngay nếu rảnh, không thì xếp hàng. Trả {ok, queued?, position?} hoặc {ok:false, error}. */
 export function spawnTask(type, cmd, args, target = "", projectId = "") {
-  if (!task.proc && !queue.length) return runTask({ type, cmd, args, target, projectId });
+  const taskId = ++taskSeq;
+  if (!task.proc && !queue.length) return runTask({ taskId, type, cmd, args, target, projectId });
   // Đăng nhập Chrome cần người dùng thao tác ngay, không xếp hàng.
   if (type === "login_chrome") return { ok: false, error: "Đang có tiến trình khác chạy. Hãy chờ xong hoặc dừng trước." };
   const dup = (t) => t.type === type && t.target === target;
   if (target && ((task.proc && dup(task)) || queue.some(dup))) return { ok: false, error: "Tác vụ này đang chạy hoặc đã có trong hàng đợi." };
   if (queue.length >= MAX_QUEUE) return { ok: false, error: `Hàng đợi đã đầy (${MAX_QUEUE} tác vụ).` };
-  queue.push({ id: ++queueSeq, type, cmd, args, target, projectId, addedAt: Date.now() });
-  return { ok: true, queued: true, position: queue.length };
+  queue.push({ id: ++queueSeq, taskId, type, cmd, args, target, projectId, addedAt: Date.now() });
+  return { ok: true, queued: true, position: queue.length, task_id: taskId };
 }
 
 function runNext() {
   if (!task.proc && queue.length) runTask(queue.shift());
 }
 
-function runTask({ type, cmd, args, target = "", projectId = "" }) {
+function runTask({ taskId = 0, type, cmd, args, target = "", projectId = "" }) {
+  const savedFiles = [];
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(TASK_LOG, "");
   Object.assign(task, {
@@ -115,6 +121,7 @@ function runTask({ type, cmd, args, target = "", projectId = "" }) {
     detached: true,
   });
   task.proc = proc;
+  taskEvents.emit("start", { task_id: taskId });
 
   const lineReader = () => {
     let carry = "";
@@ -124,9 +131,11 @@ function runTask({ type, cmd, args, target = "", projectId = "" }) {
       parts.forEach(appendLog);
       // Script tải in "SAVED_FILE:::<đường dẫn>" cho mỗi file xong: gán luôn vào dự án đang mở lúc bấm tải.
       for (const line of parts) {
-        if (!projectId || !line.startsWith("SAVED_FILE:::")) continue;
+        if (!line.startsWith("SAVED_FILE:::")) continue;
         const full = path.resolve(ROOT, line.slice("SAVED_FILE:::".length).trim());
-        if (full.startsWith(DOWNLOADS_DIR + path.sep)) setVideoProject(relOf(full), projectId);
+        if (!full.startsWith(DOWNLOADS_DIR + path.sep)) continue;
+        if (!savedFiles.includes(full)) savedFiles.push(full);
+        if (projectId) setVideoProject(relOf(full), projectId);
       }
     };
   };
@@ -143,12 +152,13 @@ function runTask({ type, cmd, args, target = "", projectId = "" }) {
     history.unshift({ type, target, started_at: task.startedAt, ended_at: task.endedAt, exit_code: code });
     history.length = Math.min(history.length, MAX_HISTORY);
     setImmediate(runNext);
+    taskEvents.emit("end", { task_id: taskId, type, target, exit_code: code, logs: [...task.logs], saved_files: savedFiles });
     task.progress =
       code === 0
         ? { pct: 100, label: "Hoàn tất", eta: null, stage: 0 }
         : { ...task.progress, eta: null, label: code === 130 || code === null ? "Đã dừng — tiến độ đã lưu" : `Lỗi (mã ${code})` };
   });
-  return { ok: true };
+  return { ok: true, task_id: taskId };
 }
 
 function signalTask(sig) {
@@ -197,6 +207,9 @@ export function taskSnapshot() {
 
 export function removeQueued(id) {
   const i = queue.findIndex((q) => q.id === Number(id));
-  if (i >= 0) queue.splice(i, 1);
+  if (i >= 0) {
+    const [q] = queue.splice(i, 1);
+    taskEvents.emit("end", { task_id: q.taskId, type: q.type, target: q.target, exit_code: null, logs: ["Đã bỏ khỏi hàng đợi trước khi chạy."], saved_files: [] });
+  }
   return i >= 0;
 }

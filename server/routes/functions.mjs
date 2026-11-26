@@ -126,7 +126,6 @@ const FUNCTIONS = [
       delogo: P_DELOGO,
       subcover: P_SUBCOVER,
       burn_sub: bool("In cứng phụ đề Việt lên hình (mặc định true)."),
-      multi_voice: bool("Lồng tiếng nhiều giọng: tự phân vai nhân vật và gán giọng riêng (mặc định false)."),
       agy_model: str("Model dịch của Antigravity (id trong list_options.agy_models). Bỏ trống = mặc định."),
       sub_style: P_SUB_STYLE,
       project_id: P_PROJECT,
@@ -193,7 +192,7 @@ const FUNCTIONS = [
   },
   {
     name: "list_projects",
-    description: "Liệt kê đầy đủ các dự án Reup: nhân vật (tên gốc/Việt, xưng hô, tính cách, giọng), thuật ngữ, mạch truyện, danh sách video đã gán.",
+    description: "Liệt kê đầy đủ các dự án Reup: giọng đọc dùng chung, nhân vật (tên gốc/Việt, xưng hô, tính cách), thuật ngữ, mạch truyện, danh sách video đã gán.",
     route: ["GET", "/api/projects"],
     parameters: {},
   },
@@ -206,13 +205,14 @@ const FUNCTIONS = [
       type: str("Thể loại.", { default: "Truyện / Hoạt hình" }),
       style: str("Phong cách dịch & giọng văn mong muốn."),
       synopsis: str("Cốt truyện chung, càng chi tiết AI dịch càng đúng mạch."),
+      voice: P_VOICE,
     },
     required: ["name"],
   },
   {
     name: "update_project",
     description:
-      "Sửa thông tin dự án Reup: ngữ cảnh chung, danh sách nhân vật (mỗi nhân vật chỉ 1 giọng, chọn từ list_options.voices ở Tài nguyên) và thuật ngữ.",
+      "Sửa thông tin dự án Reup: ngữ cảnh chung, giọng đọc dùng chung cho mọi nhân vật (chọn từ list_options.voices ở Tài nguyên), danh sách nhân vật và thuật ngữ.",
     route: ["POST", "/api/projects/save"],
     parameters: {
       id: str("Mã dự án (id trong list_options.projects)."),
@@ -220,14 +220,15 @@ const FUNCTIONS = [
       type: str("Thể loại."),
       style: str("Phong cách dịch & giọng văn."),
       synopsis: str("Cốt truyện chung."),
+      voice: P_VOICE,
       characters: {
         type: "array",
-        description: "Toàn bộ danh sách nhân vật (ghi đè danh sách cũ).",
+        description: "Toàn bộ danh sách nhân vật (ghi đè danh sách cũ). Mọi nhân vật dùng chung giọng đọc của dự án (field voice trên).",
         items: {
           type: "object",
           properties: {
             zh: str("Tên gốc."), vi: str("Tên Việt."), pronouns: str("Xưng hô."), role: str("Vai trò."),
-            personality: str("Tính cách, giọng điệu."), voice: str('Giọng đọc duy nhất của nhân vật, id trong list_options.voices (ví dụ "vieneu:Hải Đăng"). Bỏ trống = máy tự chọn khi lồng tiếng nhiều giọng.'),
+            personality: str("Tính cách, giọng điệu."),
           },
         },
       },

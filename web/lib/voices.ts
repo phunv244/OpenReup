@@ -14,7 +14,10 @@ export function voiceLabel(all: Voice[], id: string) {
 /** [[mã, nhãn]] cho ô chọn giọng: cả thư viện (dùng chung mọi dự án); giọng dự án từng chọn đứng đầu để giữ
  *  giọng mặc định cũ. `keep` (giọng đang dùng) luôn có mặt để không bị đổi ngầm. */
 export function voiceOptions(all: Voice[], proj: Project | null | undefined, keep = ""): [string, string][] {
-  return [...new Set([...(proj?.voices || []), ...all.map((v) => v.id), ...(keep ? [keep] : [])])].map((id) => [id, voiceLabel(all, id)]);
+  return [...new Set([...(proj?.voice ? [proj.voice] : []), ...(proj?.voices || []), ...all.map((v) => v.id), ...(keep ? [keep] : [])])].map((id) => [
+    id,
+    voiceLabel(all, id),
+  ]);
 }
 
 let player: HTMLAudioElement | null = null;

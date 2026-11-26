@@ -120,6 +120,7 @@ export function ProjectDrawer({ project, onClose }: { project: Project; onClose:
     type: project.type || TYPES[0],
     style: project.style || "",
     synopsis: project.synopsis || "",
+    voice: project.voice || "",
     characters: (project.characters || []).map((c) => ({ ...c })) as Character[],
     glossary: (project.glossary || []).map((g) => ({ ...g })) as GlossItem[],
     episode_notes: { ...(project.episode_notes || {}) } as Record<string, string>,
@@ -140,6 +141,7 @@ export function ProjectDrawer({ project, onClose }: { project: Project; onClose:
       type: d.type,
       style: d.style.trim(),
       synopsis: d.synopsis.trim(),
+      voice: d.voice,
       characters: d.characters.map((c) => ({ ...c, zh: c.zh.trim(), vi: c.vi.trim(), pronouns: (c.pronouns || "").trim(), personality: (c.personality || "").trim() })).filter((c) => c.zh || c.vi),
       glossary: d.glossary.map(({ zh, vi }) => ({ zh: zh.trim(), vi: vi.trim() })).filter((g) => g.zh || g.vi),
       episode_notes: Object.fromEntries(Object.entries(d.episode_notes).map(([k, v]) => [k, v.trim()])),
@@ -205,6 +207,15 @@ export function ProjectDrawer({ project, onClose }: { project: Project; onClose:
                 <label htmlFor="dr-syn">Cốt truyện chung</label>
                 <textarea id="dr-syn" className="input" rows={6} value={d.synopsis} onChange={(e) => set("synopsis", e.target.value)} />
               </div>
+              <div className="field">
+                <label htmlFor="dr-voice">Giọng đọc dự án</label>
+                <select id="dr-voice" className="select" value={d.voice} onChange={(e) => set("voice", e.target.value)}>
+                  <Options list={[["", "Tự chọn khi lồng tiếng"], ...voiceOptions(allVoices, project, d.voice).filter(([id]) => id)]} />
+                </select>
+                <div className="help">
+                  Mọi nhân vật trong dự án dùng chung giọng này. Thêm giọng mới ở <a href="/resources/?tab=voices">Tài nguyên → Giọng đọc</a>.
+                </div>
+              </div>
               <Callout tone="info" icon="brain">
                 Mỗi lần dịch, AI đọc toàn bộ ngữ cảnh này, rồi tự bổ sung nhân vật và thuật ngữ mới gặp vào dự án.
               </Callout>
@@ -216,11 +227,10 @@ export function ProjectDrawer({ project, onClose }: { project: Project; onClose:
               setRows={(r) => set("characters", r)}
               cols={[
                 ["zh", "Tên gốc"], ["vi", "Tên Việt"], ["pronouns", "Xưng hô"], ["personality", "Tính cách"],
-                ["voice", "Giọng đọc", [["", "Tự chọn"], ...voiceOptions(allVoices, project, "").filter(([id]) => id)]],
               ]}
-              hint="AI tự thêm nhân vật, ghi tính cách qua lời thoại và chọn giọng khi lồng tiếng nhiều giọng — bạn sửa được tất cả."
+              hint="AI tự thêm nhân vật và ghi tính cách qua lời thoại — bạn sửa được tất cả. Mọi nhân vật dùng chung giọng đọc của dự án (tab Thông tin)."
               emptyText="Chưa có nhân vật."
-              blank={{ zh: "", vi: "", pronouns: "", role: "", personality: "", voice: "" }}
+              blank={{ zh: "", vi: "", pronouns: "", role: "", personality: "" }}
             />
           )}
           {tab === "gloss" && (

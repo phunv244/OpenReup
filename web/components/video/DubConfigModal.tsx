@@ -25,12 +25,11 @@ export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; project
   const allVoices = [...voices.clones, ...voices.presets];
 
   const [f, setF] = useState({
-    voice: prev.voice || proj?.voices?.[0] || allVoices[0]?.id || "",
+    voice: prev.voice || proj?.voice || proj?.voices?.[0] || allVoices[0]?.id || "",
     model: pickModel(asr, prev.model || ""),
     speed: String(prev.speed ?? 0.5),
     bg: String(prev.bg_volume ?? 0.05),
     sub: prev.burn_sub !== false,
-    multi: prev.multi_voice !== false,
     fresh: false,
     agy: prev.agy_model || "",
   });
@@ -45,7 +44,7 @@ export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; project
   const encode = f.sub || delogo !== "none" || subcover !== "none";
   const slow = 0.5 / Number(f.speed);
   // VieNeu trên CPU: ~1,5 giây máy cho 1 giây lời, lời chiếm ~55% thời lượng video.
-  const vieneu = f.voice.startsWith("vieneu") || f.multi ? 0.8 : 0;
+  const vieneu = f.voice.startsWith("vieneu") ? 0.8 : 0;
   const m = asr.models.find((x) => x.id === f.model);
   // Đo trên máy 4 nhân, video 8 phút: SenseVoice ~0,07; Paraformer ~0,05; Whisper base ~0,3; small ~1,0 (x thời lượng)
   const sttCost = ({ "sensevoice-small": 0.07, "paraformer-zh": 0.05, base: 0.3 * slow, small: 1.0 * slow } as Record<string, number>)[m?.id || ""]
@@ -71,7 +70,6 @@ export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; project
         subcover,
         sub_style: f.sub ? subStyle : null,
         burn_sub: f.sub,
-        multi_voice: f.multi,
         agy_model: f.agy,
         fresh: f.fresh,
       },
@@ -106,7 +104,7 @@ export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; project
             <Options list={voiceOptions(allVoices, proj, prev.voice)} />
           </select>
           <div className="help">
-            Quản lý ở mục <Link href="/resources/?tab=voices">Tài nguyên → Giọng đọc</Link>.
+            Giọng dùng chung cho mọi nhân vật trong dự án. Thêm / xem trước ở mục <Link href="/resources/?tab=voices">Tài nguyên → Giọng đọc</Link>.
           </div>
         </div>
         <div className="field">
@@ -135,16 +133,6 @@ export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; project
           <select id="mc-bg" className="select" value={f.bg} onChange={set("bg")}>
             <Options list={[["0.05", "5% — rất nhỏ"], ["0", "Tắt hẳn"], ["0.12", "12% — rõ tiếng động nền"]]} />
           </select>
-        </div>
-        <div className="field">
-          <span className="label">Giọng nhân vật</span>
-          <label className="check">
-            <input type="checkbox" checked={f.multi} onChange={set("multi")} /> Mỗi nhân vật một giọng (tự nhận diện)
-          </label>
-          <div className="help">
-            Nghe giọng gốc để tách nhân vật. Người nói nhiều nhất dùng giọng đã chọn, người khác tự nhận giọng VieNeu nam / nữ — đổi lại được trong{" "}
-            <b>Sửa lời</b>.
-          </div>
         </div>
       </div>
       <RegionToggle label="Xóa logo khi xuất" rel={v.rel_path} initial={prev.delogo} onChange={setDelogo} />

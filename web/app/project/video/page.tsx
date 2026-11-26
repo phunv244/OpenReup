@@ -90,9 +90,9 @@ function Detail() {
   const proj = projects.find((p) => p.id === (info.project_id || pid));
   const speakers = Object.entries(info.multi_voice ? info.speakers || {} : {});
 
-  // Giọng đang cấu hình trong ngữ cảnh dự án cho các nhân vật có mặt ở video này (khác giọng hiện tại thì mới hiện nút).
-  const byZh = new Map((proj?.characters || []).map((c) => [c.zh, c.voice || ""]));
-  const ctxList = speakers.map(([k, s]) => [k, byZh.get(s.zh || "") || ""] as const).filter(([k, v]) => v && v !== (spkVoices[k] || info.speakers![k].voice));
+  // Dự án dùng 1 giọng chung cho mọi nhân vật — nút này áp giọng đó cho các nhân vật (cũ) đang khác giọng.
+  const projVoice = proj?.voice || "";
+  const ctxList = speakers.map(([k]) => [k, projVoice] as const).filter(([k, v]) => v && v !== (spkVoices[k] || info.speakers![k].voice));
   const ctxVoices = ctxList.length ? Object.fromEntries(ctxList) : null;
 
   const videoDirty =
@@ -184,7 +184,7 @@ function Detail() {
                         <Icon name="brain" size={14} /> Lấy giọng theo Ngữ cảnh AI
                       </button>
                     )}
-                    <div className="help">Giọng đổi ở đây chỉ áp dụng cho video này. Giọng mặc định của từng nhân vật đặt trong Ngữ cảnh AI → Nhân vật.</div>
+                    <div className="help">Giọng đổi ở đây chỉ áp dụng cho video này. Giọng chung của dự án đặt trong Ngữ cảnh AI → Thông tin.</div>
                   </div>
                 )}
                 <div className="field">

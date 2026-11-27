@@ -13,6 +13,7 @@ export const metadata: Metadata = {
 const BOOT = `(() => {
   const d = document.documentElement;
   d.dataset.theme = localStorage.getItem("theme") || "dark";
+  d.dataset.rail = localStorage.getItem("rail") === "open" ? "open" : "closed";
   for (const k of ["sb-w", "rail-w"]) {
     const w = Number(localStorage.getItem(k));
     if (w) d.style.setProperty("--" + k, w + "px");

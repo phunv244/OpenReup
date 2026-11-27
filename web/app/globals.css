@@ -1212,28 +1212,37 @@ details.faq p { margin-top: 8px; color: var(--text-2); }
 .model-bench { font-size: 12.5px; }
 .model-foot { display: flex; justify-content: flex-end; }
 
-/* ================= CỘT PHẢI: TIẾN TRÌNH · HÀNG ĐỢI · NHẬT KÝ (chỉ màn rộng) ================= */
+/* ================= CỘT PHẢI: TIẾN TRÌNH · HÀNG ĐỢI · NHẬT KÝ (đóng mặc định, bật bằng nút trên thanh tiêu đề) ================= */
 :root { --rail-w: 340px; }
-.rail { display: none; }
-@media (min-width: 1500px) {
-  .main { margin-right: var(--rail-w); }
-  .sb-foot .js-task { display: none; }
-  .rail {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: var(--rail-w);
-    padding: 18px 16px;
-    border-left: 1px solid var(--border);
-    background: var(--surface);
-    overflow-y: auto;
-    z-index: 30;
-  }
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(var(--rail-w), 92vw);
+  padding: 18px 16px;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  overflow-y: auto;
+  z-index: 40;
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.25);
+  animation: rail-in 0.28s var(--ease);
 }
+@keyframes rail-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+/* Màn rộng: cột mở thì đẩy nội dung sang trái (không đè), và bỏ thẻ tiến trình trùng ở thanh trái */
+@media (min-width: 1500px) {
+  [data-rail="open"] .main { margin-right: var(--rail-w); }
+  [data-rail="open"] .sb-foot .js-task { display: none; }
+  .rail { z-index: 30; box-shadow: none; }
+}
+.rail-close { margin-left: auto; width: 26px; height: 26px; }
+.rail-toggle { position: relative; }
+.rail-toggle.on { background: var(--accent-soft); color: var(--accent-text); }
+.rail-toggle-dot { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 2px var(--surface); }
+button.task-chip { border: 0; cursor: pointer; font-family: inherit; }
 .rail-sec h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 .rail-more { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 500; }
 .rail-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -1247,7 +1256,13 @@ details.faq p { margin-top: 8px; color: var(--text-2); }
 .rail-time { font-size: 11px; flex: none; }
 .rail-item .icon-btn { width: 26px; height: 26px; flex: none; }
 .rail-empty { font-size: 12px; padding: 4px 2px; }
-.rail-log { flex: 1; min-height: 220px; display: flex; flex-direction: column; }
+.rail-log summary { list-style: none; cursor: pointer; }
+.rail-log summary::-webkit-details-marker { display: none; }
+.rail-log summary h4 { margin: 0; }
+.rail-log summary .ic { transition: transform 0.2s var(--ease); }
+.rail-log[open] summary .ic { transform: rotate(90deg); }
+.rail-log[open] { flex: 1; min-height: 220px; display: flex; flex-direction: column; }
+.rail-log[open] summary { margin-bottom: 8px; }
 .rail-log .console { flex: 1; height: auto; min-height: 200px; font-size: 11px; border-radius: 8px; padding: 10px 12px; }
 
 /* Tay kéo đổi độ rộng thanh bên: viên "grabber" như iPadOS Split View */

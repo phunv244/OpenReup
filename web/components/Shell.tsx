@@ -14,6 +14,10 @@ import { TaskRail } from "./TaskRail";
 const DrawerContext = createContext<(pid: string) => void>(() => {});
 export const useOpenDrawer = () => useContext(DrawerContext);
 
+/** Cột "Tiến trình & nhật ký" bên phải: đóng mặc định, mở khi cần (nhớ lựa chọn trong localStorage). */
+const RailContext = createContext<{ open: boolean; toggle: (v?: boolean) => void }>({ open: false, toggle: () => {} });
+export const useRail = () => useContext(RailContext);
+
 const clean = (p: string) => p.replace(/\/+$/, "") || "/";
 
 function NavLink({ href, icon, label, count, active }: { href: string; icon: string; label: string; count?: number; active: boolean }) {
@@ -96,11 +100,21 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const [drawerPid, setDrawerPid] = useState("");
   const drawerProj = projects.find((p) => p.id === drawerPid);
+  const [railOpen, setRailOpen] = useState(false);
+  useEffect(() => setRailOpen(document.documentElement.dataset.rail === "open"), []);
+  const toggleRail = (v?: boolean) =>
+    setRailOpen((cur) => {
+      const next = v ?? !cur;
+      document.documentElement.dataset.rail = next ? "open" : "closed";
+      localStorage.setItem("rail", next ? "open" : "closed");
+      return next;
+    });
   // Đóng menu trượt (màn hẹp) khi chuyển trang
   useEffect(() => document.body.classList.remove("sb-open"), [path]);
 
   return (
     <DrawerContext.Provider value={setDrawerPid}>
+    <RailContext.Provider value={{ open: railOpen, toggle: toggleRail }}>
       <div className="app">
         <aside className="sidebar">
           <Resizer cssVar="sb-w" min={200} max={420} side="left" label="Kéo để đổi độ rộng thanh bên trái" />
@@ -133,10 +147,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </aside>
 
         <div className="main">{children}</div>
-        <TaskRail />
+        {railOpen && <TaskRail onClose={() => toggleRail(false)} />}
         <div className="sb-backdrop" onClick={() => document.body.classList.remove("sb-open")} />
       </div>
       {drawerProj && <ProjectDrawer project={drawerProj} onClose={() => setDrawerPid("")} />}
+    </RailContext.Provider>
     </DrawerContext.Provider>
   );
 }
@@ -144,6 +159,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
 /** Thanh tiêu đề của mỗi trang. */
 export function Topbar({ title, sub, actions }: { title: string; sub?: string; actions?: React.ReactNode }) {
   const { reload, task } = useStudio();
+  const rail = useRail();
+  const busy = Boolean(task?.running) || (task?.queue || []).length > 0;
   // Không đặt mảng phụ thuộc: Next đặt lại tiêu đề tab khi đổi ?tab=, nên ghi lại sau mỗi lần vẽ.
   useEffect(() => {
     document.title = `${title} · OpenReup Studio`;
@@ -159,13 +176,24 @@ export function Topbar({ title, sub, actions }: { title: string; sub?: string; a
         {sub && <p>{sub}</p>}
       </div>
       {task?.running && (
-        <Link className="task-chip" href="/logs/">
+        <button className="task-chip" type="button" title="Xem tiến trình" onClick={() => rail.toggle(true)}>
           <span className="dot" />
           <span className="chip-name">{taskName(task.task_type)} ·</span> {pct}%
-        </Link>
+        </button>
       )}
       <div className="topbar-actions">
         {actions}
+        <button
+          className={`icon-btn rail-toggle ${rail.open ? "on" : ""}`}
+          type="button"
+          title={rail.open ? "Ẩn tiến trình & nhật ký" : "Xem tiến trình & nhật ký"}
+          aria-label="Tiến trình & nhật ký"
+          aria-pressed={rail.open}
+          onClick={() => rail.toggle()}
+        >
+          <Icon name="terminal" />
+          {busy && <span className="rail-toggle-dot" />}
+        </button>
         <button className="icon-btn" type="button" title="Làm mới dữ liệu" aria-label="Làm mới dữ liệu" onClick={() => reload(true)}>
           <Icon name="refresh" />
         </button>

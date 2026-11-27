@@ -7,8 +7,8 @@ import { LogConsole } from "./LogConsole";
 import { Resizer } from "./Resizer";
 import { TaskCard } from "./TaskCard";
 
-/** Cột phải (màn rộng): tác vụ đang chạy, hàng đợi, vừa xong, nhật ký ngắn. */
-export function TaskRail() {
+/** Cột phải (bật/tắt từ nút trên thanh tiêu đề): tác vụ đang chạy, hàng đợi, vừa xong; nhật ký thu gọn sẵn. */
+export function TaskRail({ onClose }: { onClose: () => void }) {
   const { task, unqueue } = useStudio();
   const queue = task?.queue || [];
   const history = task?.history || [];
@@ -16,7 +16,12 @@ export function TaskRail() {
     <aside className="rail" aria-label="Tiến trình và hàng đợi">
       <Resizer cssVar="rail-w" min={260} max={640} side="right" label="Kéo để đổi độ rộng cột bên phải" />
       <section className="rail-sec">
-        <h4>Đang chạy</h4>
+        <h4>
+          Đang chạy
+          <button className="icon-btn rail-close" type="button" onClick={onClose} aria-label="Đóng cột tiến trình" title="Đóng">
+            <Icon name="x" size={14} />
+          </button>
+        </h4>
         <TaskCard variant="rail" />
       </section>
       <section className="rail-sec">
@@ -64,15 +69,17 @@ export function TaskRail() {
           )}
         </ul>
       </section>
-      <section className="rail-sec rail-log">
-        <h4>
-          Nhật ký{" "}
-          <Link className="rail-more" href="/logs/">
-            Xem đầy đủ
-          </Link>
-        </h4>
+      <details className="rail-sec rail-log">
+        <summary>
+          <h4>
+            <Icon name="chevron" size={13} /> Nhật ký{" "}
+            <Link className="rail-more" href="/logs/">
+              Xem đầy đủ
+            </Link>
+          </h4>
+        </summary>
         <LogConsole />
-      </section>
+      </details>
     </aside>
   );
 }

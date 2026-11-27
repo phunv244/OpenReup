@@ -1,8 +1,7 @@
-/** Đọc/ghi dữ liệu của module sources: data/videos.json (Douyin), data/bilibili.json, file video trong downloads/, video nguồn → dự án. */
+/** Đọc/ghi dữ liệu của module sources: data/videos.json (Douyin), data/bilibili.json, file video trong downloads/. Video nguồn → dự án: module project. */
 import fs from "node:fs";
 import path from "node:path";
 import { BILIBILI_DIR, BILIBILI_JSON, DATA_JSON, DEFAULT_CHANNEL_URL, DOWNLOADS_DIR } from "../../config.mjs";
-import { readVideoProjects, setVideoProject } from "../../lib/store.mjs";
 import { readJson, writeJson } from "../../lib/util.mjs";
 
 const EMPTY_DOUYIN = () => ({
@@ -53,6 +52,4 @@ export const sourceRepo = {
     fs.rmSync(full.replace(/\.mp4$/i, ".info.json"), { force: true });
   },
 
-  owners: readVideoProjects,
-  setOwner: setVideoProject,
 };

@@ -1,5 +1,6 @@
 /**
  * Module dub: lồng tiếng (bắt đầu, câu thoại, xuất lại, gán dự án, dọn cache, xóa).
+ * Lớp: routes.mjs (HTTP) → editor.mjs (nghiệp vụ tác vụ + sửa câu) / service.mjs (cho module khác) → repo.mjs (file) / segments-repo.mjs (SQL).
  * Phụ thuộc: ai (kiểm tra id model dịch agy_model).
  * Service cho module khác (ctx.get("dub")): list(), sources(), unassignProject(id), isProjectBusy(id), pathArgs(jobId), jobIdFor(input, speed),
  *   jobsBySource(), removeWorkDir(jobId), removeJob(jobId), busyError().

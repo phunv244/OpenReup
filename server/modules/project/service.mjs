@@ -1,7 +1,6 @@
 /** Nghiệp vụ dự án truyện / phim. Lỗi do input: ném Error có statusCode (error handler trả {ok:false, error}). */
-import { nowIso, validVoice } from "../../lib/util.mjs";
+import { httpError, nowIso, validVoice } from "../../lib/util.mjs";
 
-const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 
 const slugOf = (name) =>
   name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d").toLowerCase()
@@ -40,6 +39,11 @@ export function createProjectService(repo, dub) {
     },
 
     exists: (id) => Boolean(id) && repo.exists(id),
+
+    /** Video nguồn (rel "downloads/...") → project_id. */
+    videoOwners: () => repo.owners(),
+    /** Gán 1 video nguồn vào dự án ("" = bỏ gán). Gọi sau khi đã kiểm rel là video nguồn và dự án tồn tại. */
+    setVideoOwner: (rel, projectId) => repo.setOwner(rel, projectId),
 
     create(body) {
       const name = String(body.name || "").trim();

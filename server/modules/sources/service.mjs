@@ -2,10 +2,9 @@
 import path from "node:path";
 import { BILIBILI_DIR, DEFAULT_CHANNEL_URL, DOWNLOADS_DIR, ROOT } from "../../config.mjs";
 import { flushMediaCache, mediaKey, probeMedia } from "../../lib/media.mjs";
-import { projectIdOf, relOf, resolveDownload, safeJobId, validDelogo } from "../../lib/util.mjs";
+import { httpError, projectIdOf, relOf, resolveDownload, safeJobId, validDelogo } from "../../lib/util.mjs";
 import { lookupDownload } from "../../lib/videos.mjs";
 
-const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 const NODE = process.execPath;
 const script = (name) => path.join(ROOT, name);
 
@@ -79,7 +78,7 @@ export function createSourceService(repo, { dub, project, tasks }) {
     /* ---------- Video nguồn đã tải ---------- */
     async list() {
       const jobs = dub.jobsBySource();
-      const owners = repo.owners();
+      const owners = project.videoOwners();
       const sources = [];
       const liveKeys = new Set();
       for (const [dir, source] of [[BILIBILI_DIR, "bilibili"], [DOWNLOADS_DIR, "douyin"]]) {
@@ -114,7 +113,7 @@ export function createSourceService(repo, { dub, project, tasks }) {
       const pid = String(projectId || "");
       if (!full || !repo.isFile(full)) throw httpError(400, "Video không hợp lệ.");
       if (pid && !project.exists(pid)) throw httpError(404, "Không tìm thấy dự án.");
-      repo.setOwner(relOf(full), pid);
+      project.setVideoOwner(relOf(full), pid);
       return { ok: true };
     },
     /** Xóa 1 video nguồn (+ job lồng tiếng đang dở của nó; delete_dubbed: cả bản lồng tiếng job_id). */
@@ -136,7 +135,7 @@ export function createSourceService(repo, { dub, project, tasks }) {
 
       repo.removeVideo(resolved);
       repo.removeFromBiliIndex(path.basename(resolved));
-      repo.setOwner(relOf(resolved), "");
+      project.setVideoOwner(relOf(resolved), "");
       if (body.delete_dubbed) dub.removeJob(safeJobId(body.job_id));
       return { ok: true };
     },

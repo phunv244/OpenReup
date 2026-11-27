@@ -210,7 +210,7 @@ export function relOfPath(full) {
 
 /**
  * Đường dẫn của một job ở bố cục mới: { key, project, work, out }. Job chưa chuyển trả null: chỗ cũ
- * (dub_projects/, dub_work/ hoặc work_dir riêng trong dubbed.json) vẫn do lib/store.mjs tự tính.
+ * (dub_projects/, dub_work/ hoặc work_dir riêng trong dubbed.json) vẫn do modules/dub/repo.mjs tự tính.
  */
 export function jobPaths(jobId) {
   const hit = index().jobs.get(jobId);

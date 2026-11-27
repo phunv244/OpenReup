@@ -2,10 +2,9 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { checkSubStyle } from "../../lib/fonts.mjs";
-import { nowIso, validModelId, validSubcover, validVoice } from "../../lib/util.mjs";
+import { httpError, nowIso, validModelId, validSubcover, validVoice } from "../../lib/util.mjs";
 import { PRESET_VOICES } from "./presets.mjs";
 
-const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 
 export const FONT_EXTS = ["ttf", "otf", "ttc", "otc"];
 const MAX_FONT_BYTES = 40 * 1024 * 1024;

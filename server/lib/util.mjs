@@ -25,6 +25,8 @@ export function writeJson(file, data, indent = 2) {
 }
 
 /** Trả lỗi dạng {ok:false, error} mà giao diện đang đọc. */
+/** Lỗi do input cho service: error handler của app trả {ok:false, error} với mã statusCode. */
+export const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 export const fail = (reply, code, error) => reply.code(code).send({ ok: false, error });
 
 /** job_id chỉ gồm chữ/số/_/- : chặn "." và ".." (path.basename không chặn) trước khi dùng để xóa thư mục. */

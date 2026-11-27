@@ -14,6 +14,8 @@ function openDb() {
     job_id TEXT NOT NULL, id INTEGER NOT NULL, start_s REAL NOT NULL, end_s REAL NOT NULL,
     zh TEXT NOT NULL DEFAULT '', vi TEXT NOT NULL DEFAULT '', speaker TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (job_id, id)) WITHOUT ROWID`);
+  // Thứ tự timeline (start_s, id): trang câu thoại, thanh timeline, câu liền trước/sau khi kéo mốc giờ — không phải quét + sắp cả job.
+  d.exec("CREATE INDEX IF NOT EXISTS idx_segments_timeline ON segments (job_id, start_s, id)");
   // Nhật ký các lần model gọi hàm (routes/functions.mjs): tham số, trạng thái, kết quả / lỗi, file log.
   d.exec(`CREATE TABLE IF NOT EXISTS function_calls (
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, args TEXT NOT NULL, status TEXT NOT NULL,
@@ -31,8 +33,9 @@ export const db = openDb();
 export function inTransaction(fn) {
   db.exec("BEGIN IMMEDIATE");
   try {
-    fn();
+    const out = fn();
     db.exec("COMMIT");
+    return out;
   } catch (err) {
     db.exec("ROLLBACK");
     throw err;

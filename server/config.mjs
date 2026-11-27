@@ -35,6 +35,13 @@ export const BILIBILI_DIR = path.join(DOWNLOADS_DIR, "bilibili");
 export const DUBBED_DIR = path.join(DOWNLOADS_DIR, "dubbed");
 // REUP_PYTHON: chỉ dùng cho test (thay python bằng script giả), mặc định là .venv của repo.
 export const VENV_PYTHON = process.env.REUP_PYTHON || path.join(ROOT, ".venv", "bin", "python");
+// Script Python mà server gọi — chỗ duy nhất khai đường dẫn (pipeline/ của DevAI đổi ở đây, không sửa module).
+export const PY_SCRIPTS = Object.freeze({
+  dub: path.join(ROOT, "dub_video.py"),
+  asr: path.join(ROOT, "asr.py"),
+  subtitles: path.join(ROOT, "subtitles.py"),
+  voice: path.join(ROOT, "voice_tool.py"),
+});
 export const WEB_OUT_DIR = path.join(ROOT, "web", "out"); // bản build của giao diện Next.js
 export const PORT = Number(process.env.PORT || 3456);
 export const HOST = process.env.HOST || "127.0.0.1";

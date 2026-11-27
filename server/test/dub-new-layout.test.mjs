@@ -8,7 +8,7 @@ import { setupApp } from "./helpers.mjs";
 const { app, dir, cleanup } = await setupApp();
 after(cleanup);
 const { DOWNLOADS_DIR, DUBBED_DIR, DUBBED_JSON, VIDEOS_DIR } = await import("../config.mjs");
-const store = await import("../lib/store.mjs");
+const store = await import("../modules/dub/repo.mjs");
 const { writeVideoJson } = await import("../lib/videos.mjs");
 
 const put = (file, data = "x") => {

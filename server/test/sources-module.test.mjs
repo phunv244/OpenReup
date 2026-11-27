@@ -10,7 +10,8 @@ const { app, dir, cleanup } = await setupApp();
 after(cleanup);
 const { DOWNLOADS_DIR, ROOT } = await import("../config.mjs");
 const { spawnTask, taskEvents } = await import("../lib/tasks.mjs");
-const { readVideoProjects } = await import("../lib/store.mjs");
+const { projectRepo } = await import("../modules/project/repo.mjs");
+const readVideoProjects = () => projectRepo.owners();
 const { MODULES } = await import("../app.mjs");
 
 const get = (url) => app.inject({ method: "GET", url });

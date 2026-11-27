@@ -1,9 +1,14 @@
-/** Đọc/ghi dữ liệu của module project: data/projects/<id>.json + video nguồn gán dự án (bản lồng tiếng: qua module dub). */
+/**
+ * Đọc/ghi dữ liệu của module project: data/projects/<id>.json và data/video_projects.json (video nguồn → dự án).
+ * Module này là chủ duy nhất của video_projects.json; module khác đọc/ghi qua service (videoOwners, setVideoOwner).
+ * Bản lồng tiếng gán dự án: module dub.
+ */
 import fs from "node:fs";
 import path from "node:path";
-import { STORY_PROJECTS_DIR } from "../../config.mjs";
-import { readVideoProjects, unassignVideoProjects } from "../../lib/store.mjs";
+import { STORY_PROJECTS_DIR, VIDEO_PROJECTS_JSON } from "../../config.mjs";
 import { projectFile, readJson, resolveDownload, writeJson } from "../../lib/util.mjs";
+
+const readOwners = () => readJson(VIDEO_PROJECTS_JSON, {});
 
 export const projectRepo = {
   /** Mọi dự án (file hỏng bị bỏ qua). */
@@ -42,9 +47,18 @@ export const projectRepo = {
   /** Xóa file dự án; video nguồn của dự án thành "chưa gán dự án" (file media không bị xóa). */
   remove(id) {
     fs.rmSync(projectFile(id), { force: true });
-    unassignVideoProjects(id);
+    const map = readOwners();
+    for (const rel of Object.keys(map)) if (map[rel] === id) delete map[rel];
+    writeJson(VIDEO_PROJECTS_JSON, map);
   },
   /** Video nguồn (rel) -> project_id. */
-  owners: readVideoProjects,
+  owners: readOwners,
+  /** Gán / bỏ gán ("") 1 video nguồn. */
+  setOwner(rel, projectId) {
+    const map = readOwners();
+    if (projectId) map[rel] = projectId;
+    else delete map[rel];
+    writeJson(VIDEO_PROJECTS_JSON, map);
+  },
   sourceExists: (rel) => fs.existsSync(resolveDownload(rel)),
 };

@@ -140,3 +140,24 @@ test("POST /api/source/delete bố cục mới: xóa file nguồn + .info.json, 
   assert.equal(list.includes(NEW_REL), false);
   assert.equal(list.includes(DUP_REL), true);
 });
+
+test("POST /api/source/delete: video.json hỏng sau khi dựng chỉ mục thì vẫn xóa file, bỏ gán dự án, trả 200", async () => {
+  const k = "bilibili-BVbad-p1";
+  const rel = "downloads/bilibili/BVbad_p1_.mp4";
+  const src = path.join(VIDEOS_DIR, k, "source", "BVbad_p1_.mp4");
+  put(path.join(VIDEOS_DIR, k, "video.json"), { key: k, files: { [rel]: "source/BVbad_p1_.mp4" }, jobs: [] });
+  put(src, "bad");
+  const { VIDEO_PROJECTS_JSON } = await import("../config.mjs");
+  put(VIDEO_PROJECTS_JSON, { [rel]: "du-an-x" });
+  reloadVideoIndex();
+  assert.equal((await get("/api/sources")).json().sources.find((s) => s.rel_path === rel)?.project_id, "du-an-x");
+  // Hỏng ngay sau khi chỉ mục đã dựng (trong INDEX_TTL_MS chỉ mục chưa đọc lại).
+  fs.writeFileSync(path.join(VIDEOS_DIR, k, "video.json"), "{hong");
+  const res = await app.inject({ method: "POST", url: "/api/source/delete", payload: { rel_path: rel } });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(fs.existsSync(src), false);
+  assert.equal(rel in JSON.parse(fs.readFileSync(VIDEO_PROJECTS_JSON, "utf8")), false);
+  assert.equal(fs.readFileSync(path.join(VIDEOS_DIR, k, "video.json"), "utf8"), "{hong");
+  fs.rmSync(path.join(VIDEOS_DIR, k), { recursive: true });
+  reloadVideoIndex();
+});

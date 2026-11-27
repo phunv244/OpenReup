@@ -210,11 +210,18 @@ export function videoThumb(key) {
 
 /**
  * Bỏ khỏi video.json của key các mục files trỏ tới một trong absList (sau khi đã xóa file nguồn). Ghi qua writeVideoJson.
- * Không có mục nào khớp thì không ghi gì.
+ * Không có mục nào khớp thì không ghi gì. video.json không đọc được thì chỉ cảnh báo (không ném).
  */
 export function forgetVideoFiles(key, absList) {
   const file = path.join(VIDEOS_DIR, key, "video.json");
-  const v = JSON.parse(fs.readFileSync(file, "utf8"));
+  let v;
+  try {
+    v = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (e) {
+    // File nguồn đã xóa xong; video.json hỏng/mất thì chỉ mục tự bỏ video đó, không chặn các bước dọn còn lại.
+    console.warn(`[videos] không cập nhật được ${key}/video.json sau khi xóa file: ${e.message}`);
+    return;
+  }
   const drop = new Set(absList.map((p) => path.resolve(p)));
   const files = Object.fromEntries(Object.entries(v.files || {}).filter(([, f]) => !drop.has(path.resolve(path.dirname(file), String(f)))));
   if (Object.keys(files).length === Object.keys(v.files || {}).length) return;

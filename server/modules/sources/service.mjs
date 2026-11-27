@@ -172,10 +172,10 @@ export function createSourceService(repo, { dub, project, tasks }) {
       if (pending && pending.status !== "done") dub.removeWorkDir(safeJobId(pending.job_id));
 
       repo.removeVideo(resolved);
-      // Bố cục mới: bỏ file đã xóa khỏi video.json (thư mục video, job của nó giữ nguyên).
-      if (hit.key) forgetVideoFiles(hit.key, repo.videoFiles(resolved));
       repo.removeFromBiliIndex(path.posix.basename(rel));
       project.unassignVideo(rel);
+      // Bố cục mới: bỏ file đã xóa khỏi video.json (thư mục video, job của nó giữ nguyên).
+      if (hit.key) forgetVideoFiles(hit.key, repo.videoFiles(resolved));
       if (body.delete_dubbed) dub.removeJob(safeJobId(body.job_id));
       return { ok: true };
     },

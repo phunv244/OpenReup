@@ -91,7 +91,7 @@ export default async function dubRoutes(app) {
     const items = db
       .prepare(`SELECT id, start_s AS start, end_s AS "end", zh, vi, speaker FROM segments WHERE ${where.join(" AND ")} ORDER BY start_s, id LIMIT ? OFFSET ?`)
       .all(...params, limit, offset);
-    return { ...proj, total: totals.total, empty: totals.empty, matched, offset, items };
+    return { ...proj, total: totals.total, empty: totals.empty, matched, offset, items, timeline_dirty: timelineRev(jobId) > 0 };
   });
 
   app.post("/api/dub/rerender", async (req, reply) => {

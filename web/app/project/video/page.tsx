@@ -1,17 +1,18 @@
 "use client";
 /**
- * Chi tiết một bản lồng tiếng: gom mọi thứ sửa được theo công đoạn, mỗi nhóm ghi rõ chạy lại tốn gì.
+ * Chi tiết một bản lồng tiếng — một màn duy nhất để sửa mọi thứ: lời thoại + timeline, giọng đọc, hình & phụ đề
+ * (3 tab), video xem trước cố định bên phải, một nút "Lưu & chạy lại" chung cho tất cả.
  * Server tự chọn mức làm lại nhỏ nhất (chỉ hình / chỉ tiếng) theo những gì thực sự đổi.
  */
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { ProjectTopbar } from "@/components/ProjectTopbar";
 import { RegionToggle } from "@/components/RegionPicker";
 import { useToast } from "@/components/Toasts";
 import { Options } from "@/components/ui";
-import { DubEditorModal } from "@/components/video/DubEditorModal";
+import { DubScript } from "@/components/video/DubScript";
 import { SubtitleStudio } from "@/components/video/SubtitleStudio";
 import { Speaker, SubStyle, dubFileUrl, getJSON } from "@/lib/api";
 import { fmtDur, fmtSize, projHref } from "@/lib/format";
@@ -36,15 +37,15 @@ type Info = {
   resolution?: string;
   total: number;
   empty: number;
+  timeline_dirty?: boolean;
 };
+
+type Tab = "script" | "voice" | "video";
 
 const BG_OPTIONS: [string, string][] = [["0", "Tắt hẳn"], ["0.05", "5% — rất nhỏ"], ["0.12", "12% — rõ tiếng động nền"]];
 const nz = (s?: string) => s || "none";
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-function Cost({ tone, children }: { tone: "green" | "amber" | "gray"; children: React.ReactNode }) {
-  return <span className={`badge ${tone}`}>{children}</span>;
-}
 
 function Detail() {
   const jobId = useSearchParams().get("job") || "";
@@ -60,8 +61,13 @@ function Detail() {
   const [delogo, setDelogo] = useState("none");
   const [subcover, setSubcover] = useState("none");
   const [subStyle, setSubStyle] = useState<SubStyle | null>(null);
-  const [editing, setEditing] = useState(false);
-  const [stamp, setStamp] = useState(0); // đổi để tải lại sau khi xuất lại xong
+  const [edits, setEdits] = useState<Record<string, string>>({}); // {id: lời mới}
+  const [spk, setSpk] = useState<Record<string, string>>({}); // {id: nhân vật mới}
+  const [structural, setStructural] = useState(false); // đã cắt/ghép/xóa/dời giờ câu, chưa xuất lại
+  const [tab, setTab] = useState<Tab>("script");
+  const [tableKey, setTableKey] = useState(0);
+  const [stamp, setStamp] = useState(0); // đổi để tải lại sau khi xuất lại xong / hoàn tác
+  const video = useRef<HTMLVideoElement>(null);
 
   const d = dubbed.find((x) => x.job_id === jobId);
   const running = Boolean(task?.running && task.target === jobId);
@@ -76,6 +82,9 @@ function Detail() {
       setSub(r.burn_sub !== false);
       setSubStyle(r.sub_style || null);
       setSpkVoices({});
+      setEdits({});
+      setSpk({});
+      setStructural(Boolean(r.timeline_dirty));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId, stamp]);
@@ -83,6 +92,15 @@ function Detail() {
   // Xuất lại xong (cache_mb / updated đổi) thì nạp lại giá trị đã lưu và làm mới video đang phát.
   const doneKey = `${d?.updated_at || ""}`;
   useEffect(() => setStamp((s) => s + 1), [doneKey]);
+
+  const editCount = new Set([...Object.keys(edits), ...Object.keys(spk)]).size;
+  // Còn bản sửa chưa xuất lại mà rời trang thì hỏi lại.
+  useEffect(() => {
+    if (!editCount) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [editCount]);
 
   if (!jobId) return <main className="content"><p className="muted">Thiếu mã bản lồng tiếng.</p></main>;
   if (!info) return <main className="content"><p className="muted">Đang tải...</p></main>;
@@ -95,28 +113,53 @@ function Detail() {
   const ctxList = speakers.map(([k]) => [k, projVoice] as const).filter(([k, v]) => v && v !== (spkVoices[k] || info.speakers![k].voice));
   const ctxVoices = ctxList.length ? Object.fromEntries(ctxList) : null;
 
-  const videoDirty =
+  const settingsVideoDirty =
     sub !== (info.burn_sub !== false) || nz(delogo) !== nz(info.delogo) || nz(subcover) !== nz(info.subcover) || !same(sub ? subStyle : null, info.burn_sub === false ? null : info.sub_style);
-  const audioDirty =
+  const settingsAudioDirty =
     voice !== info.voice || Number(bg) !== Number(info.bg_volume ?? 0.05) || Object.entries(spkVoices).some(([k, v]) => v !== info.speakers?.[k]?.voice);
-  const plan = videoDirty && audioDirty ? "both" : videoDirty ? "video" : audioDirty ? "audio" : "";
+  const textEdits = Object.keys(edits).length > 0;
+  const videoDirty = settingsVideoDirty || (textEdits && sub);
+  const audioDirty = settingsAudioDirty || editCount > 0;
+  const plan = structural ? "full" : videoDirty && audioDirty ? "both" : videoDirty ? "video" : audioDirty ? "audio" : "";
   const PLAN_TEXT = {
+    full: "Timeline đã đổi (cắt/ghép/xóa/dời câu) — làm lại cả hình và tiếng theo mốc mới.",
     video: "Chỉ mã hóa lại hình — giữ nguyên tiếng đã xuất, không tạo lại giọng đọc.",
     audio: "Chỉ dựng lại tiếng — giữ nguyên hình đã xuất, không mã hóa lại video.",
-    both: "Làm lại cả hình và tiếng (giọng đọc và đoạn video không đổi vẫn dùng lại từ cache).",
+    both: "Làm lại cả hình và tiếng — chỉ đọc lại câu đã sửa, phần không đổi dùng lại từ cache.",
   } as const;
+  const summary = [
+    editCount ? `sửa ${editCount} câu` : "",
+    structural ? "đổi timeline" : "",
+    settingsAudioDirty ? "đổi giọng/âm thanh" : "",
+    settingsVideoDirty ? "đổi hình/phụ đề" : "",
+  ].filter(Boolean);
+
+  const onStructuralChange = (removedIds: number[], patch: Record<string, string> = {}) => {
+    const drop = new Set(removedIds.map(String));
+    setEdits((m) => ({ ...Object.fromEntries(Object.entries(m).filter(([k]) => !drop.has(k))), ...patch }));
+    setSpk((m) => Object.fromEntries(Object.entries(m).filter(([k]) => !drop.has(k))));
+    setStructural(true);
+    setTableKey((k) => k + 1);
+  };
 
   async function save() {
     if (!delogo) return toast("Hãy kéo chuột trên khung hình để khoanh vùng logo", "error");
     if (!subcover) return toast("Hãy kéo chuột trên khung hình để khoanh vùng phụ đề gốc", "error");
     const body: Record<string, unknown> = { job_id: jobId };
-    if (videoDirty) Object.assign(body, { delogo, subcover, sub_style: sub ? subStyle : null, burn_sub: sub });
-    if (audioDirty) {
+    if (textEdits) body.edits = edits;
+    if (Object.keys(spk).length) body.speaker_edits = spk;
+    if (settingsVideoDirty) Object.assign(body, { delogo, subcover, sub_style: sub ? subStyle : null, burn_sub: sub });
+    if (settingsAudioDirty) {
       Object.assign(body, { voice, bg_volume: Number(bg) });
       const sv = Object.fromEntries(Object.entries(spkVoices).filter(([k, v]) => v !== info!.speakers?.[k]?.voice));
       if (Object.keys(sv).length) body.speaker_voices = sv;
     }
-    await startTask("/api/dub/rerender", body, plan === "video" ? "Đang mã hóa lại hình" : plan === "audio" ? "Đang dựng lại tiếng" : "Đang xuất lại");
+    const ok = await startTask("/api/dub/rerender", body, plan === "video" ? "Đang mã hóa lại hình" : plan === "audio" ? "Đang dựng lại tiếng" : "Đang xuất lại");
+    if (!ok) return;
+    // Server đã ghi lời/nhân vật vào DB: bỏ dấu "chưa lưu" và nạp lại bảng từ server.
+    setEdits({});
+    setSpk({});
+    setTableKey((k) => k + 1);
   }
 
   const meta = [info.resolution, d?.duration_sec ? fmtDur(d.duration_sec) : "", d?.size_mb ? fmtSize(d.size_mb) : "", info.speed ? `${info.speed}x` : "", `${info.total.toLocaleString("vi")} câu`].filter(Boolean);
@@ -130,31 +173,37 @@ function Detail() {
         </Link>
         <div className="detail-grid">
           <div className="detail-main">
-            <section className="card">
-              <div className="card-head">
-                <h3><Icon name="cc" size={16} /> Hình &amp; phụ đề</h3>
-                <Cost tone="amber">Chạy lại: mã hóa lại hình · giữ tiếng</Cost>
-              </div>
+            <div className="seg detail-tabs" role="tablist" aria-label="Phần cần sửa">
+              {([
+                ["script", "edit", "Lời thoại", editCount || structural],
+                ["voice", "mic", "Giọng đọc", settingsAudioDirty],
+                ["video", "cc", "Hình & phụ đề", settingsVideoDirty],
+              ] as const).map(([k, icon, label, dirty]) => (
+                <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? "active" : ""} onClick={() => setTab(k)}>
+                  <Icon name={icon} size={15} /> {label}
+                  {dirty ? <span className="tab-dot" title="Có thay đổi chưa lưu" /> : null}
+                </button>
+              ))}
+            </div>
+
+            <section className="card" hidden={tab !== "script"}>
               <div className="card-body">
-                <RegionToggle label="Xóa logo" rel={info.input_path || ""} initial={info.delogo} onChange={setDelogo} />
-                <SubtitleStudio
-                  rel={info.input_path || ""}
-                  burn={sub}
-                  onBurn={setSub}
-                  subcover={subcover}
-                  initialSubcover={info.subcover}
-                  onSubcover={setSubcover}
-                  style={subStyle}
-                  onStyle={setSubStyle}
+                <DubScript
+                  jobId={jobId}
+                  video={video}
+                  speakers={speakers}
+                  edits={edits}
+                  setEdits={setEdits}
+                  spk={spk}
+                  setSpk={setSpk}
+                  onStructuralChange={onStructuralChange}
+                  reloadKey={tableKey}
+                  resetKey={stamp}
                 />
               </div>
             </section>
 
-            <section className="card">
-              <div className="card-head">
-                <h3><Icon name="mic" size={16} /> Giọng đọc &amp; âm thanh</h3>
-                <Cost tone="amber">Chạy lại: dựng lại tiếng · giữ hình</Cost>
-              </div>
+            <section className="card" hidden={tab !== "voice"}>
               <div className="card-body">
                 {!speakers.length ? (
                   <div className="field">
@@ -196,25 +245,25 @@ function Detail() {
               </div>
             </section>
 
-            <section className="card">
-              <div className="card-head">
-                <h3><Icon name="edit" size={16} /> Lời thoại</h3>
-                <Cost tone="gray">Chạy lại: chỉ câu và đoạn video bị sửa</Cost>
-              </div>
+            <section className="card" hidden={tab !== "video"}>
               <div className="card-body">
-                <p className="help">
-                  {info.total.toLocaleString("vi")} câu{info.empty ? `, ${info.empty} câu chưa dịch` : ""}. Sửa lời xong sẽ xuất lại ngay: chỉ đọc lại những câu đã sửa
-                  và mã hóa lại đúng các đoạn 10 phút có câu đó.
-                </p>
-                <button className="btn btn-light" type="button" onClick={() => setEditing(true)} disabled={running}>
-                  <Icon name="edit" size={15} /> Mở trình sửa lời
-                </button>
+                <RegionToggle label="Xóa logo" rel={info.input_path || ""} initial={info.delogo} onChange={setDelogo} />
+                <SubtitleStudio
+                  rel={info.input_path || ""}
+                  burn={sub}
+                  onBurn={setSub}
+                  subcover={subcover}
+                  initialSubcover={info.subcover}
+                  onSubcover={setSubcover}
+                  style={subStyle}
+                  onStyle={setSubStyle}
+                />
               </div>
             </section>
           </div>
 
           <aside className="detail-side">
-            <video key={stamp} className="editor-video" controls preload="metadata" src={dubFileUrl(`${jobId}.mp4`) + `?v=${stamp}`} />
+            <video ref={video} key={stamp} className="editor-video" controls preload="metadata" src={dubFileUrl(`${jobId}.mp4`) + `?v=${stamp}`} />
             <div className="detail-meta">{meta.join(" · ")}</div>
             <dl className="detail-facts">
               {d?.agy_model ? (<><dt>Model dịch</dt><dd>{d.agy_model}</dd></>) : null}
@@ -224,16 +273,18 @@ function Detail() {
               {d?.mp4_file && <a className="btn btn-light btn-sm" href={dubFileUrl(d.mp4_file)} download><Icon name="download" size={14} /> MP4</a>}
               {d?.srt_file && <a className="btn btn-light btn-sm" href={dubFileUrl(d.srt_file)} download><Icon name="cc" size={14} /> SRT</a>}
             </div>
+            <p className="help detail-tip">Bấm mốc giờ của câu hoặc khối trên timeline để nghe lại đúng đoạn đó.</p>
           </aside>
         </div>
       </main>
 
       <div className="detail-bar">
         <span className="detail-bar-text">
-          {running ? "Đang chạy lại..." : plan ? <><b>Đã đổi:</b> {PLAN_TEXT[plan]}</> : "Chưa có thay đổi nào."}
+          {running ? "Đang chạy lại..." : plan ? <><b>Đã {summary.join(", ") || "đổi"}:</b> {PLAN_TEXT[plan]}</> : "Chưa có thay đổi nào."}
         </span>
         <span className="grow" />
-        <button className="btn btn-light" type="button" disabled={!plan || running} onClick={() => setStamp((s) => s + 1)}>
+        <button className="btn btn-light" type="button" disabled={!(summary.length - (structural ? 1 : 0)) || running} onClick={() => setStamp((s) => s + 1)}
+          title="Bỏ các thay đổi chưa lưu (cắt/ghép/xóa câu đã áp dụng ngay, không hoàn tác được)">
           Hoàn tác
         </button>
         <button className="btn btn-primary" type="button" disabled={!plan || running} onClick={save}>
@@ -241,7 +292,6 @@ function Detail() {
         </button>
       </div>
 
-      {editing && <DubEditorModal jobId={jobId} projectId={pid} onClose={() => setEditing(false)} />}
     </>
   );
 }

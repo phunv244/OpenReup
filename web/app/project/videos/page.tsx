@@ -9,7 +9,6 @@ import { useToast } from "@/components/Toasts";
 import { EmptyState, Menu, Metric, Seg } from "@/components/ui";
 import { AddVideoModal } from "@/components/video/AddVideoModal";
 import { DubConfigModal } from "@/components/video/DubConfigModal";
-import { DubEditorModal } from "@/components/video/DubEditorModal";
 import { WorkItem, buildWorkItems } from "@/components/video/items";
 import { DeleteVideoModal, DelogoModal, MoveVideoModal } from "@/components/video/SmallModals";
 import { dubFileUrl, postJSON } from "@/lib/api";
@@ -21,7 +20,6 @@ type Filter = "all" | "new" | "partial" | "dubbed";
 type Dialog =
   | { kind: "add" }
   | { kind: "dub" | "delogo" | "move" | "delete"; v: WorkItem }
-  | { kind: "edit"; jobId: string }
   | { kind: "play"; src: string; title: string }
   | null;
 
@@ -129,7 +127,7 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
           )}
           {d && (
             <Link className="btn btn-light" href={projHref(pid, "video", `&job=${encodeURIComponent(d.job_id)}`)}>
-              <Icon name="edit" size={15} /> Chi tiết
+              <Icon name="edit" size={15} /> Chỉnh sửa
             </Link>
           )}
           {primary}
@@ -247,7 +245,6 @@ export default function VideosPage() {
 
       {dialog?.kind === "add" && <AddVideoModal projectId={pid} onClose={close} />}
       {dialog?.kind === "dub" && <DubConfigModal v={dialog.v} projectId={pid} onClose={close} />}
-      {dialog?.kind === "edit" && <DubEditorModal jobId={dialog.jobId} projectId={pid} onClose={close} />}
       {dialog?.kind === "delogo" && <DelogoModal v={dialog.v} onClose={close} />}
       {dialog?.kind === "move" && <MoveVideoModal v={dialog.v} onClose={close} />}
       {dialog?.kind === "delete" && <DeleteVideoModal v={dialog.v} onClose={close} />}

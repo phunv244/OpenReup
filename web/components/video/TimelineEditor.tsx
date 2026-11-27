@@ -253,6 +253,7 @@ export function TimelineEditor({ jobId, video, speakers, edits, setEdits, spk, s
     setDrag(null);
     setLiveEdge(null);
     if (d.error) toast(d.error, "error");
+    else onStructuralChange([]);
     await load();
   };
 

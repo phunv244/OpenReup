@@ -6,7 +6,7 @@
  * Giá trị vùng là chuỗi "x,y,w,h" theo pixel gốc; "" = đã bật nhưng chưa khoanh; "none" = tắt.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { SubStyle } from "@/lib/api";
+import { SubStyle, getBlob } from "@/lib/api";
 import { isRegionValue } from "@/lib/subtitle";
 
 export type RegionTarget = "logo" | "sub";
@@ -57,16 +57,10 @@ export function FrameStage({ rel, burn, style, delogo, subcover, target, onTarge
     // Chờ 450 ms sau lần chỉnh cuối: kéo thanh trượt không dồn hàng chục yêu cầu vẽ.
     const t = setTimeout(async () => {
       try {
-        const res = rendered
-          ? await fetch("/api/sub-preview", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ rel_path: rel, subcover: cover, style, burn }),
-              signal: ctl.signal,
-            })
-          : await fetch(`/api/frame?rel=${encodeURIComponent(rel)}`, { signal: ctl.signal });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Không lấy được khung hình — cần ffmpeg và file video gốc còn trên máy.");
-        const blob = await res.blob();
+        const fallbackError = "Không lấy được khung hình — cần ffmpeg và file video gốc còn trên máy.";
+        const blob = rendered
+          ? await getBlob("/api/sub-preview", { body: { rel_path: rel, subcover: cover, style, burn }, signal: ctl.signal, fallbackError })
+          : await getBlob(`/api/frame?rel=${encodeURIComponent(rel)}`, { signal: ctl.signal, fallbackError });
         setUrl((old) => {
           if (old) URL.revokeObjectURL(old);
           return URL.createObjectURL(blob);
@@ -202,8 +196,10 @@ const pos = (r: Rect) => ({ left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: 
 export const regionInit = (v?: string) => (!v || v === "none" ? "none" : isRegionValue(v) ? v : "");
 
 /** Công tắc "Xóa logo" + dòng trạng thái vùng. Việc khoanh vùng diễn ra trên FrameStage. */
-export function LogoToggle({ label = "Xóa logo", value, saved, onChange, onPick }: {
+export function LogoToggle({ label = "Xóa logo", heading, value, saved, onChange, onPick }: {
   label?: string;
+  /** Tiêu đề nhóm (vd "Logo") khi đứng cạnh nhóm "Phụ đề Việt". */
+  heading?: string;
   value: string;
   saved?: string;
   onChange: (v: string) => void;
@@ -213,9 +209,11 @@ export function LogoToggle({ label = "Xóa logo", value, saved, onChange, onPick
   const ok = isRegionValue(value);
   return (
     <div className="field">
-      <label className="check">
+      {heading && <span className="label">{heading}</span>}
+      <label className="check switch">
         <input
           type="checkbox"
+          role="switch"
           checked={on}
           onChange={(e) => {
             onChange(e.target.checked ? (isRegionValue(saved || "") ? String(saved) : "") : "none");

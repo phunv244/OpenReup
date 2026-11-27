@@ -180,6 +180,54 @@ export function writeVideoJson(key, data) {
   reloadVideoIndex();
 }
 
+/**
+ * Mọi file nguồn có trong chỉ mục: [{ rel, abs, key }], sắp theo rel. abs = "" khi mục không qua kiểm symlink như
+ * lookupDownload (rel đó vẫn thuộc chỉ mục: bản cũ cùng rel trong downloads/ cũng không dùng được). File ghi trong
+ * video.json mà đã mất trên đĩa vẫn có ở đây: bên gọi tự stat.
+ */
+export function videoSources() {
+  const out = [];
+  for (const e of index().byRel.values()) {
+    if (e.kind !== "source") continue;
+    const hit = lookupDownload(e.rel);
+    out.push({ rel: e.rel, abs: hit ? hit.abs : "", key: e.key });
+  }
+  return out.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+}
+
+/** data/videos/<key>/thumb.jpg nếu là file thật nằm thật trong thư mục video đó (không đi theo symlink ra ngoài), không thì "". */
+export function videoThumb(key) {
+  if (!key || key.startsWith("_")) return "";
+  const file = path.join(VIDEOS_DIR, key, "thumb.jpg");
+  try {
+    if (!fs.statSync(file).isFile()) return "";
+  } catch {
+    return "";
+  }
+  // Như lookupDownload: thư mục video phải là thư mục thật (không symlink) và ảnh nằm thật trong đó.
+  return inside(path.join(index().realVideos, key), realish(file)) ? file : "";
+}
+
+/**
+ * Bỏ khỏi video.json của key các mục files trỏ tới một trong absList (sau khi đã xóa file nguồn). Ghi qua writeVideoJson.
+ * Không có mục nào khớp thì không ghi gì. video.json không đọc được thì chỉ cảnh báo (không ném).
+ */
+export function forgetVideoFiles(key, absList) {
+  const file = path.join(VIDEOS_DIR, key, "video.json");
+  let v;
+  try {
+    v = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (e) {
+    // File nguồn đã xóa xong; video.json hỏng/mất thì chỉ mục tự bỏ video đó, không chặn các bước dọn còn lại.
+    console.warn(`[videos] không cập nhật được ${key}/video.json sau khi xóa file: ${e.message}`);
+    return;
+  }
+  const drop = new Set(absList.map((p) => path.resolve(p)));
+  const files = Object.fromEntries(Object.entries(v.files || {}).filter(([, f]) => !drop.has(path.resolve(path.dirname(file), String(f)))));
+  if (Object.keys(files).length === Object.keys(v.files || {}).length) return;
+  writeVideoJson(key, { ...v, files });
+}
+
 /** Mọi job ở bố cục mới: [{ key, job_id, project, work, out }]. */
 export const videoJobs = () => [...index().jobs.values()].map((j) => ({ ...j }));
 
@@ -210,7 +258,7 @@ export function relOfPath(full) {
 
 /**
  * Đường dẫn của một job ở bố cục mới: { key, project, work, out }. Job chưa chuyển trả null: chỗ cũ
- * (dub_projects/, dub_work/ hoặc work_dir riêng trong dubbed.json) vẫn do lib/store.mjs tự tính.
+ * (dub_projects/, dub_work/ hoặc work_dir riêng trong dubbed.json) vẫn do modules/dub/repo.mjs tự tính.
  */
 export function jobPaths(jobId) {
   const hit = index().jobs.get(jobId);

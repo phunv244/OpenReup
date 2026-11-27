@@ -74,12 +74,13 @@ export function SubtitleStudio({ burn, onBurn, subcover, onSubcover, onPick, sty
     <div className="field sub-studio">
       <span className="label">Phụ đề Việt</span>
       <div className="sub-toggles">
-        <label className="check">
-          <input type="checkbox" checked={burn} onChange={(e) => onBurn(e.target.checked)} /> In cứng phụ đề Việt
+        <label className="check switch">
+          <input type="checkbox" role="switch" checked={burn} onChange={(e) => onBurn(e.target.checked)} /> In cứng phụ đề Việt
         </label>
-        <label className="check">
+        <label className="check switch">
           <input
             type="checkbox"
+            role="switch"
             checked={coverOn}
             onChange={(e) => {
               onSubcover(e.target.checked ? "" : "none");

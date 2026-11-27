@@ -8,7 +8,7 @@ import { useStudio } from "@/lib/studio";
 import { Icon } from "./Icon";
 import { useToast } from "./Toasts";
 import { voiceOptions } from "@/lib/voices";
-import { Callout, Options, copyText } from "./ui";
+import { Options, copyText } from "./ui";
 
 const TYPES = ["Truyện / Hoạt hình", "Phim bộ", "Phim lẻ", "Review / Tài liệu"];
 type Tab = "info" | "chars" | "gloss" | "notes";
@@ -179,6 +179,7 @@ export function ProjectDrawer({ project, onClose }: { project: Project; onClose:
             <Icon name="x" />
           </button>
         </div>
+        <p className="drawer-note">Mỗi lần dịch, AI đọc toàn bộ ngữ cảnh này rồi tự bổ sung nhân vật và thuật ngữ mới gặp.</p>
         <div className="tabs">
           {tabs.map(([k, label, n]) => (
             <button key={k} type="button" className={tab === k ? "active" : ""} onClick={() => setTab(k)}>
@@ -218,9 +219,13 @@ export function ProjectDrawer({ project, onClose }: { project: Project; onClose:
                   Mọi nhân vật trong dự án dùng chung giọng này. Thêm giọng mới ở <a href="/resources/?tab=voices">Tài nguyên → Giọng đọc</a>.
                 </div>
               </div>
-              <Callout tone="info" icon="brain">
-                Mỗi lần dịch, AI đọc toàn bộ ngữ cảnh này, rồi tự bổ sung nhân vật và thuật ngữ mới gặp vào dự án.
-              </Callout>
+              {/* Xóa dự án tách khỏi chân ngăn (cạnh "Lưu") để khỏi bấm nhầm. */}
+              <div className="danger-zone">
+                <button className="btn btn-quiet btn-sm danger" type="button" onClick={remove}>
+                  <Icon name="trash" size={15} /> Xóa dự án
+                </button>
+                <span className="help">Video vẫn giữ trên ổ, chỉ mất ngữ cảnh AI của dự án.</span>
+              </div>
             </>
           )}
           {tab === "chars" && (
@@ -230,7 +235,7 @@ export function ProjectDrawer({ project, onClose }: { project: Project; onClose:
               cols={[
                 ["zh", "Tên gốc"], ["vi", "Tên Việt"], ["pronouns", "Xưng hô"], ["personality", "Tính cách"],
               ]}
-              hint="AI tự thêm nhân vật và ghi tính cách qua lời thoại — bạn sửa được tất cả. Mọi nhân vật dùng chung giọng đọc của dự án (tab Thông tin)."
+              hint="Nhân vật đã đặt tên — AI tự thêm qua lời thoại, bạn sửa được tất cả. Người nói chưa rõ tên trong từng video (NV1, NV2…) không tính ở đây."
               emptyText="Chưa có nhân vật."
               blank={{ zh: "", vi: "", pronouns: "", role: "", personality: "" }}
             />
@@ -268,9 +273,6 @@ export function ProjectDrawer({ project, onClose }: { project: Project; onClose:
             ))}
         </div>
         <div className="drawer-foot">
-          <button className="btn btn-quiet btn-sm danger" type="button" onClick={remove}>
-            <Icon name="trash" size={15} /> Xóa dự án
-          </button>
           <span className="grow" />
           <button className="btn btn-light" type="button" onClick={() => copyText(buildAiContextPrompt({ ...project, ...d }), toast)}>
             <Icon name="copy" size={15} /> Copy ngữ cảnh

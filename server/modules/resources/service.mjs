@@ -2,10 +2,9 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { checkSubStyle } from "../../lib/fonts.mjs";
-import { nowIso, validModelId, validSubcover, validVoice } from "../../lib/util.mjs";
+import { httpError, nowIso, validModelId, validSubcover, validVoice } from "../../lib/util.mjs";
 import { PRESET_VOICES } from "./presets.mjs";
 
-const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 
 export const FONT_EXTS = ["ttf", "otf", "ttc", "otc"];
 const MAX_FONT_BYTES = 40 * 1024 * 1024;
@@ -14,13 +13,21 @@ const VOICE_EXT = /^(mp3|wav|m4a|aac|flac|ogg|opus|mp4|mkv|webm|mov)$/;
 const validFontId = (v) => /^[a-z0-9][a-z0-9_-]{0,60}$/.test(String(v));
 const validSlug = (s) => /^[a-z0-9_-]{1,40}$/.test(String(s));
 const cloneId = (slug) => `vieneu-clone:${slug}`;
+// `asr.py list` khởi động Python (~300 ms) mỗi lần: giữ kết quả 30 s. Tải mô hình xong / đổi VAD thì bỏ ngay;
+// TTL chỉ để bắt thay đổi ngoài server (xóa tay thư mục mô hình, cài thêm gói Python).
+const ASR_LIST_TTL_MS = 30_000;
 
 /**
  * repo: resourceRepo (repo.mjs); deps (ctx.get hoặc bản giả trong test): dub (busyError: chặn xóa khi đang lồng tiếng),
- * project (addVoice/dropVoice: giọng của dự án), sources (fileOf: video nguồn đã tải); tasks: { spawnTask } của lib/tasks.
+ * project (addVoice/dropVoice: giọng của dự án), sources (fileOf: video nguồn đã tải);
+ * tasks: { spawnTask, python, onEnd(fn) } của lib/tasks (onEnd: nghe sự kiện tác vụ nền kết thúc).
  */
 export function createResourceService(repo, { dub, project, sources, tasks }) {
   const listClones = () => repo.listCloneVoices(validSlug);
+  let asrList = null; // { at, promise } của lần `asr.py list` gần nhất (đang chạy hoặc đã xong, không lỗi)
+  tasks.onEnd((ev) => {
+    if (ev.type === "asr_download") asrList = null;
+  });
 
   return {
     /* ---------- Font ---------- */
@@ -71,12 +78,19 @@ export function createResourceService(repo, { dub, project, sources, tasks }) {
     },
 
     /* ---------- Mô hình nhận diện ---------- */
-    async asrModels() {
-      try {
-        return JSON.parse((await repo.runAsr(["list"])).stdout);
-      } catch (err) {
-        throw httpError(500, `Không đọc được danh sách mô hình: ${String(err.message).slice(0, 200)}`);
-      }
+    /** Danh sách mô hình (cache ASR_LIST_TTL_MS; request đồng thời dùng chung 1 lần chạy asr.py). Lỗi không được cache. */
+    asrModels() {
+      if (asrList && performance.now() - asrList.at < ASR_LIST_TTL_MS) return asrList.promise;
+      const entry = { at: performance.now() };
+      entry.promise = repo
+        .runAsr(["list"])
+        .then((r) => JSON.parse(r.stdout))
+        .catch((err) => {
+          if (asrList === entry) asrList = null;
+          throw httpError(500, `Không đọc được danh sách mô hình: ${String(err.message).slice(0, 200)}`);
+        });
+      asrList = entry;
+      return entry.promise;
     },
     async setVad(id) {
       if (!validModelId(id)) throw httpError(400, "Bộ lọc không hợp lệ.");
@@ -85,6 +99,7 @@ export function createResourceService(repo, { dub, project, sources, tasks }) {
       } catch {
         throw httpError(400, "Bộ lọc giọng nói này chưa tải hoặc không tồn tại.");
       }
+      asrList = null;
       return { ok: true };
     },
     /** Tác vụ nền tải mô hình: {ok, task_id} hoặc {ok:false, error} khi đang bận. */

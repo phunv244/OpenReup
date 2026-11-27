@@ -11,25 +11,27 @@ Thêm chức năng = thêm 1 thư mục `server/modules/<tên>/` rồi thêm mod
 | `functions.mjs` | Hàm `/api/functions` của module; đặt `{ slot: "<tên>" }` (cả nhóm) hoặc `{ ref: "<tên hàm>" }` (từng hàm nằm xen kẽ) trong `server/routes/functions.mjs` để giữ thứ tự |
 
 - Module khác chỉ dùng service qua `ctx.get(tên)` và phải khai tên đó trong `deps`.
+- Nghe sự kiện dùng chung (`taskEvents`...) qua `ctx.listen(emitter, event, fn)`: loader gỡ hết listener khi app đóng (`app.close()`).
 - Đổi `/api/functions` có chủ đích: `UPDATE_SNAPSHOT=1 npm run test:api`, rồi báo FE/MausBot.
 
 | Module | Trạng thái |
 | --- | --- |
 | project | đã tách (`server/modules/project/`), `deps: ["dub"]` |
-| dub | đã tách (`server/modules/dub/`); các route sửa câu thoại vẫn gọi DB trực tiếp trong `routes.mjs` |
-| sources | đã tách (`server/modules/sources/`), `deps: ["dub", "project"]`; job lồng tiếng của video nguồn lấy qua `ctx.get("dub")` (`jobsBySource`, `removeWorkDir`, `removeJob`, `busyError`) |
-| resources | đã tách (`server/modules/resources/`), `deps: ["dub", "project", "sources"]`; font, giọng đọc, mô hình nhận diện, xem trước phụ đề (gộp `routes/voices.mjs` + `routes/resources.mjs` + `lib/voices.mjs`). Giọng của dự án qua `ctx.get("project")` (`addVoice`, `dropVoice`), video nguồn qua `ctx.get("sources").fileOf`, chặn xóa khi đang lồng tiếng qua `ctx.get("dub").busyError`. `lib/fonts.mjs` chỉ còn `checkSubStyle`/`validFontFamily` dùng chung với `dub`. Mọi file ghi ra nằm dưới `REUP_DATA_DIR` (`fonts/`, `fonts.json`, `voices/`, `voices.json`) |
-| ai | đã tách (`server/modules/ai/`, thay `lib/agy.mjs`), không phụ thuộc module nào; `dub` khai `deps: ["ai"]` và kiểm `agy_model` qua `ctx.get("ai").validModel`. Route `/api/agy-models`, `/api/agy-models/refresh`; cache `<REUP_DATA_DIR>/agy_models.json`; lệnh agy lấy từ `AGY_BIN` (test dùng agy giả) |
-| tasks, functions | còn bọc `server/routes/*.mjs` |
+| dub | đã tách (`server/modules/dub/`): route → `editor.mjs` (danh sách đã lồng tiếng, gán/bỏ gán dự án có kiểm dự án tồn tại, dọn cache, xóa, sửa câu thoại) → repo; route không còn SQL/nghiệp vụ |
+| sources | đã tách (`server/modules/sources/`), `deps: ["dub", "project"]`; job lồng tiếng của video nguồn lấy qua `ctx.get("dub")` (`jobsBySource`, `removeWorkDir`, `removeJob`, `busyError`); ảnh thu nhỏ / khung hình (`thumb`, `frame`) nằm trong service |
+| resources | đã tách (`server/modules/resources/`), `deps: ["ai", "dub", "project", "sources"]` (`ai`: `list_options` đọc `/api/agy-models`); font, giọng đọc, mô hình nhận diện (danh sách `asr.py list` cache 30 s, bỏ cache khi đổi VAD / tải mô hình xong), xem trước phụ đề, hàm `list_options` (gộp `routes/voices.mjs` + `routes/resources.mjs` + `lib/voices.mjs`). Giọng của dự án qua `ctx.get("project")` (`addVoice`, `dropVoice`), video nguồn qua `ctx.get("sources").fileOf`, chặn xóa khi đang lồng tiếng qua `ctx.get("dub").busyError`. `lib/fonts.mjs` chỉ còn `checkSubStyle`/`validFontFamily` dùng chung với `dub`. Mọi file ghi ra nằm dưới `REUP_DATA_DIR` (`fonts/`, `fonts.json`, `voices/`, `voices.json`) |
+| ai | đã tách (`server/modules/ai/`, thay `lib/agy.mjs`), không phụ thuộc module nào; `dub` khai `deps: ["ai"]` và kiểm `agy_model` qua `ctx.get("ai").validModel`. Route `/api/agy-models`, `/api/agy-models/refresh`; hàm `refresh_ai_models` (`functions.mjs`, slot `ai` sau `tasks`); cache `<REUP_DATA_DIR>/agy_models.json`; lệnh agy lấy từ `AGY_BIN` (test dùng agy giả) |
+| tasks | đã tách (`server/modules/tasks/`, thay `routes/tasks.mjs`): `/api/task*`, `/api/system` (dung lượng ổ qua `service.mjs`), hàm `get_task`, `stop_task`, `get_call`, `list_calls`. Nhật ký lần gọi (bảng `function_calls`) ở `server/lib/function-calls.mjs`, dùng chung với lớp chạy hàm |
+| functions | `server/routes/functions.mjs` chỉ còn danh sách đăng ký (`FUNCTIONS`: `{ slot }` / `{ ref }`) + lớp chạy hàm `/api/functions*`; không khai hàm riêng |
 
 ### Ranh giới module `ai`
 
 `ai` chỉ giữ phần server tự làm với AI: danh sách model dịch của Antigravity (gọi `agy models`, cache, gom theo mức suy nghĩ) và kiểm tra id model. Những phần dưới đây cố ý không chuyển vào:
 
-- Dịch và nhận diện giọng nói chạy trong `dub_video.py`, do module `dub` khởi chạy; server không gọi model nào trực tiếp. Tách ra thì `ai` chỉ còn bọc lại việc chạy script của `dub`.
+- Dịch và nhận diện giọng nói chạy trong `pipeline/` (điều phối bởi `pipeline/dub_video.py`, đường dẫn script lấy từ hằng số `PY_SCRIPTS` trong `config.mjs`), do module `dub` khởi chạy; server không gọi model nào trực tiếp. Tách ra thì `ai` chỉ còn bọc lại việc chạy script của `dub`.
 - Mô hình nhận diện (`/api/asr-models*`, hàm `download_asr_model`) là tài nguyên tải về máy giống font và giọng đọc, nên ở lại `resources` (đã duyệt ở `a6b5c40`).
-- `list_options` gom giá trị hợp lệ của nhiều module (giọng, mô hình nhận diện, model dịch, dự án, font) qua HTTP, nên ở lại `server/routes/functions.mjs`. `get_task`, `stop_task`, `get_call`, `list_calls` thuộc tác vụ nền và nhật ký gọi hàm, cũng không phải AI.
-- `ai` chưa có hàm `/api/functions` nào, nên không có `functions.mjs`, `{ slot }` hay `{ ref }`.
+- `list_options` gom giá trị hợp lệ của nhiều module (giọng, mô hình nhận diện, model dịch, dự án, font) qua HTTP (không import module khác), nằm ở `resources`. `get_task`, `stop_task`, `get_call`, `list_calls` thuộc module `tasks`.
+- Hàm `/api/functions` duy nhất của `ai` là `refresh_ai_models` (gọi `/api/agy-models/refresh`); danh sách sau khi làm mới đọc lại qua `list_options.agy_models`.
 
 Khi `ai` được nạp trước `dub`, cây route mà `printRoutes()` in ra đổi thứ tự hiển thị (`/api/agy-models` và `/api/asr-models` lên đầu nhóm `/api/a…`). Tập route (đường dẫn + method) vẫn giữ nguyên.
 
@@ -41,7 +43,7 @@ Khi `ai` được nạp trước `dub`, cây route mà `printRoutes()` in ra đ�
 - [x] `project` lấy bản lồng tiếng qua `ctx.get("dub")`, không import thẳng `lib/store` phần lồng tiếng.
 - [ ] Bước 6: sau khi `rename` thư mục video, cập nhật `work_dir`/`out_dir` trong file project của job và trong `dubbed.json`.
 - [ ] Thư mục làm việc của job phải giữ đúng tên `<jobId>` khi đổi chỗ (ví dụ `<thư mục video>/<jobId>/`). `dubWorkDir` (`lib/store.mjs`) chỉ nhận thư mục có `basename(realpath) === jobId` nằm trong `data/dub_work/`; đặt tên khác hoặc dời ra ngoài thì `/api/dub/clean`, `/api/dub/delete` và lệnh xóa video nguồn lặng lẽ không xóa gì. Bước 6 phải mở rộng điều kiện gốc cho phép (không chỉ `data/dub_work/`) cùng lúc với việc dời thư mục.
-- [x] `dub_video.py` mở SQLite theo `REUP_DATA_DIR` (`<REUP_DATA_DIR>/openreup.db`), qua `reup_paths.py`.
+- [x] `pipeline/dub_video.py` mở SQLite theo `REUP_DATA_DIR` (`<REUP_DATA_DIR>/openreup.db`), qua `pipeline/paths.py`.
 
 ## Thư mục dữ liệu khi chạy test
 
@@ -55,4 +57,4 @@ Khi `ai` được nạp trước `dub`, cây route mà `printRoutes()` in ra đ�
 
 Script tải `download_videos.mjs` (Douyin), `download_bilibili.mjs` (Bilibili/YouTube) và `list_channel_web.mjs` chạy như tiến trình con, kế thừa env của server nên cũng ghi theo `REUP_MEDIA_ROOT` (`downloads/`) và `REUP_DATA_DIR` (`videos.json`, `bilibili.json`). `lib/tasks.mjs` tính đường dẫn `SAVED_FILE:::` từ `MEDIA_ROOT`. Còn dùng thư mục repo: `chrome_profile/` (đăng nhập Douyin) và `cookies.txt`.
 
-Script Python (`dub_video.py`, `asr.py`, `subtitles.py`, `voice_tool.py`, `list_channel_adb.py`) lấy thư mục từ `reup_paths.py`, đọc cùng `REUP_DATA_DIR`/`REUP_MEDIA_ROOT` như `config.mjs` (mặc định `data/` và thư mục repo, server thật không đổi). Server chạy script con với `...process.env` nên script tự theo thư mục tạm của test: `asr.py set-vad/download` ghi `asr_models/` + `asr_settings.json`, `dub_video.py` mở `openreup.db`, đọc `voices/`, `projects/`, `dubbed.json`, `dub_work/` và xuất mặc định vào `<REUP_MEDIA_ROOT>/downloads/dubbed`, `subtitles.py` tìm font trong `fonts/`. Thư mục script cụ thể vẫn ghi đè được qua `--out-dir`, `--work-dir`, `--index-file`... `test_dub_video.py` (`test_reup_data_dir_*`) kiểm cả hai trường hợp có và không đặt biến.
+Script Python (`pipeline/dub_video.py`, `pipeline/asr.py`, `pipeline/subtitles.py`, `pipeline/voice_tool.py`, `list_channel_adb.py`) lấy thư mục từ `pipeline/paths.py`, đọc cùng `REUP_DATA_DIR`/`REUP_MEDIA_ROOT` như `config.mjs` (mặc định `data/` và thư mục repo, server thật không đổi). Server chạy script con với `...process.env` nên script tự theo thư mục tạm của test: `asr.py set-vad/download` ghi `asr_models/` + `asr_settings.json`, `dub_video.py` mở `openreup.db`, đọc `voices/`, `projects/`, `dubbed.json`, `dub_work/` và xuất mặc định vào `<REUP_MEDIA_ROOT>/downloads/dubbed`, `subtitles.py` tìm font trong `fonts/`. Thư mục script cụ thể vẫn ghi đè được qua `--out-dir`, `--work-dir`, `--index-file`... `pipeline/tests/test_dub_video.py` (`test_reup_data_dir_*`) kiểm cả hai trường hợp có và không đặt biến.

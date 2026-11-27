@@ -13,7 +13,11 @@ const fakeAgy = path.join(binDir, "agy");
 fs.writeFileSync(fakeAgy, `#!${process.execPath}\nif (process.argv[2] !== "models") process.exit(2);\nprocess.stdout.write(require("node:fs").readFileSync(${JSON.stringify(OUT)}, "utf8"));\n`, { mode: 0o755 });
 fs.writeFileSync(OUT, "Fetching models...\ngemini-4-neon-high\tGemini 4 Neon (High)\ngemini-4-neon-low\tGemini 4 Neon (Low)\nclaude-x\tClaude X\n");
 
-const { app, dir, cleanup } = await setupApp({ AGY_BIN: fakeAgy });
+// python giả: `asr.py list` trả danh sách rỗng — list_options cần /api/asr-models chạy được cả trên CI (không có .venv).
+const fakePy = path.join(binDir, "fakepy");
+fs.writeFileSync(fakePy, `#!/bin/sh\necho '{"models": []}'\n`, { mode: 0o755 });
+
+const { app, dir, cleanup } = await setupApp({ AGY_BIN: fakeAgy, REUP_PYTHON: fakePy });
 after(async () => {
   await cleanup();
   fs.rmSync(binDir, { recursive: true, force: true });
@@ -80,5 +84,22 @@ test("POST /api/dub/start từ chối agy_model sai dạng (kiểm qua service c
 test("module dub khai phụ thuộc ai: bỏ module ai khỏi danh sách thì báo lỗi lúc khởi động", async () => {
   const { MODULES } = await import("../app.mjs");
   const { orderModules } = await import("../core/loader.mjs");
-  assert.throws(() => orderModules(MODULES.filter((m) => m.name !== "ai")), /Module "dub" cần "ai"/);
+  // resources cũng cần ai (list_options): gỡ deps "ai" của module khác để chắc lỗi đến từ khai báo của dub.
+  const noAi = MODULES.filter((m) => m.name !== "ai").map((m) => (m.name === "dub" ? m : { ...m, deps: (m.deps || []).filter((d) => d !== "ai") }));
+  assert.throws(() => orderModules(noAi), /Module "dub" cần "ai"/);
+});
+
+test("refresh_ai_models qua /api/functions: hỏi lại agy, trả { models }, list_options.agy_models đọc lại danh sách mới; agy lỗi -> status error", async () => {
+  const call = async (name) => (await post("/api/functions/call", { name, arguments: {} })).json();
+  fs.writeFileSync(OUT, "gemini-5-high\tGemini 5 (High)\nclaude-y\tClaude Y\n");
+  const r = await call("refresh_ai_models");
+  assert.equal(r.status, "done", JSON.stringify(r));
+  assert.deepEqual(r.result, { models: [{ id: "gemini-5-high", name: "Gemini 5 (High)" }, { id: "claude-y", name: "Claude Y" }] });
+  assert.ok(r.call_id, "có ghi nhật ký lần gọi");
+  const opts = await call("list_options");
+  assert.deepEqual(opts.result.agy_models, r.result.models);
+  fs.writeFileSync(OUT, "Fetching models...\n");
+  const bad = await call("refresh_ai_models");
+  assert.equal(bad.status, "error");
+  assert.match(bad.error, /không trả về model nào/);
 });

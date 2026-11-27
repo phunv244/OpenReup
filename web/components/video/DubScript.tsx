@@ -73,10 +73,13 @@ export function DubScript({ jobId, video, speakers, edits, setEdits, spk, setSpk
           aria-label="Tìm câu thoại"
           onChange={(e) => setQ({ ...q, text: e.target.value, offset: 0 })}
         />
-        <label className="check" title="Chỉ hiện câu chưa có lời Việt">
-          <input type="checkbox" onChange={(e) => setQ({ ...q, only: e.target.checked ? "empty" : "", offset: 0 })} /> Chưa dịch{" "}
-          <span className="cnt">{page?.empty ?? 0}</span>
-        </label>
+        {/* Bộ lọc chỉ có ích khi còn câu chưa dịch (hoặc đang bật). */}
+        {(page?.empty || q.only === "empty") && (
+          <label className="check" title="Chỉ hiện câu chưa có lời Việt">
+            <input type="checkbox" checked={q.only === "empty"} onChange={(e) => setQ({ ...q, only: e.target.checked ? "empty" : "", offset: 0 })} /> Chưa dịch{" "}
+            <span className="cnt">{page?.empty ?? 0}</span>
+          </label>
+        )}
       </div>
       <div className="line-list" ref={table} role="list" aria-label="Danh sách câu thoại">
         {!page ? (
@@ -92,15 +95,18 @@ export function DubScript({ jobId, video, speakers, edits, setEdits, spk, setSpk
                     {fmtDur(s.start) || "0:00"}
                   </button>
                   <span className="line-zh" title={s.zh}>{s.zh}</span>
+                  {/* Nhãn nhỏ "NV5" (màu nhân vật); bấm mới hiện danh sách chọn giọng — ô chọn trong suốt phủ lên nhãn. */}
                   {spkKeys.length > 0 && (
-                    <select
-                      className={`select input-sm seg-spk spk-${spkIndex(who)}`}
-                      aria-label={`Nhân vật câu ${id}`}
-                      value={who}
-                      onChange={(e) => setMap(spk, setSpk, id, e.target.value, s.speaker || "NV1")}
-                    >
-                      <Options list={speakers.map(([k, sp]) => [k, sp.name ? `${k} · ${sp.name}${sp.is_new ? " (mới)" : ""}` : k])} />
-                    </select>
+                    <label className={`spk-tag spk-pick spk-${spkIndex(who)}`} title={`${speakers.find(([k]) => k === who)?.[1].name || who} — bấm để đổi giọng`}>
+                      {who}
+                      <select
+                        aria-label={`Nhân vật câu ${id}`}
+                        value={who}
+                        onChange={(e) => setMap(spk, setSpk, id, e.target.value, s.speaker || "NV1")}
+                      >
+                        <Options list={speakers.map(([k, sp]) => [k, sp.name ? `${k} · ${sp.name}${sp.is_new ? " (mới)" : ""}` : k])} />
+                      </select>
+                    </label>
                   )}
                 </div>
                 <input
@@ -123,8 +129,10 @@ export function DubScript({ jobId, video, speakers, edits, setEdits, spk, setSpk
           <p className="muted line-empty">Không có câu nào khớp.</p>
         )}
       </div>
+      {/* Chỉ 1 trang thì hàng phân trang không có tác dụng: ẩn. */}
+      {page && (page.offset > 0 || page.offset + page.items.length < page.matched) && (
       <div className="editor-pager">
-        <button className="btn btn-light btn-sm" type="button" disabled={!page || page.offset <= 0}
+        <button className="btn btn-light btn-sm" type="button" disabled={page.offset <= 0}
           onClick={() => setQ({ ...q, offset: Math.max(0, q.offset - LIMIT) })}>
           ‹ Trước
         </button>
@@ -133,11 +141,12 @@ export function DubScript({ jobId, video, speakers, edits, setEdits, spk, setSpk
             ? `${(page.offset + 1).toLocaleString("vi")}–${(page.offset + page.items.length).toLocaleString("vi")} / ${page.matched.toLocaleString("vi")} câu`
             : "0 câu"}
         </span>
-        <button className="btn btn-light btn-sm" type="button" disabled={!page || page.offset + page.items.length >= page.matched}
+        <button className="btn btn-light btn-sm" type="button" disabled={page.offset + page.items.length >= page.matched}
           onClick={() => setQ({ ...q, offset: q.offset + LIMIT })}>
           Sau ›
         </button>
       </div>
+      )}
     </div>
   );
 }

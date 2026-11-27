@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { DubParams, SubStyle } from "@/lib/api";
 import { asrTag, pickModel } from "@/lib/asr";
-import { fmtHours, projHref } from "@/lib/format";
+import { fmtHours } from "@/lib/format";
 import { useStudio } from "@/lib/studio";
 import { voiceOptions } from "@/lib/voices";
 import { Icon } from "../Icon";
@@ -91,7 +91,7 @@ export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; project
       ) : v.dub ? (
         <Callout tone="warn" icon="alert">
           Lồng tiếng lại sẽ <b>nhận diện và dịch lại từ đầu</b>: các câu bạn đã sửa tay trong bản hiện tại sẽ bị thay thế. Nếu chỉ muốn đổi giọng / phụ đề /
-          logo, hãy dùng <b>Sửa lời → Lưu & xuất lại</b>.
+          logo, hãy bấm vào video để mở trang chỉnh, đổi ở tab <b>Giọng đọc</b> / <b>Hình &amp; phụ đề</b> rồi bấm <b>Lưu &amp; chạy lại</b>.
         </Callout>
       ) : (
         <Callout tone="info" icon="brain">

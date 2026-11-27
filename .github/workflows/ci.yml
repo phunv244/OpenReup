@@ -32,7 +32,7 @@ jobs:
       - run: npm run build:web
 
   python:
-    name: Pipeline tests (dub_video.py)
+    name: Pipeline tests (pipeline/)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +42,6 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: pip install numpy scikit-learn
       # VieNeu-TTS (kèm model) quá nặng cho CI: 2 test này chạy bằng `npm test` trên máy có .venv.
-      - run: python test_dub_video.py
+      - run: python pipeline/tests/test_dub_video.py
         env:
           SKIP_TESTS: test_vieneu_voice_parsing,test_gpu_batched_tts_dedup_and_unload

@@ -1,12 +1,10 @@
 "use client";
-import { LogsBody } from "@/components/LogConsole";
-import { ProjectTopbar } from "@/components/ProjectTopbar";
+/** Mục "Nhật ký" của dự án đã bỏ: nhật ký nằm trong cột Tiến trình (nút trên thanh tiêu đề). Giữ route để link cũ về trang chủ, không 404. */
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
-export default function ProjectLogsPage() {
-  return (
-    <>
-      <ProjectTopbar title="Nhật ký" sub="Tiến trình đang chạy và kết quả lần chạy gần nhất" />
-      <LogsBody />
-    </>
-  );
+export default function ProjectLogsRedirect() {
+  const router = useRouter();
+  useEffect(() => router.replace("/"), [router]);
+  return null;
 }

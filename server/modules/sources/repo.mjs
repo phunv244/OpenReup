@@ -1,8 +1,7 @@
-/** Đọc/ghi dữ liệu của module sources: data/videos.json (Douyin), data/bilibili.json, file video trong downloads/, video nguồn → dự án. */
+/** Đọc/ghi dữ liệu của module sources: data/videos.json (Douyin), data/bilibili.json, file video trong downloads/. Video nguồn → dự án: module project. */
 import fs from "node:fs";
 import path from "node:path";
 import { BILIBILI_DIR, BILIBILI_JSON, DATA_JSON, DEFAULT_CHANNEL_URL, DOWNLOADS_DIR } from "../../config.mjs";
-import { readVideoProjects, setVideoProject } from "../../lib/store.mjs";
 import { readJson, writeJson } from "../../lib/util.mjs";
 
 const EMPTY_DOUYIN = () => ({
@@ -47,12 +46,24 @@ export const sourceRepo = {
   },
   exists: (full) => fs.existsSync(full),
   isFile: (full) => fs.existsSync(full) && fs.statSync(full).isFile(),
+  stat: (full) => fs.statSync(full),
+  /** stat của full nếu là file, không thì null (không có / là thư mục). */
+  statFile(full) {
+    try {
+      const st = fs.statSync(full);
+      return st.isFile() ? st : null;
+    } catch (e) {
+      if (e.code === "ENOENT" || e.code === "ENOTDIR") return null;
+      throw e;
+    }
+  },
+  /** File video + file .info.json đi kèm (những gì removeVideo xóa). */
+  videoFiles: (full) => [full, full.replace(/\.mp4$/i, ".info.json")],
   /** Xóa file video + file .info.json đi kèm. */
   removeVideo(full) {
-    if (fs.existsSync(full) && fs.statSync(full).isFile()) fs.unlinkSync(full);
-    fs.rmSync(full.replace(/\.mp4$/i, ".info.json"), { force: true });
+    const [video, info] = sourceRepo.videoFiles(full);
+    if (fs.existsSync(video) && fs.statSync(video).isFile()) fs.unlinkSync(video);
+    fs.rmSync(info, { force: true });
   },
 
-  owners: readVideoProjects,
-  setOwner: setVideoProject,
 };

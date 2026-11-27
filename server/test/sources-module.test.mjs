@@ -10,7 +10,8 @@ const { app, dir, cleanup } = await setupApp();
 after(cleanup);
 const { DOWNLOADS_DIR, ROOT } = await import("../config.mjs");
 const { spawnTask, taskEvents } = await import("../lib/tasks.mjs");
-const { readVideoProjects } = await import("../lib/store.mjs");
+const { projectRepo } = await import("../modules/project/repo.mjs");
+const readVideoProjects = () => projectRepo.owners();
 const { MODULES } = await import("../app.mjs");
 
 const get = (url) => app.inject({ method: "GET", url });
@@ -96,4 +97,51 @@ test("file tải về (SAVED_FILE:::) tính theo REUP_MEDIA_ROOT: đường dẫ
   const owners = readVideoProjects();
   assert.equal(owners["downloads/rel.mp4"], "p1");
   assert.equal(owners["downloads/bilibili/abs.mp4"], "p1");
+});
+
+test("va chạm gán dự án: video đã thuộc dự án khác -> 409 kèm tên dự án, không ghi đè; move:true mới chuyển", async () => {
+  const rel = "downloads/bilibili/own.mp4";
+  put(path.join(DOWNLOADS_DIR, "bilibili", "own.mp4"));
+  put(path.join(dir, "projects", "pa.json"), { id: "pa", name: "Dự án A" });
+  put(path.join(dir, "projects", "pb.json"), { id: "pb", name: "Dự án B" });
+  assert.equal((await post("/api/source/assign", { rel_path: rel, project_id: "pa" })).statusCode, 200);
+  // Gán lại đúng dự án đang giữ: không phải va chạm.
+  assert.equal((await post("/api/source/assign", { rel_path: rel, project_id: "pa" })).statusCode, 200);
+
+  for (const move of [undefined, false, "true", 1]) {
+    const res = await post("/api/source/assign", { rel_path: rel, project_id: "pb", move });
+    assert.equal(res.statusCode, 409, `move=${move}`);
+    const body = res.json();
+    assert.equal(body.ok, false);
+    assert.match(body.error, /Dự án A/);
+    assert.equal(body.owner_project_id, "pa");
+    assert.equal(body.owner_project_name, "Dự án A");
+    assert.equal(readVideoProjects()[rel], "pa");
+  }
+
+  const moved = await post("/api/source/assign", { rel_path: rel, project_id: "pb", move: true });
+  assert.equal(moved.statusCode, 200, moved.body);
+  assert.equal(readVideoProjects()[rel], "pb");
+  // Bỏ gán ("") không cần move.
+  assert.equal((await post("/api/source/assign", { rel_path: rel, project_id: "" })).statusCode, 200);
+  assert.ok(!(rel in readVideoProjects()));
+});
+
+test("file tải về đã thuộc dự án khác: giữ dự án cũ, ghi lý do vào nhật ký tác vụ; file chưa gán thì vẫn gán", async () => {
+  const kept = path.join(DOWNLOADS_DIR, "bilibili", "kept.mp4");
+  const fresh = path.join(DOWNLOADS_DIR, "bilibili", "fresh.mp4");
+  put(kept);
+  put(fresh);
+  put(path.join(dir, "projects", "pa.json"), { id: "pa", name: "Dự án A" });
+  put(path.join(dir, "projects", "pb.json"), { id: "pb", name: "Dự án B" });
+  assert.equal((await post("/api/source/assign", { rel_path: "downloads/bilibili/kept.mp4", project_id: "pa" })).statusCode, 200);
+
+  const code = `console.log(${JSON.stringify("SAVED_FILE:::" + kept)}); console.log(${JSON.stringify("SAVED_FILE:::" + fresh)});`;
+  const ended = new Promise((resolve) => taskEvents.once("end", resolve));
+  assert.equal(spawnTask("bilibili_download", process.execPath, ["-e", code], "", "pb").ok, true);
+  const ev = await ended;
+  const owners = readVideoProjects();
+  assert.equal(owners["downloads/bilibili/kept.mp4"], "pa");
+  assert.equal(owners["downloads/bilibili/fresh.mp4"], "pb");
+  assert.ok(ev.logs.some((l) => l.includes("kept.mp4") && l.includes("Dự án A")), ev.logs.join("\n"));
 });

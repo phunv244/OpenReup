@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
-import { DATA_DIR, ROOT, VENV_PYTHON, VOICES_DIR, VOICES_JSON, VOICE_PREVIEW_DIR, VOICE_TMP_DIR } from "../../config.mjs";
+import { DATA_DIR, PY_SCRIPTS, ROOT, VENV_PYTHON, VOICES_DIR, VOICES_JSON, VOICE_PREVIEW_DIR, VOICE_TMP_DIR } from "../../config.mjs";
 import { validFontFamily } from "../../lib/fonts.mjs";
 import { execFileP, nowIso, readJson, writeJson } from "../../lib/util.mjs";
 
@@ -140,10 +140,12 @@ export const resourceRepo = {
     return subPreviewQueue(async () => {
       const out = path.join(os.tmpdir(), `openreup-subprev-${crypto.randomBytes(6).toString("hex")}.jpg`);
       try {
-        await execFileP(VENV_PYTHON, [path.join(ROOT, "subtitles.py"), "preview", ...args, "--out", out], { cwd: ROOT, timeout: 60_000 });
+        await execFileP(VENV_PYTHON, [PY_SCRIPTS.subtitles, "preview", ...args, "--out", out], { cwd: ROOT, timeout: 60_000 });
         return fs.readFileSync(out);
       } catch (err) {
-        const msg = lastJson(err.stdout)?.error || "Không vẽ được bản xem trước.";
+        // Script chết trước khi in JSON (vd không mở được file script): kèm dòng stderr cuối để biết nguyên nhân.
+        const tail = String(err.stderr || "").trim().split("\n").pop().slice(0, 200);
+        const msg = lastJson(err.stdout)?.error || `Không vẽ được bản xem trước.${tail ? ` (${tail})` : ""}`;
         throw Object.assign(new Error(msg), { statusCode: 500 });
       } finally {
         fs.rmSync(out, { force: true });
@@ -152,7 +154,7 @@ export const resourceRepo = {
   },
 
   /* ---------- Mô hình nhận diện (asr.py) ---------- */
-  asrScript: path.join(ROOT, "asr.py"),
+  asrScript: PY_SCRIPTS.asr,
   runAsr: (args) => execFileP(VENV_PYTHON, [resourceRepo.asrScript, ...args], { cwd: ROOT, timeout: 30000 }),
 
   /* ---------- Giọng đọc ---------- */
@@ -183,7 +185,7 @@ export const resourceRepo = {
   /** Chạy voice_tool.py, trả JSON ở dòng cuối (kể cả khi lỗi). */
   async runVoiceTool(args, timeoutMs) {
     try {
-      const { stdout } = await execFileP(VENV_PYTHON, [path.join(ROOT, "voice_tool.py"), ...args], {
+      const { stdout } = await execFileP(VENV_PYTHON, [PY_SCRIPTS.voice, ...args], {
         cwd: ROOT, timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024,
       });
       return lastJson(stdout) || { ok: false, error: "Công cụ giọng đọc không trả kết quả." };

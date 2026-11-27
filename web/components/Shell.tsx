@@ -11,7 +11,7 @@ import { TaskCard } from "./TaskCard";
 import { TaskRail } from "./TaskRail";
 import { NotificationBell } from "./Toasts";
 
-/** Mở ngăn "Ngữ cảnh AI" của một dự án từ bất kỳ đâu (thanh trái, thẻ dự án, thanh tiêu đề). */
+/** Mở ngăn "Ngữ cảnh AI" của một dự án từ bất kỳ đâu (thanh trái, thẻ dự án). */
 const DrawerContext = createContext<(pid: string) => void>(() => {});
 export const useOpenDrawer = () => useContext(DrawerContext);
 
@@ -48,12 +48,13 @@ function useSidebarMini() {
 
 const clean = (p: string) => p.replace(/\/+$/, "") || "/";
 
+/** `count` = 0 thì ẩn số (số 0 không giúp quyết định gì). */
 function NavLink({ href, icon, label, count, active }: { href: string; icon: string; label: string; count?: number; active: boolean }) {
   return (
     <Link className={`nav-link ${active ? "active" : ""}`} href={href} title={label} aria-current={active ? "page" : undefined}>
       <Icon name={icon} />
       <span>{label}</span>
-      {count != null && <span className="nav-count">{count}</span>}
+      {count ? <span className="nav-count">{count}</span> : null}
     </Link>
   );
 }
@@ -85,9 +86,7 @@ function Nav() {
         <button className="nav-link" type="button" title="Ngữ cảnh AI" onClick={() => openDrawer(pid)}>
           <Icon name="brain" />
           <span>Ngữ cảnh AI</span>
-          <span className="nav-count">{(proj.characters || []).length + (proj.glossary || []).length}</span>
         </button>
-        <NavLink href={projHref(pid, "logs")} icon="terminal" label="Nhật ký" active={sub === "logs"} />
       </nav>
     );
   }
@@ -111,14 +110,14 @@ function useTheme() {
   return { theme, flip };
 }
 
-/** Menu "Cài đặt" ở chân thanh trái: Mô hình nhận diện, Nhật ký hệ thống, Hướng dẫn, đổi giao diện. */
+/** Menu "Cài đặt" ở chân thanh trái: Mô hình nhận diện, Hướng dẫn, đổi giao diện. */
 function SettingsMenu() {
   const { asr } = useStudio();
   const path = clean(usePathname());
   const { theme, flip } = useTheme();
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
-  const here = ["/models", "/logs", "/help"].includes(path);
+  const here = ["/models", "/help"].includes(path);
   useEffect(() => setOpen(false), [path]);
   useEffect(() => {
     if (!open) return;
@@ -138,13 +137,9 @@ function SettingsMenu() {
         <div className="sb-menu" role="menu" aria-label="Cài đặt">
           <div className="sb-menu-label">Hệ thống</div>
           <Link role="menuitem" className={`sb-menu-item ${path === "/models" ? "active" : ""}`} href="/models/">
-            <Icon name="brain" size={16} />
+            <Icon name="wave" size={16} />
             <span>Mô hình nhận diện</span>
             <em>{installed}</em>
-          </Link>
-          <Link role="menuitem" className={`sb-menu-item ${path === "/logs" ? "active" : ""}`} href="/logs/">
-            <Icon name="terminal" size={16} />
-            <span>Nhật ký hệ thống</span>
           </Link>
           <Link role="menuitem" className={`sb-menu-item ${path === "/help" ? "active" : ""}`} href="/help/">
             <Icon name="help" size={16} />
@@ -248,9 +243,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Thanh tiêu đề của mỗi trang. */
-export function Topbar({ title, sub, actions }: { title: string; sub?: string; actions?: React.ReactNode }) {
-  const { reload, task } = useStudio();
+/** Thanh tiêu đề của mỗi trang: cao cố định 64px. `meta` (thông tin ngắn như "5:26 · 92 câu") nằm cùng hàng với tiêu đề, không thành dòng thứ hai. */
+export function Topbar({ title, meta, actions, back }: { title: string; meta?: string; actions?: React.ReactNode; back?: { href: string; label: string } }) {
+  const { task } = useStudio();
   const rail = useRail();
   const busy = Boolean(task?.running) || (task?.queue || []).length > 0;
   // Không đặt mảng phụ thuộc: Next đặt lại tiêu đề tab khi đổi ?tab=, nên ghi lại sau mỗi lần vẽ.
@@ -263,9 +258,14 @@ export function Topbar({ title, sub, actions }: { title: string; sub?: string; a
       <button className="icon-btn menu-btn" type="button" aria-label="Mở menu" onClick={() => document.body.classList.add("sb-open")}>
         <Icon name="menu" />
       </button>
+      {back && (
+        <Link className="topbar-back" href={back.href} title={`Về ${back.label}`} aria-label={`Về ${back.label}`}>
+          <Icon name="back" size={16} />
+        </Link>
+      )}
       <div className="topbar-title">
         <h1>{title}</h1>
-        {sub && <p>{sub}</p>}
+        {meta && <span className="topbar-meta">{meta}</span>}
       </div>
       {task?.running && (
         <button className="task-chip" type="button" title="Xem tiến trình" onClick={() => rail.toggle(true)}>
@@ -286,9 +286,6 @@ export function Topbar({ title, sub, actions }: { title: string; sub?: string; a
         >
           <Icon name="terminal" />
           {busy && <span className="rail-toggle-dot" />}
-        </button>
-        <button className="icon-btn" type="button" title="Làm mới dữ liệu" aria-label="Làm mới dữ liệu" onClick={() => reload(true)}>
-          <Icon name="refresh" />
         </button>
       </div>
     </header>

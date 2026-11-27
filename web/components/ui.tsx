@@ -3,21 +3,6 @@
 import { useEffect, useRef } from "react";
 import { Icon } from "./Icon";
 
-export function Metric({ icon, label, value, sub, tone }: { icon: string; label: string; value: React.ReactNode; sub?: string; tone: string }) {
-  return (
-    <div className={`metric ${tone}`}>
-      <div className="metric-ico">
-        <Icon name={icon} size={20} />
-      </div>
-      <div className="metric-body">
-        <div className="metric-label">{label}</div>
-        <div className="metric-val">{value}</div>
-        {sub && <div className="metric-sub">{sub}</div>}
-      </div>
-    </div>
-  );
-}
-
 export function EmptyState({ icon, title, desc, children }: { icon: string; title: string; desc: string; children?: React.ReactNode }) {
   return (
     <div className="empty">

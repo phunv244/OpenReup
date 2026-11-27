@@ -1,4 +1,8 @@
-/** Thông tin media + ảnh xem trước (không bắt trình duyệt mở file nhiều GB). */
+/**
+ * Thông tin media + ảnh xem trước (không bắt trình duyệt mở file nhiều GB).
+ * Khóa cache (media_cache.json, tên ảnh trong thumbs/) theo rel_path "downloads/..." + size + mtime, không theo đường
+ * dẫn thật: chuyển file sang data/videos/<key>/source/ (rename giữ size/mtime) thì cache vẫn dùng được.
+ */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -8,11 +12,11 @@ import { execFileP, readJson, writeJson } from "./util.mjs";
 let mediaCache = null;
 let mediaCacheDirty = false;
 
-export const mediaKey = (fullPath, st) => `${fullPath}|${st.size}|${Math.round(st.mtimeMs)}`;
+export const mediaKey = (rel, st) => `${rel}|${st.size}|${Math.round(st.mtimeMs)}`;
 
-export async function probeMedia(fullPath, st) {
+export async function probeMedia(rel, fullPath, st) {
   mediaCache ??= readJson(MEDIA_CACHE_JSON, {});
-  const key = mediaKey(fullPath, st);
+  const key = mediaKey(rel, st);
   if (mediaCache[key]) return mediaCache[key];
   let info = { duration_sec: 0, resolution: "" };
   try {
@@ -41,8 +45,8 @@ export function flushMediaCache(liveKeys) {
 
 let thumbQueue = Promise.resolve();
 
-export function ensureThumb(fullPath, st) {
-  const key = crypto.createHash("sha1").update(mediaKey(fullPath, st)).digest("hex");
+export function ensureThumb(rel, fullPath, st) {
+  const key = crypto.createHash("sha1").update(mediaKey(rel, st)).digest("hex");
   const out = path.join(THUMBS_DIR, `${key}.jpg`);
   if (fs.existsSync(out)) return Promise.resolve(out);
   // Xếp hàng lần lượt: mở trang có 50 video cũng chỉ chạy 1 ffmpeg tại 1 thời điểm.

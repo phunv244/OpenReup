@@ -14,7 +14,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-import dub_video as d
+if __package__ in (None, ""):  # chạy bằng đường dẫn file (server: python pipeline/<script>.py) → import gói từ gốc repo
+    sys.path[0] = str(Path(__file__).resolve().parent.parent)
+
+from pipeline import common, speakers, tts  # noqa: E402
 
 REF_SR = 44100
 ANALYZE_SEC = 900  # chỉ nghe 15 phút đầu để tìm đoạn mẫu: đủ để gặp giọng chính, video 90 tiếng cũng nhanh
@@ -23,7 +26,7 @@ MIN_REF, MAX_REF = 3.0, 8.5
 
 def fetch_audio(url: str, tmp: Path) -> Path:
     """Tải riêng luồng tiếng của 1 video (yt-dlp) vào thư mục tạm."""
-    d.log("[Giọng mẫu] Đang tải âm thanh từ link...")
+    common.log("[Giọng mẫu] Đang tải âm thanh từ link...")
     subprocess.run(
         ["yt-dlp", "-q", "--no-playlist", "--no-warnings", "-f", "bestaudio/best", "--max-filesize", "500M",
          "-o", str(tmp / "src.%(ext)s"), "--", url],
@@ -59,7 +62,7 @@ def auto_pick(src: Path):
     from faster_whisper.vad import VadOptions, get_speech_timestamps
 
     sr = 16000
-    raw = d.run_cmd(["ffmpeg", "-v", "error", "-t", str(ANALYZE_SEC), "-i", str(src), "-vn", "-ac", "1", "-ar", str(sr), "-f", "f32le", "-"])
+    raw = common.run_cmd(["ffmpeg", "-v", "error", "-t", str(ANALYZE_SEC), "-i", str(src), "-vn", "-ac", "1", "-ar", str(sr), "-f", "f32le", "-"])
     y = np.frombuffer(raw, dtype=np.float32)
     speech = get_speech_timestamps(y, VadOptions(min_silence_duration_ms=250, speech_pad_ms=60), sampling_rate=sr)
     # Hội thoại câu ngắn không có cụm 4,5 giây: chấp nhận cụm từ 3 giây (mức tối thiểu VieNeu clone được).
@@ -73,7 +76,7 @@ def auto_pick(src: Path):
         clip = y[int(a * sr): int(b * sr)]
         frames = clip[: len(clip) // 1600 * 1600].reshape(-1, 1600)  # khung 0,1 giây
         rms_db = 20 * np.log10(np.sqrt((frames**2).mean(axis=1)) + 1e-6)
-        stats.append((d._median_f0(clip, sr), float(np.std(rms_db))))
+        stats.append((speakers._median_f0(clip, sr), float(np.std(rms_db))))
     f0s = np.array([s[0] for s in stats])
     main_f0 = float(np.median(f0s[f0s > 0])) if (f0s > 0).any() else 0.0
     scores = [-(abs(f0 - main_f0) / 60 if f0 else 5) - sd / 6 for f0, sd in stats]
@@ -84,7 +87,7 @@ def auto_pick(src: Path):
 
 def cmd_clone(args) -> dict:
     out = Path(args.out).resolve()
-    if out.parent != d.VOICES_DIR.resolve() or out.suffix != ".wav":
+    if out.parent != tts.VOICES_DIR.resolve() or out.suffix != ".wav":
         raise RuntimeError("File giọng mẫu phải nằm trong data/voices/*.wav")
     with tempfile.TemporaryDirectory(prefix="voice_") as tmp:
         src = fetch_audio(args.src, Path(tmp)) if args.src.startswith(("http://", "https://")) else Path(args.src)
@@ -96,11 +99,11 @@ def cmd_clone(args) -> dict:
                 raise RuntimeError("Đoạn mẫu phải dài từ 3 đến 8,5 giây.")
             f0 = 0.0
         else:
-            d.log("[Giọng mẫu] Đang tìm đoạn nói sạch nhất...")
+            common.log("[Giọng mẫu] Đang tìm đoạn nói sạch nhất...")
             a, b, f0 = auto_pick(src)
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp_out = out.with_suffix(".tmp.wav")
-        d.run_cmd(["ffmpeg", "-v", "error", "-y", "-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", str(src),
+        common.run_cmd(["ffmpeg", "-v", "error", "-y", "-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", str(src),
                    "-vn", "-ac", "1", "-ar", str(REF_SR), str(tmp_out)])
         if not tmp_out.exists() or tmp_out.stat().st_size < REF_SR:  # < ~0,5 giây: mốc nằm ngoài audio
             tmp_out.unlink(missing_ok=True)
@@ -108,17 +111,17 @@ def cmd_clone(args) -> dict:
         if not f0:
             import numpy as np
 
-            clip = np.frombuffer(d.run_cmd(["ffmpeg", "-v", "error", "-i", str(tmp_out), "-ac", "1", "-ar", "16000", "-f", "f32le", "-"]), dtype=np.float32)
-            f0 = d._median_f0(clip, 16000)
+            clip = np.frombuffer(common.run_cmd(["ffmpeg", "-v", "error", "-i", str(tmp_out), "-ac", "1", "-ar", "16000", "-f", "f32le", "-"]), dtype=np.float32)
+            f0 = speakers._median_f0(clip, 16000)
         tmp_out.replace(out)
-    return {"ok": True, "start": round(a, 2), "end": round(b, 2), "f0": round(f0), "gender": "female" if f0 > d.FEMALE_F0 else "male"}
+    return {"ok": True, "start": round(a, 2), "end": round(b, 2), "f0": round(f0), "gender": "female" if f0 > speakers.FEMALE_F0 else "male"}
 
 
 def cmd_preview(args) -> dict:
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_suffix(".tmp.mp3")
-    if not d.VieNeuEngine(args.voice).synth_mp3(args.text, tmp):
+    if not tts.VieNeuEngine(args.voice).synth_mp3(args.text, tmp):
         tmp.unlink(missing_ok=True)
         raise RuntimeError("Không tạo được âm thanh nghe thử.")
     tmp.replace(out)

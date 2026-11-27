@@ -53,9 +53,9 @@ const put = (rel, data = "x") => {
 };
 const readJ = (rel) => JSON.parse(fs.readFileSync(path.join(dir, rel), "utf8"));
 
-test("module resources khai deps dub + project + sources; không còn routes/voices.mjs, routes/resources.mjs, lib/voices.mjs", () => {
+test("module resources khai deps ai + dub + project + sources; không còn routes/voices.mjs, routes/resources.mjs, lib/voices.mjs", () => {
   const m = MODULES.find((x) => x.name === "resources");
-  assert.deepEqual(m.deps, ["dub", "project", "sources"]);
+  assert.deepEqual(m.deps, ["ai", "dub", "project", "sources"]);
   assert.ok(!MODULES.some((x) => x.name === "voices"));
   for (const f of ["server/routes/voices.mjs", "server/routes/resources.mjs", "server/lib/voices.mjs"]) assert.ok(!fs.existsSync(path.join(ROOT, f)), f);
   assert.ok(resourceRepo.FONTS_DIR.startsWith(dir + path.sep) && resourceRepo.VOICES_DIR.startsWith(dir + path.sep));
@@ -182,7 +182,7 @@ test("đang lồng tiếng: xóa font / giọng -> 409, không xóa gì", async 
     dub: { busyError: () => "Đang lồng tiếng." },
     project: { dropVoice: (id) => calls.push(id) },
     sources: { fileOf: () => "" },
-    tasks: {},
+    tasks: { onEnd: () => {} },
   });
   put("voices/giu.wav");
   assert.throws(() => svc.removeVoice("giu"), (e) => e.statusCode === 409);
@@ -199,4 +199,26 @@ test("/api/functions: hàm của resources gọi đúng route qua registry", asy
   assert.equal(opts.status, "done", JSON.stringify(opts));
   assert.equal(opts.result.asr_models[0].id, "m1");
   assert.ok(opts.result.voices.some((v) => v.id === "vieneu-clone:giong-thu-2"));
+});
+
+test("danh sách mô hình nhận diện: cache (1 lần asr.py cho nhiều request), bỏ cache khi đổi VAD / tải mô hình xong, lỗi không cache", async () => {
+  let runs = 0;
+  let fail = false;
+  let onEnd;
+  const repo = { ...resourceRepo, runAsr: async (args) => (runs++, fail && args[0] === "list" ? Promise.reject(new Error("hỏng")) : { stdout: JSON.stringify({ n: runs }) }) };
+  const svc = createResourceService(repo, { dub: {}, project: {}, sources: {}, tasks: { onEnd: (fn) => (onEnd = fn) } });
+  const [a, b] = await Promise.all([svc.asrModels(), svc.asrModels()]);
+  assert.deepEqual([a, b, runs], [{ n: 1 }, { n: 1 }, 1]);
+  assert.deepEqual(await svc.asrModels(), { n: 1 });
+  await svc.setVad("silero"); // runs=2 (set-vad)
+  assert.deepEqual(await svc.asrModels(), { n: 3 });
+  onEnd({ type: "dub_video" });
+  assert.deepEqual(await svc.asrModels(), { n: 3 });
+  onEnd({ type: "asr_download" });
+  assert.deepEqual(await svc.asrModels(), { n: 4 });
+  onEnd({ type: "asr_download" });
+  fail = true;
+  await assert.rejects(svc.asrModels(), (e) => e.statusCode === 500 && /hỏng/.test(e.message));
+  fail = false;
+  assert.deepEqual(await svc.asrModels(), { n: 6 });
 });

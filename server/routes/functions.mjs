@@ -4,19 +4,18 @@
  *   POST /api/functions/call       {name, arguments, wait_sec?} -> chạy hàm, trả bản ghi lần gọi
  *   GET  /api/functions/calls      nhật ký các lần gọi (?limit=&status=&name=)
  *   GET  /api/functions/calls/:id  1 lần gọi: trạng thái, kết quả (đường dẫn file), lỗi đầy đủ, file log
- * Hàm không tự làm gì mới: gọi lại đúng route /api/* mà giao diện đang dùng (app.inject) nên kiểm tra dữ liệu chỉ có 1 chỗ.
+ * File này chỉ là danh sách đăng ký (thứ tự FUNCTIONS) + lớp chạy hàm: định nghĩa hàm nằm ở server/modules/<module>/functions.mjs,
+ * nhật ký lần gọi ở lib/function-calls.mjs. Hàm có `route` gọi lại đúng route /api/* mà giao diện đang dùng (app.inject);
+ * hàm có `run(args, get, post)` tự gom kết quả (get/post = gọi route nội bộ), hoặc đọc thẳng lib dùng chung khi chỉ xem trạng thái
+ * (get_task: lib/tasks.mjs; get_call, list_calls: lib/function-calls.mjs).
  */
 import fs from "node:fs";
 import path from "node:path";
 import { API_TOKEN, DATA_DIR } from "../config.mjs";
-import { num, str } from "../core/schema.mjs";
-import { db } from "../lib/db.mjs";
+import { finishCall as finish, getCall, listCalls, markRunning, markTask, startCall, stopOrphans, waitCall } from "../lib/function-calls.mjs";
 import { taskEvents } from "../lib/tasks.mjs";
-import { nowIso } from "../lib/util.mjs";
 
 const LOG_DIR = path.join(DATA_DIR, "function_logs");
-const MAX_WAIT_SEC = 3600;
-
 
 /**
  * Thứ tự hàm trong GET /api/functions. { slot: "<module>" } = chỗ đặt mọi hàm do module đó khai (server/modules/<module>/functions.mjs);
@@ -42,104 +41,12 @@ export const FUNCTIONS = [
   { ref: "clean_dub_cache" }, // server/modules/dub/functions.mjs
   { ref: "delete_dub_job" }, // server/modules/dub/functions.mjs
   { slot: "project" }, // list_projects, create_project, update_project, delete_project: server/modules/project/functions.mjs
-  { slot: "resources" }, // create_voice, update_voice, delete_voice, download_asr_model, delete_font: server/modules/resources/functions.mjs
-  {
-    name: "list_options",
-    description: "Các giá trị hợp lệ cho tham số: giọng đọc, mô hình nhận diện, model dịch, dự án, font phụ đề.",
-    parameters: {},
-    run: async (a, get) => {
-      const [voices, asr, agy, projects, fonts] = await Promise.all(
-        ["/api/voices", "/api/asr-models", "/api/agy-models", "/api/projects", "/api/fonts"].map(get)
-      );
-      return {
-        voices: [...(voices.presets || []), ...(voices.clones || [])].map((v) => ({ id: v.id, name: v.name, gender: v.gender, kind: v.kind || "vieneu" })),
-        asr_models: (asr.models || []).map((m) => ({ id: m.id, name: m.name, installed: m.installed, hw: m.hw })),
-        agy_models: (agy.models || []).map((m) => ({ id: m.id, name: m.name })),
-        projects: (projects.projects || []).map((p) => ({ id: p.id, name: p.name, video_count: p.video_count, dubbed_count: p.dubbed_count, pending_count: p.pending_count })),
-        fonts: (fonts.fonts || []).map((f) => ({ family: f.family, vi: f.vi })),
-        delogo: ["none", "top-right", "top-left", "both-top", "x,y,w,h"],
-        quality: ["720p", "best"],
-        perf: ["eco", "balanced", "fast"],
-      };
-    },
-  },
-  {
-    name: "get_task",
-    nolog: true,
-    description: "Tác vụ nền đang chạy: loại, tiến độ %, hàng đợi, các dòng nhật ký gần nhất.",
-    parameters: { log_lines: num("Số dòng nhật ký cuối cần lấy.", { default: 30 }) },
-    run: async (a, get) => {
-      const t = await get("/api/task");
-      return { ...t, logs: t.logs.slice(-Math.max(0, Number(a.log_lines ?? 30))) };
-    },
-  },
-  { name: "stop_task", description: "Dừng tác vụ nền đang chạy (tiến độ lồng tiếng đã lưu, chạy lại sẽ nối tiếp).", route: ["POST", "/api/task/stop"], parameters: {} },
-  {
-    name: "get_call",
-    nolog: true,
-    description: "Xem 1 lần gọi hàm: trạng thái (queued/running/done/error/stopped), kết quả kèm đường dẫn file, lỗi đầy đủ, file log.",
-    parameters: { call_id: num("Mã lần gọi (call_id)."), wait_sec: num("Chờ tối đa bấy nhiêu giây cho tới khi xong rồi mới trả.", { maximum: MAX_WAIT_SEC }) },
-    required: ["call_id"],
-    run: async (a) => {
-      await waitCall(Number(a.call_id), a.wait_sec);
-      const c = getCall(Number(a.call_id));
-      if (!c) throw new Error(`Không có lần gọi nào mang call_id=${a.call_id}.`);
-      return c;
-    },
-  },
-  {
-    name: "list_calls",
-    nolog: true,
-    description: "Nhật ký các lần gọi hàm gần đây, mới nhất trước.",
-    parameters: { limit: num("Số bản ghi.", { default: 20, maximum: 200 }), status: str("Lọc theo trạng thái.", { enum: ["queued", "running", "done", "error", "stopped"] }) },
-    run: async (a) => ({ calls: listCalls(a) }),
-  },
+  { slot: "resources" }, // create_voice, update_voice, delete_voice, download_asr_model, delete_font, list_options: server/modules/resources/functions.mjs
+  { slot: "tasks" }, // get_task, stop_task, get_call, list_calls: server/modules/tasks/functions.mjs
+  { slot: "ai" }, // refresh_ai_models: server/modules/ai/functions.mjs
 ];
 
-/* ---------- Nhật ký lần gọi (SQLite: bảng function_calls) ---------- */
-const parse = (s) => {
-  try {
-    return s ? JSON.parse(s) : null;
-  } catch {
-    return s;
-  }
-};
-const rowOut = (r) =>
-  r && {
-    call_id: r.id, name: r.name, arguments: parse(r.args), status: r.status, ok: r.status !== "error" && r.status !== "stopped",
-    result: parse(r.result), error: r.error || null, log_file: r.log_file || null, created_at: r.created_at, ended_at: r.ended_at,
-  };
-const getCall = (id) => rowOut(db.prepare("SELECT * FROM function_calls WHERE id = ?").get(id));
-function listCalls({ limit, status, name } = {}) {
-  const where = [];
-  const params = [];
-  if (status) where.push("status = ?"), params.push(String(status));
-  if (name) where.push("name = ?"), params.push(String(name));
-  const n = Math.min(200, Math.max(1, Number(limit) || 20));
-  return db
-    .prepare(`SELECT * FROM function_calls ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY id DESC LIMIT ?`)
-    .all(...params, n)
-    .map(rowOut);
-}
-function finish(id, status, { result = null, error = null, logFile = null } = {}) {
-  db.prepare("UPDATE function_calls SET status = ?, result = ?, error = ?, log_file = coalesce(?, log_file), ended_at = ? WHERE id = ?").run(
-    status, result === null ? null : JSON.stringify(result), error, logFile, nowIso(), id
-  );
-  for (const wake of waiters.get(id) || []) wake();
-  waiters.delete(id);
-}
-
 const pending = new Map(); // task_id -> {callId, def, args}
-const waiters = new Map(); // call_id -> [hàm đánh thức]
-function waitCall(id, sec) {
-  const s = Math.min(MAX_WAIT_SEC, Number(sec) || 0);
-  const c = getCall(id);
-  if (!s || !c || !["queued", "running"].includes(c.status)) return Promise.resolve();
-  return new Promise((resolve) => {
-    const t = setTimeout(resolve, s * 1000);
-    waiters.set(id, [...(waiters.get(id) || []), () => (clearTimeout(t), resolve())]);
-  });
-}
 
 /** Lỗi đầy đủ của 1 tác vụ: lỗi script tự ghi + nguyên traceback Python (nếu có), không thì 60 dòng cuối nhật ký. */
 function errorText(code, logs, scriptError) {
@@ -148,11 +55,11 @@ function errorText(code, logs, scriptError) {
   return [`Tiến trình thoát với mã ${code}.`, scriptError, tail].filter(Boolean).join("\n");
 }
 
-taskEvents.on("start", ({ task_id }) => {
+const onTaskStart = ({ task_id }) => {
   const p = pending.get(task_id);
-  if (p) db.prepare("UPDATE function_calls SET status = 'running' WHERE id = ? AND status = 'queued'").run(p.callId);
-});
-taskEvents.on("end", (ev) => {
+  if (p) markRunning(p.callId);
+};
+const onTaskEnd = (ev) => {
   const p = pending.get(ev.task_id);
   if (!p) return;
   pending.delete(ev.task_id);
@@ -170,7 +77,7 @@ taskEvents.on("end", (ev) => {
   } catch (e) {
     finish(p.callId, "error", { error: `Tác vụ xong nhưng không đọc được kết quả: ${e.stack || e.message}`, logFile });
   }
-});
+};
 
 function checkArgs(def, args) {
   if (!args || typeof args !== "object" || Array.isArray(args)) return "arguments phải là 1 object.";
@@ -212,12 +119,15 @@ function listingOrder(functions) {
   return out;
 }
 
-/** functions: mọi hàm do các module khai (ctx.functions() của loader). */
-export default async function functionRoutes(app, functions) {
+/** functions: mọi hàm do các module khai (ctx.functions() của loader); listen: ctx.listen (gỡ bộ nghe khi app đóng). */
+export default async function functionRoutes(app, functions, listen) {
   const BY_NAME = new Map(functions.map((f) => [f.name, f]));
   const LISTED = listingOrder(functions);
+  // Nghe tác vụ nền để chốt kết quả lần gọi; gỡ khi app đóng (dựng lại app trong cùng tiến trình không chồng bộ nghe).
+  listen(taskEvents, "start", onTaskStart);
+  listen(taskEvents, "end", onTaskEnd);
   // Server bị tắt giữa chừng: các lần gọi còn "đang chạy" không bao giờ có kết quả nữa.
-  db.prepare("UPDATE function_calls SET status = 'stopped', error = 'Server khởi động lại khi tác vụ chưa xong.', ended_at = ? WHERE status IN ('queued', 'running')").run(nowIso());
+  stopOrphans();
 
   const hit = async (method, url, payload) => {
     const headers = API_TOKEN ? { authorization: `Bearer ${API_TOKEN}` } : {}; // gọi nội bộ, đã qua xác thực ở /api/functions
@@ -232,6 +142,7 @@ export default async function functionRoutes(app, functions) {
     return body;
   };
   const get = (url) => hit("GET", url);
+  const post = (url, payload) => hit("POST", url, payload);
 
   async function call(name, args = {}, waitSec = 0) {
     const def = BY_NAME.get(name);
@@ -241,27 +152,21 @@ export default async function functionRoutes(app, functions) {
       try {
         const bad = checkArgs(def, args);
         if (bad) throw new Error(bad);
-        return { ok: true, name, status: "done", result: await def.run(args, get) };
+        return { ok: true, name, status: "done", result: await def.run(args, get, post) };
       } catch (e) {
         return { ok: false, name, status: "error", error: e.message };
       }
     }
-    const callId = Number(
-      db.prepare("INSERT INTO function_calls (name, args, status, created_at) VALUES (?, ?, 'running', ?)").run(name, JSON.stringify(args ?? {}), nowIso()).lastInsertRowid
-    );
+    const callId = startCall(name, args);
     try {
       const bad = checkArgs(def, args);
       if (bad) throw new Error(bad);
-      const out = def.run ? await def.run(args, get) : await hit(def.route[0], def.route[1], args);
+      const out = def.run ? await def.run(args, get, post) : await hit(def.route[0], def.route[1], args);
       if (!def.task) finish(callId, "done", { result: out });
       else {
         // Tác vụ nền: kết quả thật đến ở sự kiện "end" của tasks.mjs.
         pending.set(out.task_id, { callId, def, args });
-        db.prepare("UPDATE function_calls SET status = ?, task_id = ?, result = ? WHERE id = ?").run(
-          out.queued ? "queued" : "running", out.task_id,
-          JSON.stringify({ queued: Boolean(out.queued), position: out.position || 0, note: `Đang chạy nền. Gọi get_call với call_id=${callId} (thêm wait_sec để chờ) để lấy kết quả.` }),
-          callId
-        );
+        markTask(callId, out.queued ? "queued" : "running", out.task_id, { queued: Boolean(out.queued), position: out.position || 0, note: `Đang chạy nền. Gọi get_call với call_id=${callId} (thêm wait_sec để chờ) để lấy kết quả.` });
         await waitCall(callId, waitSec);
       }
     } catch (e) {

@@ -9,7 +9,7 @@ import { setupApp } from "./helpers.mjs";
 const { app, dir, cleanup } = await setupApp();
 after(cleanup);
 const { DOWNLOADS_DIR, DUBBED_DIR, ROOT } = await import("../config.mjs");
-const { dubWorkDir, removeDubWorkDir } = await import("../lib/store.mjs");
+const { dubWorkDir, removeDubWorkDir } = await import("../modules/dub/repo.mjs");
 
 const W = path.join(dir, "dub_work");
 const post = (url, payload) => app.inject({ method: "POST", url, payload });

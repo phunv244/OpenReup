@@ -1,15 +1,18 @@
 /** Nghiệp vụ video nguồn: quét/tải Douyin, tải Bilibili/YouTube, xóa logo, danh sách video đã tải, gán dự án, xóa. Lỗi do input: ném Error có statusCode. */
 import path from "node:path";
 import { BILIBILI_DIR, DEFAULT_CHANNEL_URL, DOWNLOADS_DIR, ROOT } from "../../config.mjs";
-import { flushMediaCache, mediaKey, probeMedia } from "../../lib/media.mjs";
-import { projectIdOf, relOf, resolveDownload, safeJobId, validDelogo } from "../../lib/util.mjs";
-import { lookupDownload } from "../../lib/videos.mjs";
+import { ensureThumb, extractFrame, flushMediaCache, mediaKey, probeMedia } from "../../lib/media.mjs";
+import { httpError, projectIdOf, relOf, resolveDownload, safeJobId, validDelogo } from "../../lib/util.mjs";
+import { forgetVideoFiles, lookupDownload, videoSources, videoThumb } from "../../lib/videos.mjs";
 
-const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 const NODE = process.execPath;
 const script = (name) => path.join(ROOT, name);
 
 /** Chuẩn hóa link Bilibili có tiền tố ngôn ngữ (/vi/video/...) về /video/... */
+/** rel_path của video nguồn được liệt kê: .mp4 nằm thẳng trong downloads/ (Douyin) hoặc downloads/bilibili/, không phải file tạm xóa logo. */
+const LISTED_RE = /^downloads\/(bilibili\/)?[^/]+\.mp4$/;
+const listed = (rel) => LISTED_RE.test(rel) && !rel.includes(".delogo_tmp");
+
 const normalizeUrl = (url) =>
   String(url || "").trim().replace(/^(https?:\/\/(?:www\.|m\.)?bilibili\.com)\/[a-z]{2}(?:-[a-z]{2})?\/(video\/)/i, "$1/$2");
 
@@ -20,6 +23,12 @@ const normalizeUrl = (url) =>
 export function createSourceService(repo, { dub, project, tasks }) {
   /** Chạy 1 script node làm tác vụ nền: trả {ok, task_id} hoặc {ok:false, error} (đang bận). */
   const run = (type, args, target = "", projectId = "") => tasks.spawnTask(type, NODE, args, target, projectId);
+
+  /** Đường dẫn tuyệt đối của 1 video nguồn (rel "downloads/...") nếu là file có thật, không thì "". */
+  const fileOf = (rel) => {
+    const full = resolveDownload(rel);
+    return full && repo.isFile(full) ? full : "";
+  };
 
   return {
     /* ---------- Douyin ---------- */
@@ -77,44 +86,71 @@ export function createSourceService(repo, { dub, project, tasks }) {
     },
 
     /* ---------- Video nguồn đã tải ---------- */
+    /**
+     * Video nguồn ở cả hai bố cục: data/videos/<key>/source/ (qua chỉ mục video.json) và downloads/ cũ.
+     * rel_path luôn dạng "downloads/...". File cũ có rel_path đã nằm trong chỉ mục thì bỏ (chỉ mục được ưu tiên như lookupDownload).
+     */
     async list() {
       const jobs = dub.jobsBySource();
-      const owners = repo.owners();
+      const owners = project.videoOwners();
       const sources = [];
       const liveKeys = new Set();
-      for (const [dir, source] of [[BILIBILI_DIR, "bilibili"], [DOWNLOADS_DIR, "douyin"]]) {
-        for (const { name, full, st } of repo.listMp4(dir)) {
-          const info = await probeMedia(full, st);
-          liveKeys.add(mediaKey(full, st));
+      const add = async (rel, full, st) => {
+        const info = await probeMedia(rel, full, st);
+        liveKeys.add(mediaKey(rel, st));
+        sources.push({
+          source: rel.startsWith("downloads/bilibili/") ? "bilibili" : "douyin",
+          rel_path: rel,
+          name: path.posix.basename(rel),
+          size_mb: Number((st.size / 1048576).toFixed(1)),
+          mtime: Math.round(st.mtimeMs),
+          ...info,
+          project_id: owners[rel] || "",
+          job: jobs.get(rel) || null,
+        });
+      };
+      const indexed = new Set();
+      for (const { rel, abs } of videoSources()) {
+        indexed.add(rel);
+        const st = abs && listed(rel) && repo.statFile(abs);
+        if (st) await add(rel, abs, st);
+      }
+      for (const dir of [BILIBILI_DIR, DOWNLOADS_DIR]) {
+        for (const { full, st } of repo.listMp4(dir)) {
           const rel = relOf(full);
-          sources.push({
-            source,
-            rel_path: rel,
-            name,
-            size_mb: Number((st.size / 1048576).toFixed(1)),
-            mtime: Math.round(st.mtimeMs),
-            ...info,
-            project_id: owners[rel] || "",
-            job: jobs.get(rel) || null,
-          });
+          if (!indexed.has(rel)) await add(rel, full, st);
         }
       }
       flushMediaCache(liveKeys);
       sources.sort((a, b) => b.mtime - a.mtime);
       return { total: sources.length, sources };
     },
-    /** Đường dẫn tuyệt đối của 1 video nguồn (rel "downloads/...") nếu là file có thật, không thì "". */
-    fileOf(rel) {
-      const full = resolveDownload(rel);
-      return full && repo.isFile(full) ? full : "";
+    fileOf,
+    /**
+     * Ảnh thu nhỏ của 1 video nguồn: thumb.jpg trong thư mục video (bố cục mới) nếu có, không thì jpg tạo 1 lần trong
+     * data/thumbs/ rồi dùng lại. "" nếu không phải video nguồn hoặc không tạo được.
+     */
+    async thumb(rel) {
+      const hit = lookupDownload(rel);
+      if (hit?.kind !== "source" || !repo.isFile(hit.abs)) return "";
+      return videoThumb(hit.key) || ensureThumb(relOf(hit.abs), hit.abs, repo.stat(hit.abs));
     },
-    assign(rel, projectId) {
+    /** 1 khung hình jpg (Buffer) của video nguồn để chọn vùng logo / phụ đề. 404 nếu không phải video nguồn, 500 nếu ffmpeg không trích được. */
+    async frame(rel) {
+      const full = fileOf(rel);
+      if (!full) throw httpError(404, "Không tìm thấy video.");
+      const img = await extractFrame(full);
+      if (!img) throw httpError(500, "Không trích được khung hình");
+      return img;
+    },
+    /** Gán video nguồn vào dự án ("" = bỏ gán). Đang thuộc dự án khác thì 409, trừ khi move = true (chuyển có chủ đích). */
+    assign(rel, projectId, move = false) {
       const hit = lookupDownload(rel);
       const full = hit?.kind === "source" ? hit.abs : "";
       const pid = String(projectId || "");
       if (!full || !repo.isFile(full)) throw httpError(400, "Video không hợp lệ.");
       if (pid && !project.exists(pid)) throw httpError(404, "Không tìm thấy dự án.");
-      repo.setOwner(relOf(full), pid);
+      project.assignVideo(relOf(full), pid, { move });
       return { ok: true };
     },
     /** Xóa 1 video nguồn (+ job lồng tiếng đang dở của nó; delete_dubbed: cả bản lồng tiếng job_id). */
@@ -122,6 +158,7 @@ export function createSourceService(repo, { dub, project, tasks }) {
       const hit = lookupDownload(body.rel_path);
       const resolved = hit?.kind === "source" ? hit.abs : "";
       if (!resolved) throw httpError(400, "Đường dẫn file không hợp lệ.");
+      const rel = relOf(resolved);
       // Thư mục (vd downloads/bilibili) không phải video: chặn ở đây, không để rmSync ném EISDIR → 500.
       // File không còn trên đĩa vẫn cho xóa để dọn mục gán dự án/bilibili.json còn sót.
       if (repo.exists(resolved) && !repo.isFile(resolved)) throw httpError(400, "Đường dẫn không phải file video.");
@@ -131,12 +168,14 @@ export function createSourceService(repo, { dub, project, tasks }) {
       }
       if (body.delete_dubbed && dub.busyError()) throw httpError(409, dub.busyError());
       // Job lồng tiếng đang dở của file này cũng vô dụng khi file nguồn mất.
-      const pending = dub.jobsBySource().get(relOf(resolved));
+      const pending = dub.jobsBySource().get(rel);
       if (pending && pending.status !== "done") dub.removeWorkDir(safeJobId(pending.job_id));
 
       repo.removeVideo(resolved);
-      repo.removeFromBiliIndex(path.basename(resolved));
-      repo.setOwner(relOf(resolved), "");
+      repo.removeFromBiliIndex(path.posix.basename(rel));
+      project.unassignVideo(rel);
+      // Bố cục mới: bỏ file đã xóa khỏi video.json (thư mục video, job của nó giữ nguyên).
+      if (hit.key) forgetVideoFiles(hit.key, repo.videoFiles(resolved));
       if (body.delete_dubbed) dub.removeJob(safeJobId(body.job_id));
       return { ok: true };
     },

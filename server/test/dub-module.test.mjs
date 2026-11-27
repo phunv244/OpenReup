@@ -54,7 +54,7 @@ test("project khai deps dub và lấy số liệu qua ctx.get(\"dub\"): vẫn 3/
   };
   const fakeRepo = { owners: () => owners, sourceExists: () => true };
   const project = { ...projectModule, routes: undefined, init: (ctx) => createProjectService(fakeRepo, ctx.get("dub")) };
-  const { services } = await loadModules({ register: async () => {} }, [project, fakeDub]);
+  const { services } = await loadModules({ register: async () => {}, addHook: () => {} }, [project, fakeDub]);
   const counts = (id) => ["video_count", "dubbed_count", "pending_count"].map((k) => services.get("project").stats(id)[k]);
   assert.deepEqual(counts("so-tan-cau-ca"), [3, 2, 1]);
   assert.deepEqual(counts("cau-ca-van-can"), [3, 3, 0]);
@@ -199,4 +199,25 @@ test("xóa cache/job chỉ xóa thư mục nằm trong data/dub_work: work_dir t
     fs.rmSync(path.join(dir, "dub_work"), { recursive: true, force: true });
     fs.rmSync(path.join(dir, "dubbed.json"), { force: true });
   }
+});
+
+test("dub/assign: thiếu job_id 400, dự án không có 404, bản lồng tiếng không có 404; gán/gỡ đúng job; dub/clean, dub/delete thiếu job_id 400", async () => {
+  const cases = [
+    ["/api/dub/assign", { project_id: "" }, 400, /Thiếu job_id/],
+    ["/api/dub/assign", { job_id: "khong_co", project_id: "" }, 404, /Không tìm thấy bản lồng tiếng/],
+    ["/api/dub/assign", { job_id: "khong_co", project_id: "khong-co-du-an" }, 404, /Không tìm thấy dự án/],
+    ["/api/dub/clean", {}, 400, /Thiếu job_id/],
+    ["/api/dub/delete", {}, 400, /Thiếu job_id/],
+  ];
+  for (const [url, body, code, msg] of cases) {
+    const res = await post(url, body);
+    assert.equal(res.statusCode, code, `${url} ${JSON.stringify(body)}: ${res.body}`);
+    assert.match(res.json().error, msg);
+  }
+  const project = (await post("/api/projects", { name: "Gán dub" })).json().project;
+  writeJson("dub_projects/job_gan.json", { job_id: "job_gan", voice: "test", speakers: {} });
+  assert.deepEqual((await post("/api/dub/assign", { job_id: "job_gan", project_id: project.id })).json(), { ok: true });
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "dub_projects", "job_gan.json"), "utf8")).project_id, project.id);
+  assert.equal((await post("/api/dub/assign", { job_id: "job_gan", project_id: "" })).statusCode, 200);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "dub_projects", "job_gan.json"), "utf8")).project_id, "");
 });

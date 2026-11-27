@@ -144,10 +144,10 @@
           },
           "bg_volume": {
             "type": "number",
-            "description": "Âm lượng tiếng gốc giữ lại làm nền, 0 = tắt hẳn.",
+            "description": "Âm lượng tiếng gốc giữ lại làm nền (0–2.0 tương ứng 0–200%, >1.0 tự bật alimiter).",
             "default": 0.05,
             "minimum": 0,
-            "maximum": 1
+            "maximum": 2
           },
           "delogo": {
             "type": "string",
@@ -242,9 +242,9 @@
           },
           "bg_volume": {
             "type": "number",
-            "description": "Âm lượng tiếng gốc làm nền.",
+            "description": "Âm lượng tiếng gốc làm nền (0–2.0 tương ứng 0–200%, >1.0 tự bật alimiter).",
             "minimum": 0,
-            "maximum": 1
+            "maximum": 2
           },
           "burn_sub": {
             "type": "boolean",
@@ -1002,6 +1002,158 @@
       "parameters": {
         "type": "object",
         "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "threads_video_pipeline",
+      "description": "Tạo video dọc 1080x1920 @ 60fps từ bài viết chữ/ảnh trên Threads (VideoThreads: cào 2 tầng, AI Director không scoring, VieNeu-TTS 48kHz -14 LUFS, Remotion). Chạy nền trên GPU queue chung.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Link bài viết Threads công khai (https://www.threads.net/@user/post/xyz)."
+          },
+          "voice": {
+            "type": "string",
+            "description": "Giọng đọc: \"vieneu:<tên preset>\" hoặc \"vieneu-clone:<slug>\". Lấy danh sách bằng list_options."
+          },
+          "theme": {
+            "type": "string",
+            "description": "Giao diện thẻ Threads: dark hoặc light.",
+            "enum": [
+              "dark",
+              "light"
+            ],
+            "default": "dark"
+          },
+          "fps": {
+            "type": "number",
+            "description": "Tốc độ khung hình xuất video (30 hoặc 60).",
+            "default": 60,
+            "minimum": 30,
+            "maximum": 60
+          },
+          "max_comments": {
+            "type": "number",
+            "description": "Số bình luận tối đa đưa vào video (1–5).",
+            "default": 5,
+            "minimum": 1,
+            "maximum": 5
+          },
+          "background_video_path": {
+            "type": "string",
+            "description": "Đường dẫn video nền gameplay (tùy chọn)."
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "threads_reup_pipeline",
+      "description": "Reup video từ bài viết Threads (6 bước: INGEST -> PROBE -> TRANSCRIBE -> ADAPT_SCRIPT -> DUB_AND_MASTER -> RENDER_EXPORT). Hỗ trợ chỉnh âm lượng âm thanh gốc 0–200% (tự gắn alimiter khi >100%, giữ chuẩn -14 LUFS), xóa logo, che phụ đề gốc, in phụ đề Việt.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Link bài viết Threads chứa video (hoặc dùng local_video_path)."
+          },
+          "local_video_path": {
+            "type": "string",
+            "description": "Đường dẫn video cục bộ nếu đã tải sẵn."
+          },
+          "voice": {
+            "type": "string",
+            "description": "Giọng đọc: \"vieneu:<tên preset>\" hoặc \"vieneu-clone:<slug>\". Lấy danh sách bằng list_options."
+          },
+          "original_audio_volume_pct": {
+            "type": "number",
+            "description": "Âm lượng âm thanh gốc 0–200% (0 = tắt hẳn, 1–100 = giảm + ducking, 101–200 = khuếch đại + alimiter -14 LUFS).",
+            "default": 20,
+            "minimum": 0,
+            "maximum": 200
+          },
+          "delogo": {
+            "type": "string",
+            "description": "Xóa logo: \"none\" | \"top-right\" | \"top-left\" | \"both-top\" | vùng pixel \"x,y,w,h\" trên khung hình gốc."
+          },
+          "subcover": {
+            "type": "string",
+            "description": "Xóa phụ đề gốc tiếng Trung: \"none\" hoặc vùng pixel \"x,y,w,h\" bao quanh dòng phụ đề."
+          },
+          "burn_sub": {
+            "type": "boolean",
+            "description": "In cứng phụ đề Việt lên video bằng font trong data/fonts/ (mặc định true)."
+          },
+          "agy_model": {
+            "type": "string",
+            "description": "Model biên tập lời thoại của Antigravity (id trong list_options.agy_models)."
+          },
+          "max_duration_sec": {
+            "type": "number",
+            "description": "Giới hạn thời lượng video tối đa tính bằng giây (mặc định 180).",
+            "default": 180,
+            "minimum": 1,
+            "maximum": 3600
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "threads_scrape_post",
+      "description": "Cào nội dung bài viết Threads 2 tầng (Tier 1 SSR + Tier 2 Playwright fallback). Trả ERR_VIDEO_ONLY_POST nếu bài chỉ có video.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Link bài viết Threads công khai."
+          },
+          "bypass_cache": {
+            "type": "boolean",
+            "description": "Bỏ qua cache SQLite để cào mới từ Threads."
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "threads_list_jobs",
+      "description": "Liệt kê các tác vụ Threads (VideoThreads & ReupThreads) gần đây từ SQLite data/openreup.db.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Số lượng job tối đa trả về (mặc định 50).",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 200
+          }
+        },
         "required": [],
         "additionalProperties": false
       }

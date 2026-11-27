@@ -23,6 +23,14 @@ function openDb() {
   // Timeline bị split/merge/delete/kéo mốc giờ sau lần xuất gần nhất: lần xuất lại kế tiếp phải làm cả hình lẫn tiếng.
   // rev tăng mỗi lần sửa; xuất xong chỉ xóa nếu chưa có sửa mới trong lúc chạy. Không để trong JSON project vì dub_video.py ghi đè file đó.
   d.exec("CREATE TABLE IF NOT EXISTS timeline_dirty (job_id TEXT PRIMARY KEY, rev INTEGER NOT NULL) WITHOUT ROWID");
+  // Tác vụ module Threads (VideoThreads + ReupThreads): lưu trong cùng SQLite WAL data/openreup.db.
+  d.exec(`CREATE TABLE IF NOT EXISTS threads_jobs (
+    id TEXT PRIMARY KEY, mode TEXT NOT NULL, url TEXT NOT NULL DEFAULT '',
+    local_video_path TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'queued',
+    params TEXT NOT NULL DEFAULT '{}', result TEXT NOT NULL DEFAULT '{}',
+    error TEXT NOT NULL DEFAULT '', task_id INTEGER, output_rel_path TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL) WITHOUT ROWID`);
+  d.exec("CREATE INDEX IF NOT EXISTS idx_threads_jobs_created ON threads_jobs (created_at DESC)");
   // lower() của SQLite chỉ hiểu ASCII: tìm "đây" phải khớp cả "Đây".
   d.function("lc", { deterministic: true }, (v) => String(v ?? "").toLowerCase());
   return d;

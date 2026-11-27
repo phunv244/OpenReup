@@ -15,6 +15,7 @@ import { AgyModelField } from "./AgyModelField";
 import { SubtitleStudio } from "./SubtitleStudio";
 import { FrameStage, LogoToggle, RegionTarget, activeTarget, regionInit } from "./FrameStage";
 import { WorkItem } from "./items";
+import { OriginalAudioSlider } from "./studio/OriginalAudioSlider";
 
 export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; projectId: string; onClose: () => void }) {
   const toast = useToast();
@@ -129,12 +130,12 @@ export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; project
           </select>
           <div className="help">Chỉ dùng cho Whisper. Video xuất ra luôn ở tốc độ gốc.</div>
         </div>
-        <div className="field">
-          <label htmlFor="mc-bg">Âm thanh gốc làm nền</label>
-          <select id="mc-bg" className="select" value={f.bg} onChange={set("bg")}>
-            <Options list={[["0.05", "5% — rất nhỏ"], ["0", "Tắt hẳn"], ["0.12", "12% — rõ tiếng động nền"]]} />
-          </select>
-        </div>
+        <OriginalAudioSlider
+          id="mc-bg"
+          label="Âm thanh gốc làm nền"
+          valuePct={Math.round(Number(f.bg || 0) * 100)}
+          onChangePct={(pct) => setF((x) => ({ ...x, bg: String(Number((pct / 100).toFixed(2))) }))}
+        />
       </div>
       {/* Một khung hình xem trước duy nhất cho cả vùng logo, vùng che và phụ đề Việt */}
       {encode && (

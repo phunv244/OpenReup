@@ -42,7 +42,7 @@ export const DUB_FUNCTIONS = [
       voice: P_VOICE,
       model: str("Mô hình nhận diện giọng nói (id trong list_options.asr_models).", { default: "sensevoice-small" }),
       speed: num("Tốc độ phát khi nhận diện (làm chậm để nghe rõ hơn).", { default: 0.5, minimum: 0.25, maximum: 1 }),
-      bg_volume: num("Âm lượng tiếng gốc giữ lại làm nền, 0 = tắt hẳn.", { default: 0.05, minimum: 0, maximum: 1 }),
+      bg_volume: num("Âm lượng tiếng gốc giữ lại làm nền (0–2.0 tương ứng 0–200%, >1.0 tự bật alimiter).", { default: 0.05, minimum: 0, maximum: 2 }),
       delogo: P_DELOGO,
       subcover: P_SUBCOVER,
       burn_sub: bool("In cứng phụ đề Việt lên hình (mặc định true)."),
@@ -63,7 +63,7 @@ export const DUB_FUNCTIONS = [
     parameters: {
       job_id: str("Mã bản lồng tiếng (job_id trong list_dubbed)."),
       voice: P_VOICE,
-      bg_volume: num("Âm lượng tiếng gốc làm nền.", { minimum: 0, maximum: 1 }),
+      bg_volume: num("Âm lượng tiếng gốc làm nền (0–2.0 tương ứng 0–200%, >1.0 tự bật alimiter).", { minimum: 0, maximum: 2 }),
       burn_sub: bool("In cứng phụ đề Việt."),
       delogo: P_DELOGO,
       subcover: P_SUBCOVER,

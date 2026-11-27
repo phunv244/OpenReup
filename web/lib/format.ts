@@ -9,6 +9,9 @@ export const TASK_NAMES: Record<string, string> = {
   dub_rerender: "Xuất lại bản lồng tiếng",
   asr_download: "Tải mô hình nhận diện",
   login_chrome: "Đăng nhập Chrome",
+  threads_video: "Threads · Video từ Chữ/Ảnh",
+  threads_reup: "Threads · Reup Video",
+  threads_scrape: "Threads · Cào bài viết",
 };
 export const taskName = (type: string) => TASK_NAMES[type] || type || "Tiến trình";
 

@@ -18,6 +18,7 @@ import projectModule from "./modules/project/index.mjs";
 import sourcesModule from "./modules/sources/index.mjs";
 import resourcesModule from "./modules/resources/index.mjs";
 import aiModule from "./modules/ai/index.mjs";
+import threadsModule from "./modules/threads/index.mjs";
 
 /** Danh sách module của server. Thứ tự nạp do loader sắp theo deps. */
 export const MODULES = [
@@ -27,6 +28,7 @@ export const MODULES = [
   resourcesModule,
   dubModule,
   aiModule,
+  threadsModule,
   // /api/functions: dựng từ hàm do mọi module khai (ctx.functions()), thứ tự theo FUNCTIONS trong routes/functions.mjs.
   { name: "functions", routes: (app, ctx) => functionRoutes(app, ctx.functions(), ctx.listen) },
 ];

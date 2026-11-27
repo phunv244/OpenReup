@@ -93,6 +93,7 @@ function Nav() {
   return (
     <nav className="nav" aria-label="Điều hướng chính">
       <NavLink href="/" icon="folder" label="Reup" count={projects.length} active={path === "/" || path.startsWith("/project")} />
+      <NavLink href="/threads/" icon="sparkles" label="Threads" active={path === "/threads" || path.startsWith("/threads/")} />
       <NavLink href="/resources/" icon="type" label="Tài nguyên" active={path === "/resources"} count={fonts.length + voices.clones.length} />
     </nav>
   );

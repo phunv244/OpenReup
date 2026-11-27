@@ -1,0 +1,41 @@
+{
+  "name": "@openreup/threads",
+  "version": "1.0.0",
+  "description": "OpenReup Threads Module — VideoThreads + ReupThreads (Full HD 1080x1920 9:16)",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "preview": "remotion studio src/remotion/index.ts --port 3001",
+    "render": "remotion render src/remotion/index.ts ThreadsVideo"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.547",
+    "@remotion/renderer": "^4.0.547",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "better-sqlite3": "^11.7.0",
+    "playwright-core": "^1.65.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.547",
+    "sharp": "^0.35.5",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.7",
+    "eslint": "^9.18.0",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0",
+    "vitest": "^3.0.4"
+  }
+}

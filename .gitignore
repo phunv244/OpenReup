@@ -55,5 +55,3 @@ data/projects/
 
 # Dữ liệu token OAuth & cấu hình bí mật (KHÔNG commit)
 .env
-agy-proxy/.env
-agy-proxy/data/

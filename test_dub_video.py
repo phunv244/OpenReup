@@ -140,44 +140,6 @@ def test_agy_model_argument():
     assert chosen[chosen.index("--model") + 1] == "gemini-4-neon-high" and "--effort" not in chosen
 
 
-def test_agy_proxy_call():
-    """Khi bật use_proxy, _call_agy gọi POST /v1/ask và tự bóc JSON kể cả khi bọc markdown."""
-    import json as _json
-
-    captured = {}
-
-    class FakeResp:
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-        def read(self):
-            return _json.dumps({
-                "ok": True,
-                "text": "```json\n{\"translations\":[{\"id\":1,\"vi\":\"Xin chào\"}],\"episode_summary\":\"ok\",\"new_characters\":[],\"new_glossary\":[]}\n```",
-                "account": {"email": "acc2@example.com", "priority": 2},
-                "fallbackCount": 1,
-            }).encode("utf-8")
-
-    def fake_urlopen(req, timeout=0):
-        captured["url"] = req.full_url
-        captured["body"] = _json.loads(req.data.decode("utf-8"))
-        return FakeResp()
-
-    real = d.urllib.request.urlopen
-    d.urllib.request.urlopen = fake_urlopen
-    try:
-        t = d.Translator.__new__(d.Translator)
-        t.agy_model = "gemini-3.8-flash"
-        t.use_proxy = True
-        out = t._call_agy("dịch hộ")
-    finally:
-        d.urllib.request.urlopen = real
-
-    assert captured["url"].endswith("/v1/ask")
-    assert captured["body"]["model"] == "gemini-3.8-flash"
-    assert captured["body"]["json"] is True
-    assert out["translations"][0]["vi"] == "Xin chào"
-
-
 def test_delogo_matches_js():
     assert d.build_delogo_filter("top-right", 1920, 1080) == "delogo=x=1411:y=16:w=480:h=73:show=0"
     assert d.build_delogo_filter("none", 1920, 1080) == ""
@@ -359,7 +321,14 @@ def test_video_encode_args_and_render_parts():
 
 
 if __name__ == "__main__":
+    import os
+
+    # CI không cài VieNeu-TTS (nặng, kèm model): bỏ qua đúng các test được liệt kê, không bỏ ngầm test nào khác.
+    skip = {s.strip() for s in os.environ.get("SKIP_TESTS", "").split(",") if s.strip()}
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
+            if name in skip:
+                print("skip", name)
+                continue
             fn()
             print("ok", name)

@@ -9,7 +9,8 @@
     "build:web": "npm --prefix web run build",
     "dev:api": "DEV_WEB_ORIGIN=localhost:3000 node --watch server.mjs",
     "dev:web": "npm --prefix web run dev",
-    "test": ".venv/bin/python test_dub_video.py"
+    "test": ".venv/bin/python test_dub_video.py",
+    "test:api": "node --test 'server/test/*.test.mjs'"
   },
   "keywords": [],
   "author": "",

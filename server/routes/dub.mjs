@@ -206,7 +206,13 @@ export default async function dubRoutes(app) {
     const a = db.prepare('SELECT * FROM segments WHERE job_id = ? AND id = ?').get(jobId, id);
     const b = db.prepare('SELECT * FROM segments WHERE job_id = ? AND id = ?').get(jobId, withId);
     if (!a || !b) return fail(reply, 404, "Không tìm thấy câu cần ghép.");
-    const [first, second] = a.start_s <= b.start_s ? [a, b] : [b, a];
+    if (a.id === b.id) return fail(reply, 400, "Không thể ghép một câu với chính nó.");
+    const [first, second] = a.start_s < b.start_s || (a.start_s === b.start_s && a.id < b.id) ? [a, b] : [b, a];
+    // Chỉ ghép 2 câu đứng sát nhau theo thứ tự timeline (start_s, id) — ghép câu cách xa sẽ đè lên các câu ở giữa.
+    const between = db
+      .prepare("SELECT count(*) AS n FROM segments WHERE job_id = ? AND (start_s, id) > (?, ?) AND (start_s, id) < (?, ?)")
+      .get(jobId, first.start_s, first.id, second.start_s, second.id).n;
+    if (between) return fail(reply, 400, `Chỉ ghép được 2 câu liền kề (đang có ${between} câu nằm giữa).`);
     inTransaction(() => {
       db.prepare("UPDATE segments SET end_s = ?, zh = ?, vi = ? WHERE job_id = ? AND id = ?").run(
         second.end_s, [first.zh, second.zh].filter(Boolean).join(" "), [first.vi, second.vi].filter(Boolean).join(" "), jobId, first.id

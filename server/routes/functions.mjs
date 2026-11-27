@@ -8,7 +8,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { DATA_DIR, DUBBED_DIR, DUB_PROJECTS_DIR, ROOT } from "../config.mjs";
+import { API_TOKEN, DATA_DIR, DUBBED_DIR, DUB_PROJECTS_DIR, ROOT } from "../config.mjs";
 import { db } from "../lib/db.mjs";
 import { readDubJobs, readDubbed } from "../lib/store.mjs";
 import { taskEvents } from "../lib/tasks.mjs";
@@ -465,7 +465,8 @@ export default async function functionRoutes(app) {
   db.prepare("UPDATE function_calls SET status = 'stopped', error = 'Server khởi động lại khi tác vụ chưa xong.', ended_at = ? WHERE status IN ('queued', 'running')").run(nowIso());
 
   const hit = async (method, url, payload) => {
-    const res = await app.inject({ method, url, ...(method === "GET" ? {} : { payload: payload || {} }) });
+    const headers = API_TOKEN ? { authorization: `Bearer ${API_TOKEN}` } : {}; // gọi nội bộ, đã qua xác thực ở /api/functions
+    const res = await app.inject({ method, url, headers, ...(method === "GET" ? {} : { payload: payload || {} }) });
     let body;
     try {
       body = res.json();

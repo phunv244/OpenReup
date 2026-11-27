@@ -8,8 +8,10 @@
  */
 import { useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState } from "react";
+import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { Topbar } from "@/components/Shell";
+import { EmptyState } from "@/components/ui";
 import { DubScript } from "@/components/video/DubScript";
 import { LogoToggle, RegionTarget, activeTarget } from "@/components/video/FrameStage";
 import { SubtitleStudio } from "@/components/video/SubtitleStudio";
@@ -19,7 +21,7 @@ import { Stage, StageView } from "@/components/video/studio/Stage";
 import { useDubDetail } from "@/components/video/studio/useDubDetail";
 import { displayTitle } from "@/components/video/items";
 import { VoicePane } from "@/components/video/studio/VoicePane";
-import { fmtDur, fmtSize } from "@/lib/format";
+import { fmtDur, fmtSize, projHref } from "@/lib/format";
 import { useProjectId } from "@/lib/project";
 import { useStudio } from "@/lib/studio";
 
@@ -48,8 +50,16 @@ function Detail() {
     video.current?.pause();
   };
 
-  const { info, d } = s;
+  const { info, loadError, d } = s;
   if (!jobId) return <main className="content"><p className="muted">Thiếu mã bản lồng tiếng.</p></main>;
+  if (!info && loadError)
+    return (
+      <main className="content">
+        <EmptyState icon="alert" title="Không mở được bản lồng tiếng" desc={loadError}>
+          <Link className="btn btn-light" href={projHref(pid, "videos")}>Về danh sách video</Link>
+        </EmptyState>
+      </main>
+    );
   if (!info) return <main className="content"><p className="muted">Đang tải...</p></main>;
 
   const proj = projects.find((p) => p.id === (info.project_id || pid));

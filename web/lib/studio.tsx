@@ -134,11 +134,14 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     reload();
     pollTask();
-    const id = setInterval(pollTask, 2500);
+    // Hỏi trạng thái tác vụ mỗi 2,5 s, nhưng bỏ qua khi tab đang ẩn; quay lại tab thì hỏi ngay.
+    const id = setInterval(() => document.visibilityState === "visible" && pollTask(), 2500);
     // Tự làm mới khi quay lại tab/cửa sổ (thay nút "Làm mới"): file có thể đã đổi ngoài app. Tối đa 1 lần / 5 giây.
     let last = Date.now();
     const onBack = () => {
-      if (document.visibilityState !== "visible" || Date.now() - last < 5000) return;
+      if (document.visibilityState !== "visible") return;
+      pollTask();
+      if (Date.now() - last < 5000) return;
       last = Date.now();
       reload();
     };

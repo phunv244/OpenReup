@@ -45,6 +45,7 @@ export function useDubDetail(jobId: string) {
   const toast = useToast();
   const { dubbed, task, startTask } = useStudio();
   const [info, setInfo] = useState<DubInfo | null>(null);
+  const [loadError, setLoadError] = useState(""); // không đọc được bản lồng tiếng (sai mã / đã xóa): trang báo lỗi thay vì "Đang tải..." mãi
   const [voice, setVoice] = useState("");
   const [spkVoices, setSpkVoices] = useState<Record<string, string>>({});
   const [bg, setBg] = useState("0.05");
@@ -63,8 +64,14 @@ export function useDubDetail(jobId: string) {
 
   useEffect(() => {
     if (!jobId) return;
+    let stale = false; // đổi job/tải lại nhanh: bỏ kết quả của lần tải cũ về sau, không cho đè dữ liệu mới
     getJSON<DubInfo>(`/api/dub/segments?id=${encodeURIComponent(jobId)}&limit=1`).then((r) => {
-      if (r.error) return toast(r.error, "error");
+      if (stale) return;
+      if (r.error) {
+        setLoadError(r.error);
+        return toast(r.error, "error");
+      }
+      setLoadError("");
       setInfo(r);
       setVoice(r.voice);
       setBg(String(r.bg_volume ?? 0.05));
@@ -77,6 +84,9 @@ export function useDubDetail(jobId: string) {
       setSpk({});
       setStructural(Boolean(r.timeline_dirty));
     });
+    return () => {
+      stale = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId, stamp]);
 
@@ -145,7 +155,7 @@ export function useDubDetail(jobId: string) {
   }
 
   return {
-    info, d, running, speakers,
+    info, loadError, d, running, speakers,
     voice, setVoice, spkVoices, setSpkVoices, bg, setBg,
     sub, setSub, delogo, setDelogo, subcover, setSubcover, subStyle, setSubStyle,
     edits, setEdits, spk, setSpk, structural, editCount, tableKey, stamp,

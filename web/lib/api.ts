@@ -2,11 +2,6 @@
 
 export type ApiResult = { ok?: boolean; error?: string; [k: string]: unknown };
 
-export async function getJSON<T = unknown>(url: string): Promise<T> {
-  const res = await fetch(url, { cache: "no-store" });
-  return res.json();
-}
-
 const AUTH_ERROR = "Máy chủ đang bật token (REUP_API_TOKEN) — giao diện chưa được cấp quyền ghi. Chạy server ở localhost hoặc mở qua đường có token.";
 
 /** Đọc JSON trả về, gắn thông báo lỗi tiếng Việt khi server không tự ghi `error`. */
@@ -18,6 +13,13 @@ async function readResult<T>(res: Response): Promise<T & ApiResult> {
   if (res.status === 401) data.error = AUTH_ERROR;
   else if (!res.ok && !data.error) data.error = `Lỗi máy chủ (HTTP ${res.status})`;
   return data;
+}
+
+/** GET JSON. Lỗi HTTP/401 không ném mà trả object có `error` (như postJSON), để thân lỗi không bị đọc nhầm thành dữ liệu. */
+export async function getJSON<T = unknown>(url: string): Promise<T & ApiResult> {
+  const res = await fetch(url, { cache: "no-store" });
+  if (res.ok) return res.json();
+  return readResult<T>(res);
 }
 
 export async function postJSON<T = ApiResult>(url: string, body: unknown = {}): Promise<T & ApiResult> {

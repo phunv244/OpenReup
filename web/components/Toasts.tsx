@@ -22,8 +22,8 @@ const KEY = "notices";
 const ToastContext = createContext<(msg: string, type?: ToastType) => void>(() => {});
 export const useToast = () => useContext(ToastContext);
 
-type Center = { items: Notice[]; unread: number; markAll: () => void; clear: () => void; remove: (id: number) => void };
-const CenterContext = createContext<Center>({ items: [], unread: 0, markAll: () => {}, clear: () => {}, remove: () => {} });
+type Center = { items: Notice[]; unread: number; markRead: (ids: number[]) => void; clear: () => void; remove: (id: number) => void };
+const CenterContext = createContext<Center>({ items: [], unread: 0, markRead: () => {}, clear: () => {}, remove: () => {} });
 export const useNotices = () => useContext(CenterContext);
 
 let seq = Date.now();
@@ -76,17 +76,21 @@ function ToastItem({ t, onClose }: { t: Toast; onClose: () => void }) {
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<Toast[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
+  // Đọc lịch sử một lần; chỉ ghi lại localStorage sau khi đã đọc xong (ready) để mảng rỗng ban đầu không đè mất lịch sử.
+  const [ready, setReady] = useState(false);
   useEffect(() => {
     try {
       setNotices(JSON.parse(localStorage.getItem(KEY) || "[]"));
     } catch {}
+    setReady(true);
   }, []);
-  const save = (fn: (xs: Notice[]) => Notice[]) =>
-    setNotices((xs) => {
-      const next = fn(xs).slice(0, MAX_HISTORY);
-      localStorage.setItem(KEY, JSON.stringify(next));
-      return next;
-    });
+  useEffect(() => {
+    if (!ready) return;
+    try {
+      localStorage.setItem(KEY, JSON.stringify(notices));
+    } catch {}
+  }, [notices, ready]);
+  const save = (fn: (xs: Notice[]) => Notice[]) => setNotices((xs) => fn(xs).slice(0, MAX_HISTORY));
 
   const close = useCallback((id: number) => {
     setItems((xs) => xs.map((t) => (t.id === id ? { ...t, hide: true } : t)));
@@ -104,7 +108,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const center: Center = {
     items: notices,
     unread: notices.filter((n) => !n.read).length,
-    markAll: () => save((xs) => xs.map((n) => ({ ...n, read: true }))),
+    markRead: (ids) => {
+      const set = new Set(ids);
+      save((xs) => xs.map((n) => (set.has(n.id) ? { ...n, read: true } : n)));
+    },
     clear: () => save(() => []),
     remove: (id) => save((xs) => xs.filter((n) => n.id !== id)),
   };
@@ -133,9 +140,22 @@ const ago = (at: number) => {
 
 /** Nút chuông + bảng lịch sử thông báo (đặt trên thanh tiêu đề). */
 export function NotificationBell() {
-  const { items, unread, markAll, clear, remove } = useNotices();
+  const { items, unread, markRead, clear, remove } = useNotices();
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  // Mở bảng: sau 1,2s đánh dấu đã đọc đúng những thông báo đang có lúc mở; đóng bảng sớm thì hủy.
+  // Thông báo đến sau khi mở vẫn giữ trạng thái chưa đọc.
+  const markRef = useRef(markRead);
+  markRef.current = markRead;
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  useEffect(() => {
+    if (!open) return;
+    const ids = itemsRef.current.filter((n) => !n.read).map((n) => n.id);
+    if (!ids.length) return;
+    const t = setTimeout(() => markRef.current(ids), 1200);
+    return () => clearTimeout(t);
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const down = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
@@ -155,10 +175,7 @@ export function NotificationBell() {
         title="Thông báo"
         aria-label={unread ? `Thông báo, ${unread} chưa đọc` : "Thông báo"}
         aria-expanded={open}
-        onClick={() => {
-          setOpen(!open);
-          if (!open && unread) setTimeout(markAll, 1200);
-        }}
+        onClick={() => setOpen(!open)}
       >
         <Icon name="bell" />
         {unread > 0 && <span className="notif-count">{unread > 9 ? "9+" : unread}</span>}

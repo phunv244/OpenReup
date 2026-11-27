@@ -43,15 +43,16 @@ export function Resizer({ cssVar, min, max, side, label, snapAt, onSnap }: Props
           }
           set(w);
         };
+        // pointercancel: thao tác cảm ứng bị hệ thống ngắt → vẫn phải gỡ lớp resizing/resize-snap, không để kẹt.
+        const end = () => {
+          h.removeEventListener("pointermove", move);
+          h.removeEventListener("pointerup", end);
+          h.removeEventListener("pointercancel", end);
+          document.body.classList.remove("resizing", "resize-snap");
+        };
         h.addEventListener("pointermove", move);
-        h.addEventListener(
-          "pointerup",
-          () => {
-            h.removeEventListener("pointermove", move);
-            document.body.classList.remove("resizing", "resize-snap");
-          },
-          { once: true }
-        );
+        h.addEventListener("pointerup", end);
+        h.addEventListener("pointercancel", end);
       }}
       onDoubleClick={() => {
         root().style.removeProperty(`--${cssVar}`);
@@ -59,7 +60,23 @@ export function Resizer({ cssVar, min, max, side, label, snapAt, onSnap }: Props
       }}
       onKeyDown={(e) => {
         const d = ({ ArrowLeft: -16, ArrowRight: 16 } as Record<string, number>)[e.key];
-        if (d) set(width(e.currentTarget) + (side === "right" ? -d : d));
+        if (!d) return;
+        e.preventDefault();
+        const grow = side === "right" ? -d : d;
+        const w = width(e.currentTarget);
+        if (snapAt && onSnap) {
+          // Đang là dải icon: mũi tên "mở rộng" thì mở thanh ra thật (về độ rộng đã nhớ), mũi tên "thu" thì không làm gì.
+          if (w < snapAt) {
+            if (grow > 0) onSnap(false);
+            return;
+          }
+          // Đang ở độ rộng tối thiểu mà còn thu nữa → chuyển sang dải icon, giống khi kéo chuột.
+          if (grow < 0 && w + grow < min) {
+            onSnap(true);
+            return;
+          }
+        }
+        set(w + grow);
       }}
     />
   );

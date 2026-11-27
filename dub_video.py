@@ -41,17 +41,18 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from subtitles import build_ass, build_subcover_filter, clean_style, sub_events, subtitles_filter  # noqa: F401 (tests dùng d.build_subcover_filter)
 
-BASE_DIR = Path(__file__).resolve().parent
+from reup_paths import BASE_DIR, DATA_DIR, MEDIA_ROOT  # noqa: E402
+
 VENV_BIN = BASE_DIR / ".venv" / "bin"
 if VENV_BIN.is_dir() and str(VENV_BIN) not in os.environ.get("PATH", "").split(os.pathsep):
     os.environ["PATH"] = f"{VENV_BIN}{os.pathsep}{os.environ.get('PATH', '')}"
 
-DUB_OUT_DIR = BASE_DIR / "downloads" / "dubbed"
-PROJECTS_DIR = BASE_DIR / "data" / "dub_projects"
-STORY_PROJECTS_DIR = BASE_DIR / "data" / "projects"
-DB_PATH = BASE_DIR / "data" / "openreup.db"  # câu thoại của mọi bản lồng tiếng (server.mjs đọc/sửa cùng file này)
-DUBBED_INDEX_JSON = BASE_DIR / "data" / "dubbed.json"
-WORK_ROOT = BASE_DIR / "data" / "dub_work"
+DUB_OUT_DIR = MEDIA_ROOT / "downloads" / "dubbed"
+PROJECTS_DIR = DATA_DIR / "dub_projects"
+STORY_PROJECTS_DIR = DATA_DIR / "projects"
+DB_PATH = DATA_DIR / "openreup.db"  # câu thoại của mọi bản lồng tiếng (server.mjs đọc/sửa cùng file này)
+DUBBED_INDEX_JSON = DATA_DIR / "dubbed.json"
+WORK_ROOT = DATA_DIR / "dub_work"
 AGY_BIN = shutil.which("agy") or str(Path.home() / ".local" / "bin" / "agy")
 
 SAMPLE_RATE = 24000  # track lồng tiếng: PCM 16-bit mono
@@ -980,7 +981,7 @@ class Translator:
 # ----------------------------------------------------------------------------
 # Bước 4: Giọng đọc tiếng Việt (VieNeu-TTS chạy trên máy) — cache theo nội dung câu
 # ----------------------------------------------------------------------------
-VOICES_DIR = BASE_DIR / "data" / "voices"
+VOICES_DIR = DATA_DIR / "voices"
 
 
 class VieNeuEngine:

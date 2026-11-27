@@ -29,13 +29,13 @@ Thêm chức năng = thêm 1 thư mục `server/modules/<tên>/` rồi thêm mod
 - [x] `project` lấy bản lồng tiếng qua `ctx.get("dub")`, không import thẳng `lib/store` phần lồng tiếng.
 - [ ] Bước 6: sau khi `rename` thư mục video, cập nhật `work_dir`/`out_dir` trong file project của job và trong `dubbed.json`.
 - [ ] Thư mục làm việc của job phải giữ đúng tên `<jobId>` khi đổi chỗ (ví dụ `<thư mục video>/<jobId>/`). `dubWorkDir` (`lib/store.mjs`) chỉ nhận thư mục có `basename(realpath) === jobId` nằm trong `data/dub_work/`; đặt tên khác hoặc dời ra ngoài thì `/api/dub/clean`, `/api/dub/delete` và lệnh xóa video nguồn lặng lẽ không xóa gì. Bước 6 phải mở rộng điều kiện gốc cho phép (không chỉ `data/dub_work/`) cùng lúc với việc dời thư mục.
-- [ ] `dub_video.py` vẫn mở SQLite theo đường dẫn cố định (`data/openreup.db`), chưa theo `REUP_DATA_DIR`.
+- [x] `dub_video.py` mở SQLite theo `REUP_DATA_DIR` (`<REUP_DATA_DIR>/openreup.db`), qua `reup_paths.py`.
 
 ## Thư mục dữ liệu khi chạy test
 
 | Biến môi trường | Mặc định | Đổi gì |
 | --- | --- | --- |
-| `REUP_DATA_DIR` | `data/` trong repo | DB, các file JSON, `projects/`, `dub_projects/`, `dub_work/` |
+| `REUP_DATA_DIR` | `data/` trong repo | DB, các file JSON, `projects/`, `dub_projects/`, `dub_work/`, `voices/`, `fonts/`, `asr_models/`, `asr_settings.json` (cả phía Node lẫn script Python) |
 | `REUP_MEDIA_ROOT` | thư mục repo | Thư mục chứa `downloads/`: video tải về và bản xuất `downloads/dubbed` (`--out-dir` của `dub_video.py`). Đường dẫn `downloads/...` trong API và `video_projects.json` tính từ đây. |
 | `REUP_PYTHON` | `.venv/bin/python` | Thay Python bằng script giả |
 
@@ -43,4 +43,4 @@ Thêm chức năng = thêm 1 thư mục `server/modules/<tên>/` rồi thêm mod
 
 Script tải `download_videos.mjs` (Douyin), `download_bilibili.mjs` (Bilibili/YouTube) và `list_channel_web.mjs` chạy như tiến trình con, kế thừa env của server nên cũng ghi theo `REUP_MEDIA_ROOT` (`downloads/`) và `REUP_DATA_DIR` (`videos.json`, `bilibili.json`). `lib/tasks.mjs` tính đường dẫn `SAVED_FILE:::` từ `MEDIA_ROOT`. Còn dùng thư mục repo: `chrome_profile/` (đăng nhập Douyin) và `cookies.txt`.
 
-`asr.py` (`set-vad`, `download`) vẫn ghi theo thư mục cố định `data/asr_models/` cạnh script, chưa theo `REUP_DATA_DIR`: test mô hình nhận diện thật sẽ ghi vào `data/` thật. Test API dùng Python giả (`REUP_PYTHON`) nên không chạm tới. `voice_tool.py` và `subtitles.py` nhận đường dẫn ra qua `--out` nên đã theo thư mục tạm.
+Script Python (`dub_video.py`, `asr.py`, `subtitles.py`, `voice_tool.py`, `list_channel_adb.py`) lấy thư mục từ `reup_paths.py`, đọc cùng `REUP_DATA_DIR`/`REUP_MEDIA_ROOT` như `config.mjs` (mặc định `data/` và thư mục repo, server thật không đổi). Server chạy script con với `...process.env` nên script tự theo thư mục tạm của test: `asr.py set-vad/download` ghi `asr_models/` + `asr_settings.json`, `dub_video.py` mở `openreup.db`, đọc `voices/`, `projects/`, `dubbed.json`, `dub_work/` và xuất mặc định vào `<REUP_MEDIA_ROOT>/downloads/dubbed`, `subtitles.py` tìm font trong `fonts/`. Thư mục script cụ thể vẫn ghi đè được qua `--out-dir`, `--work-dir`, `--index-file`... `test_dub_video.py` (`test_reup_data_dir_*`) kiểm cả hai trường hợp có và không đặt biến.

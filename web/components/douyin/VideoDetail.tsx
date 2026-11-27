@@ -37,7 +37,7 @@ export function VideoDetail({ v, onClose }: { v: DouyinVideo; onClose: () => voi
           </div>
           <div className="actions">
             {v.local_file ? (
-              <a className="btn btn-success" href={douyinFileUrl(v.local_file)} download>
+              <a className="btn btn-primary" href={douyinFileUrl(v.local_file)} download>
                 <Icon name="download" size={16} /> Lưu file MP4
               </a>
             ) : v.download_url ? (

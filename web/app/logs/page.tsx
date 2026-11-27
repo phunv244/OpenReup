@@ -5,7 +5,7 @@ import { Topbar } from "@/components/Shell";
 export default function LogsPage() {
   return (
     <>
-      <Topbar title="Nhật ký" sub="Tiến trình đang chạy và kết quả lần chạy gần nhất" />
+      <Topbar title="Nhật ký hệ thống" />
       <LogsBody />
     </>
   );

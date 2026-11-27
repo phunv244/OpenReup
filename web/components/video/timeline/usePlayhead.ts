@@ -12,6 +12,9 @@ export function usePlayhead(
 ) {
   const [cur, setCur] = useState(0);
   const [playing, setPlaying] = useState(false);
+  // Thời lượng thật của <video>: đọc theo sự kiện, không đọc el.duration lúc vẽ (lúc đó metadata thường chưa có
+  // nên timeline từng hiện mốc câu cuối, vd. 5:24, trong khi trình phát ghi 5:26).
+  const [mediaDur, setMediaDur] = useState(0);
   const playheadRef = useRef<HTMLDivElement>(null);
   const pxRef = useRef(pxPerSec);
   pxRef.current = pxPerSec;
@@ -39,6 +42,7 @@ export function usePlayhead(
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(loop);
     };
+    const onDur = () => setMediaDur(Number.isFinite(el.duration) ? el.duration : 0);
     const onPause = () => {
       setPlaying(false);
       cancelAnimationFrame(raf);
@@ -49,6 +53,8 @@ export function usePlayhead(
     el.addEventListener("play", onPlay);
     el.addEventListener("pause", onPause);
     el.addEventListener("ended", onPause);
+    el.addEventListener("durationchange", onDur);
+    onDur();
     if (!el.paused) onPlay();
     return () => {
       cancelAnimationFrame(raf);
@@ -57,11 +63,12 @@ export function usePlayhead(
       el.removeEventListener("play", onPlay);
       el.removeEventListener("pause", onPause);
       el.removeEventListener("ended", onPause);
+      el.removeEventListener("durationchange", onDur);
     };
   }, [video, scroller]);
   useEffect(() => {
     if (playheadRef.current) playheadRef.current.style.transform = `translateX(${cur * pxPerSec}px)`;
   }, [cur, pxPerSec]);
 
-  return { cur, setCur, playing, playheadRef };
+  return { cur, setCur, playing, playheadRef, mediaDur };
 }

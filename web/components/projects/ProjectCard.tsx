@@ -10,6 +10,13 @@ function projIcon(p: Project) {
   return p.type?.includes("Phim") ? "film" : p.type?.includes("Review") ? "book" : "sparkles";
 }
 
+/** 1 dòng tóm tắt: chỉ nêu phần chưa xong ("3 video · 1 chưa lồng"); dự án trống ghi "Chưa có video". */
+function statLine(p: Project) {
+  const n = p.video_count || 0;
+  if (!n) return "Chưa có video";
+  return p.pending_count ? `${n} video · ${p.pending_count} chưa lồng` : `${n} video · đã lồng hết`;
+}
+
 /** Bấm vào là mở dự án; nút bánh răng mở Ngữ cảnh AI mà không mở dự án. */
 function useOpen(p: Project) {
   const router = useRouter();
@@ -56,18 +63,7 @@ export function ProjectCard({ p }: { p: Project }) {
       </div>
       <p className={`pcard-syn ${p.synopsis ? "" : "pcard-syn-empty"}`}>{p.synopsis || "Chưa có mô tả cốt truyện — thêm bối cảnh để AI dịch đúng mạch truyện hơn."}</p>
       <div className="pcard-stats">
-        <div>
-          <b>{p.video_count || 0}</b>
-          <span>video</span>
-        </div>
-        <div>
-          <b className="ok">{p.dubbed_count || 0}</b>
-          <span>đã lồng tiếng</span>
-        </div>
-        <div>
-          <b className={p.pending_count ? "warn" : ""}>{p.pending_count || 0}</b>
-          <span>chưa lồng</span>
-        </div>
+        <span className={p.pending_count ? "warn" : ""}>{statLine(p)}</span>
         <span className="pcard-go" aria-hidden="true">
           <Icon name="chevron" size={16} />
         </span>

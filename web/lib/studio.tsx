@@ -31,7 +31,7 @@ type StartResult = { ok?: boolean; error?: string; queued?: boolean; position?: 
 type Studio = Data & {
   loaded: boolean;
   task: TaskState | null;
-  reload: (notify?: boolean) => Promise<void>;
+  reload: () => Promise<void>;
   /** Cập nhật 1 dự án tại chỗ (sau khi lưu) mà không phải tải lại tất cả. */
   patchProject: (p: Project) => void;
   /** Gọi API bắt đầu tác vụ; tự báo "đã xếp hàng" nếu server đang bận. */
@@ -71,7 +71,7 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
   const tick = useRef(0);
 
   const reload = useCallback(
-    async (notify = false) => {
+    async () => {
       try {
         const [vd, bili, dubbed, sources, projects, system, voices, asr, fonts] = await Promise.all([
           getJSON<{ videos?: Omit<DouyinVideo, "_season" | "_status">[]; channel_meta?: ChannelMeta; updated_at?: string }>("/api/videos"),
@@ -99,7 +99,6 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
           systemFonts: fonts.system || [],
         });
         setLoaded(true);
-        if (notify) toast("Đã làm mới dữ liệu", "success");
       } catch {
         toast("Không tải được dữ liệu từ máy chủ", "error");
       }
@@ -136,7 +135,20 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
     reload();
     pollTask();
     const id = setInterval(pollTask, 2500);
-    return () => clearInterval(id);
+    // Tự làm mới khi quay lại tab/cửa sổ (thay nút "Làm mới"): file có thể đã đổi ngoài app. Tối đa 1 lần / 5 giây.
+    let last = Date.now();
+    const onBack = () => {
+      if (document.visibilityState !== "visible" || Date.now() - last < 5000) return;
+      last = Date.now();
+      reload();
+    };
+    document.addEventListener("visibilitychange", onBack);
+    window.addEventListener("focus", onBack);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onBack);
+      window.removeEventListener("focus", onBack);
+    };
   }, [reload, pollTask]);
 
   const startTask = useCallback(

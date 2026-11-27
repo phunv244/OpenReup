@@ -11,7 +11,7 @@ import { TaskCard } from "./TaskCard";
 import { TaskRail } from "./TaskRail";
 import { NotificationBell } from "./Toasts";
 
-/** Mở ngăn "Ngữ cảnh AI" của một dự án từ bất kỳ đâu (thanh trái, thẻ dự án, thanh tiêu đề). */
+/** Mở ngăn "Ngữ cảnh AI" của một dự án từ bất kỳ đâu (thanh trái, thẻ dự án). */
 const DrawerContext = createContext<(pid: string) => void>(() => {});
 export const useOpenDrawer = () => useContext(DrawerContext);
 
@@ -48,12 +48,13 @@ function useSidebarMini() {
 
 const clean = (p: string) => p.replace(/\/+$/, "") || "/";
 
+/** `count` = 0 thì ẩn số (số 0 không giúp quyết định gì). */
 function NavLink({ href, icon, label, count, active }: { href: string; icon: string; label: string; count?: number; active: boolean }) {
   return (
     <Link className={`nav-link ${active ? "active" : ""}`} href={href} title={label} aria-current={active ? "page" : undefined}>
       <Icon name={icon} />
       <span>{label}</span>
-      {count != null && <span className="nav-count">{count}</span>}
+      {count ? <span className="nav-count">{count}</span> : null}
     </Link>
   );
 }
@@ -85,7 +86,6 @@ function Nav() {
         <button className="nav-link" type="button" title="Ngữ cảnh AI" onClick={() => openDrawer(pid)}>
           <Icon name="brain" />
           <span>Ngữ cảnh AI</span>
-          <span className="nav-count">{(proj.characters || []).length + (proj.glossary || []).length}</span>
         </button>
         <NavLink href={projHref(pid, "logs")} icon="terminal" label="Nhật ký" active={sub === "logs"} />
       </nav>
@@ -250,7 +250,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
 /** Thanh tiêu đề của mỗi trang. */
 export function Topbar({ title, sub, actions }: { title: string; sub?: string; actions?: React.ReactNode }) {
-  const { reload, task } = useStudio();
+  const { task } = useStudio();
   const rail = useRail();
   const busy = Boolean(task?.running) || (task?.queue || []).length > 0;
   // Không đặt mảng phụ thuộc: Next đặt lại tiêu đề tab khi đổi ?tab=, nên ghi lại sau mỗi lần vẽ.
@@ -286,9 +286,6 @@ export function Topbar({ title, sub, actions }: { title: string; sub?: string; a
         >
           <Icon name="terminal" />
           {busy && <span className="rail-toggle-dot" />}
-        </button>
-        <button className="icon-btn" type="button" title="Làm mới dữ liệu" aria-label="Làm mới dữ liệu" onClick={() => reload(true)}>
-          <Icon name="refresh" />
         </button>
       </div>
     </header>

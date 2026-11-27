@@ -5,7 +5,7 @@ import { BatchTab } from "@/components/douyin/BatchTab";
 import { ListTab } from "@/components/douyin/ListTab";
 import { ScanTab } from "@/components/douyin/ScanTab";
 import { Icon } from "@/components/Icon";
-import { ProjectTopbar } from "@/components/ProjectTopbar";
+import { Topbar } from "@/components/Shell";
 import { ProgressBar } from "@/components/TaskCard";
 import { projHref, taskName } from "@/lib/format";
 import { useProjectId } from "@/lib/project";
@@ -20,12 +20,12 @@ const TABS = [
 export default function DouyinPage() {
   const pid = useProjectId();
   const params = useSearchParams();
-  const { task } = useStudio();
+  const { task, loaded } = useStudio();
   const tab = TABS.find((t) => t[0] === params.get("tab")) || TABS[0];
   const busy = task?.running && (task.task_type === "scan_web" || task.task_type === "download");
   return (
     <>
-      <ProjectTopbar title="Kho Douyin" sub={tab[2]} />
+      <Topbar title="Kho Douyin" sub={tab[2]} />
       <main className="content">
         <nav className="page-tabs" aria-label="Kho Douyin">
           {TABS.map(([k, label]) => (
@@ -42,8 +42,9 @@ export default function DouyinPage() {
             <ProgressBar task={task} />
           </div>
         )}
-        {tab[0] === "list" && <ListTab pid={pid} />}
-        {tab[0] === "batch" && <BatchTab pid={pid} />}
+        {/* Chưa tải xong dữ liệu thì không hiện "chưa quét kênh" / danh sách rỗng sớm. */}
+        {loaded && tab[0] === "list" && <ListTab pid={pid} />}
+        {loaded && tab[0] === "batch" && <BatchTab pid={pid} />}
         {tab[0] === "scan" && <ScanTab />}
       </main>
     </>

@@ -12,7 +12,7 @@ import { projHref } from "@/lib/format";
 import { useStudio } from "@/lib/studio";
 
 export default function ProjectsPage() {
-  const { projects } = useStudio();
+  const { projects, loaded } = useStudio();
   const [creating, setCreating] = useState(false);
   const router = useRouter();
   // Link kiểu giao diện cũ (#/project/<id>/<trang>) vẫn mở đúng trang mới.
@@ -35,6 +35,8 @@ export default function ProjectsPage() {
         }
       />
       <main className="content">
+        {/* Chưa có dự án nào thì thanh tìm/lọc/sắp xếp không có tác dụng: chỉ còn thẻ "Tạo dự án mới". */}
+        {projects.length > 0 && (
         <div className="pbar">
           <label className="pbar-search">
             <Icon name="search" size={15} />
@@ -77,6 +79,8 @@ export default function ProjectsPage() {
           </div>
         </div>
 
+        )}
+
         {shown.length === 0 && projects.length > 0 ? (
           <div className="pbar-empty">
             Không có dự án nào khớp.{" "}
@@ -100,17 +104,14 @@ export default function ProjectsPage() {
                 <ProjectRow p={p} />
               </div>
             ))}
-            <div role="listitem">
-              <button className="prow prow-new" type="button" onClick={() => setCreating(true)}>
-                <Icon name="plus" size={16} /> Tạo dự án mới
-              </button>
-            </div>
           </div>
         ) : (
           <div className="proj-grid">
             {shown.map((p) => (
               <ProjectCard key={p.id} p={p} />
             ))}
+            {/* Thẻ "Tạo dự án mới" chỉ là trạng thái trống — khi đã có dự án thì dùng nút "Tạo dự án" trên thanh tiêu đề. */}
+            {loaded && projects.length === 0 && (
             <button className="pcard pcard-new" type="button" onClick={() => setCreating(true)}>
               <span className="plus">
                 <Icon name="plus" size={20} />
@@ -118,6 +119,7 @@ export default function ProjectsPage() {
               <b>Tạo dự án mới</b>
               <span>Mỗi bộ truyện / phim một dự án để AI nhớ nhân vật, xưng hô và mạch truyện</span>
             </button>
+            )}
           </div>
         )}
       </main>

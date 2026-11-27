@@ -44,7 +44,7 @@ export function TimelineEditor({ jobId, video, speakers, edits, setEdits, spk, s
   const scroller = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const view = useVisibleRange(scroller);
-  const { cur, setCur, playing, playheadRef } = usePlayhead(video, scroller, pxPerSec);
+  const { cur, setCur, playing, playheadRef, mediaDur } = usePlayhead(video, scroller, pxPerSec);
 
   const load = useCallback(async () => {
     const d = await getJSON<Outline & { error?: string }>(`/api/dub/outline?id=${encodeURIComponent(jobId)}`);
@@ -56,7 +56,7 @@ export function TimelineEditor({ jobId, video, speakers, edits, setEdits, spk, s
   }, [load]);
 
   const items = outline?.items || [];
-  const duration = Math.max(video.current?.duration || 0, items.length ? items[items.length - 1].end : 0, 30);
+  const duration = Math.max(mediaDur, items.length ? items[items.length - 1].end : 0, 30);
   const width = Math.max(600, duration * pxPerSec);
   const sel = items.find((s) => s.id === selected) || null;
 

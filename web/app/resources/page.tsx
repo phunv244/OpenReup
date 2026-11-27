@@ -29,7 +29,7 @@ function FontRow({ f }: { f: FontInfo }) {
         <div className="font-name">
           {f.family}
           {f.style && <span className="badge gray">{f.style}</span>}
-          {f.vi ? <span className="badge green">Đủ dấu tiếng Việt</span> : <span className="badge amber">Thiếu dấu tiếng Việt</span>}
+          {!f.vi && <span className="badge amber">Thiếu dấu tiếng Việt</span>}
         </div>
         {/* Chữ mẫu vẽ bằng chính font đã tải (trình duyệt nạp qua @font-face) */}
         <div className="font-sample" style={{ fontFamily: `"rf-${f.id}", sans-serif` }}>
@@ -48,7 +48,7 @@ function FontRow({ f }: { f: FontInfo }) {
 
 export default function ResourcesPage() {
   const toast = useToast();
-  const { fonts, systemFonts, voices, reload } = useStudio();
+  const { fonts, systemFonts, voices, reload, loaded } = useStudio();
   const [tab, setTab] = useState<Tab>("fonts");
   // Liên kết từ chỗ chọn giọng mở thẳng mục Giọng đọc (?tab=voices)
   useEffect(() => {
@@ -56,6 +56,7 @@ export default function ResourcesPage() {
   }, []);
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
+  const drag = useRef(0); // dragenter/leave bắn cả ở phần tử con: đếm để biết khi nào thật sự rời khung
   const [busy, setBusy] = useState(false);
   const [showSys, setShowSys] = useState(false);
 
@@ -101,32 +102,34 @@ export default function ResourcesPage() {
             ]}
           />
         </div>
-        {tab === "voices" ? <VoiceLibrary /> : <>
+        {!loaded ? null : tab === "voices" ? <VoiceLibrary /> : <>
         <Callout tone="info" icon="type">
           Font tải lên ở đây dùng được cho phụ đề Việt của <b>mọi dự án</b> (chọn khi lồng tiếng hoặc ở <b>Sửa lời</b> → Kiểu phụ đề → Tùy chỉnh). Chọn font có đủ dấu
           tiếng Việt.
         </Callout>
 
-        <section className="card">
+        {/* Kéo file vào bất kỳ đâu trong khối này để tải lên; vùng nét đứt chỉ hiện khi đang kéo file. */}
+        <section
+          className="card drop-host"
+          onDragEnter={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); drag.current++; setOver(true); } }}
+          onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
+          onDragLeave={() => { if (--drag.current <= 0) { drag.current = 0; setOver(false); } }}
+          onDrop={(e) => { e.preventDefault(); drag.current = 0; setOver(false); upload(e.dataTransfer.files); }}
+        >
           <header className="card-head">
-            <h3>
-              Font chữ của bạn <span className="badge gray">{fonts.length}</span>
-            </h3>
-            <button className="btn btn-primary btn-sm" type="button" disabled={busy} onClick={() => input.current?.click()}>
+            <h3>Font chữ của bạn</h3>
+            <button className="btn btn-primary btn-sm" type="button" disabled={busy} title="Hoặc kéo thả file font vào khung này" onClick={() => input.current?.click()}>
               <Icon name={busy ? "clock" : "plus"} size={15} /> {busy ? "Đang tải lên…" : "Tải font lên"}
             </button>
           </header>
           <input ref={input} type="file" hidden multiple accept=".ttf,.otf,.ttc,.otc" onChange={(e) => { upload(e.target.files || []); e.target.value = ""; }} />
-          <div
-            className={`drop-zone ${over ? "over" : ""}`}
-            onDragOver={(e) => { e.preventDefault(); setOver(true); }}
-            onDragLeave={() => setOver(false)}
-            onDrop={(e) => { e.preventDefault(); setOver(false); upload(e.dataTransfer.files); }}
-          >
-            <Icon name="download" size={22} />
-            <b>Kéo thả file font vào đây</b>
-            <span className="muted">{EXTS.map((e) => `.${e}`).join("  ")} · tối đa 40 MB mỗi file</span>
-          </div>
+          {over && (
+            <div className="drop-zone over" aria-hidden="true">
+              <Icon name="download" size={22} />
+              <b>Thả để tải font lên</b>
+              <span className="muted">{EXTS.map((e) => `.${e}`).join("  ")} · tối đa 40 MB mỗi file</span>
+            </div>
+          )}
           {fonts.length ? (
             fonts.map((f) => <FontRow key={f.id} f={f} />)
           ) : (

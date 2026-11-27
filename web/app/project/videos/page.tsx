@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { PlayerModal } from "@/components/Modal";
-import { ProjectTopbar } from "@/components/ProjectTopbar";
+import { Topbar } from "@/components/Shell";
 import { ProgressBar } from "@/components/TaskCard";
 import { useToast } from "@/components/Toasts";
 import { EmptyState, Menu, Seg } from "@/components/ui";
@@ -32,9 +32,12 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
   const running = Boolean(task?.running && task.target && (task.target === v.rel_path || task.target === (d?.job_id || j?.job_id)));
   const qi = running ? -1 : (task?.queue || []).findIndex((q) => q.target && (q.target === v.rel_path || q.target === (d?.job_id || j?.job_id)));
 
+  const lines = d ? `${(d.segment_count || 0).toLocaleString("vi")} câu` : "";
   const meta = v.missing
-    ? ["Chỉ còn bản lồng tiếng", fmtSize(v.size_mb)]
-    : [v.source === "bilibili" ? "Bilibili / YouTube" : "Douyin", v.resolution, fmtSize(v.size_mb), v.uploader].filter(Boolean);
+    ? ["Chỉ còn bản lồng tiếng", fmtSize(v.size_mb), lines]
+    : [v.source === "bilibili" ? "Bilibili / YouTube" : "Douyin", v.resolution, fmtSize(v.size_mb), v.uploader, lines].filter(Boolean);
+  // Bấm cả dòng = mở trang chỉnh (chỉ khi có bản lồng tiếng và còn video gốc); bấm ảnh = phát bản Việt / video gốc.
+  const editHref = d && !v.missing && v.project_id ? projHref(pid, "video", `&job=${encodeURIComponent(d.job_id)}`) : "";
   const playDub = () => open({ kind: "play", src: dubFileUrl(d!.mp4_file), title: `Bản Việt · ${v.title}` });
   const playOrig = () => open({ kind: "play", src: v.video_src, title: v.title });
 
@@ -57,28 +60,25 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
     reload();
   }
 
-  // Nút chính theo trạng thái: Thêm vào dự án > Tiếp tục > Xem bản Việt > Lồng tiếng
-  const primary = !v.project_id ? (
-    <button className="btn btn-primary" type="button" onClick={claim}>
+  // Chỉ còn nút cho việc chưa xong (Thêm vào dự án > Tiếp tục > Lồng tiếng). Đã lồng tiếng thì không cần nút:
+  // bấm dòng để chỉnh, bấm ảnh để xem. Nút tông nhạt — nút tô đầy duy nhất của trang là "Thêm video".
+  const action = !v.project_id ? (
+    <button className="btn btn-light" type="button" onClick={claim}>
       <Icon name="plus" size={15} /> Thêm vào dự án này
     </button>
   ) : j ? (
-    <button className="btn btn-primary" type="button" onClick={() => startTask("/api/dub/start", { rel_path: v.rel_path, ...j.params }, "Đang chạy tiếp từ chỗ đang dở")}>
+    <button className="btn btn-light" type="button" onClick={() => startTask("/api/dub/start", { rel_path: v.rel_path, ...j.params }, "Đang chạy tiếp từ chỗ đang dở")}>
       <Icon name="play" size={15} /> Tiếp tục
     </button>
-  ) : d ? (
-    <button className="btn btn-success" type="button" onClick={playDub}>
-      <Icon name="play" size={15} /> Xem bản Việt
-    </button>
-  ) : (
-    <button className="btn btn-primary" type="button" onClick={() => open({ kind: "dub", v })}>
+  ) : !d ? (
+    <button className="btn btn-light" type="button" onClick={() => open({ kind: "dub", v })}>
       <Icon name="mic" size={15} /> Lồng tiếng
     </button>
-  );
+  ) : null;
 
   return (
-    <article className={`vrow ${running ? "is-running" : ""}`}>
-      <button className="vrow-thumb" type="button" onClick={d ? playDub : playOrig} aria-label="Phát video">
+    <article className={`vrow ${running ? "is-running" : ""} ${editHref ? "is-link" : ""}`}>
+      <button className="vrow-thumb" type="button" onClick={d ? playDub : playOrig} aria-label={d ? "Xem bản Việt" : "Xem video gốc"} title={d ? "Xem bản Việt" : "Xem video gốc"}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={`/api/thumb?rel=${encodeURIComponent(v.rel_path)}&v=${v.mtime}`} alt="" loading="lazy" onError={(e) => e.currentTarget.remove()} />
         <span className="thumb-play">
@@ -88,7 +88,13 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
       </button>
       <div className="vrow-main">
         <h3 className="vrow-title" title={v.title}>
-          {v.title}
+          {editHref ? (
+            <Link className="vrow-link" href={editHref}>
+              {v.title}
+            </Link>
+          ) : (
+            v.title
+          )}
         </h3>
         <div className="vrow-meta">{meta.join(" · ")}</div>
         <div className="vrow-chips when-idle">
@@ -98,17 +104,11 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
               <Icon name="alert" size={13} /> Mất video gốc
             </span>
           )}
-          {d && (
-            <span className="badge green">
-              <Icon name="check" size={13} /> Đã lồng tiếng · {(d.segment_count || 0).toLocaleString("vi")} câu
-            </span>
-          )}
           {j && (
             <span className={`badge ${j.status === "error" ? "red" : "amber"}`}>
               {j.status === "error" ? "Lỗi" : "Đang dở"} ở {Math.round(j.pct)}%
             </span>
           )}
-          {!d && !j && <span className="badge gray">Chưa lồng tiếng</span>}
           {d?.untranslated ? <span className="badge amber">{d.untranslated} câu chưa dịch</span> : null}
           {qi >= 0 && (
             <span className="badge gray">
@@ -131,20 +131,18 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
         <button className="btn btn-danger when-running" type="button" onClick={stopTask}>
           <Icon name="stop" size={15} /> Dừng
         </button>
-        <span className="when-idle vrow-btns">
-          {j && d && (
-            <button className="btn btn-light" type="button" onClick={playDub}>
-              <Icon name="play" size={15} /> Bản Việt
-            </button>
-          )}
-          {d && !v.missing && (
-            <Link className="btn btn-light" href={projHref(pid, "video", `&job=${encodeURIComponent(d.job_id)}`)}>
+        {action && <span className="when-idle vrow-btns">{action}</span>}
+        <Menu>
+          {editHref && (
+            <Link href={editHref}>
               <Icon name="edit" size={15} /> Chỉnh sửa
             </Link>
           )}
-          {primary}
-        </span>
-        <Menu>
+          {d && (
+            <button type="button" onClick={playDub}>
+              <Icon name="play" size={15} /> Xem bản Việt
+            </button>
+          )}
           {d && (
             <a href={dubFileUrl(d.mp4_file)} download>
               <Icon name="download" size={15} /> Tải MP4 bản Việt
@@ -198,7 +196,7 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
 
 export default function VideosPage() {
   const pid = useProjectId();
-  const { sources, dubbed, bili, task } = useStudio();
+  const { sources, dubbed, bili, task, loaded } = useStudio();
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -217,7 +215,7 @@ export default function VideosPage() {
 
   return (
     <>
-      <ProjectTopbar title="Video & Lồng tiếng" sub="Tải video, dịch theo ngữ cảnh dự án và lồng tiếng Việt" />
+      <Topbar title="Video & Lồng tiếng" />
       <main className="content">
         <div className="toolbar ws-toolbar">
           {showTabs && (
@@ -249,7 +247,7 @@ export default function VideosPage() {
           </div>
         )}
         <div className="vlist">
-          {!items.length ? (
+          {!loaded ? null : !items.length ? (
             <EmptyState icon="film" title="Chưa có video nào" desc="Dán link Bilibili / YouTube để tải video đầu tiên, hoặc tải từ Kho Douyin.">
               <button className="btn btn-primary" type="button" onClick={() => setDialog({ kind: "add" })}>
                 <Icon name="plus" size={16} /> Thêm video

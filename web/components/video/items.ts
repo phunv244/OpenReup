@@ -13,6 +13,11 @@ export type WorkItem = Source & {
   missing: boolean;
 };
 
+/** Tên hiển thị của 1 video theo tên file: tiêu đề Bilibili/YouTube nếu có, không thì tên file. Dùng chung cho danh sách và trang chỉnh. */
+export function displayTitle(fileName: string, bili: BiliVideo[]): string {
+  return bili.find((b) => b.local_file === fileName)?.title || fileName;
+}
+
 /** Video của dự án đang mở + video chưa gán dự án nào (để người dùng chọn đưa vào dự án). */
 export function buildWorkItems(sources: Source[], dubbed: Dubbed[], bili: BiliVideo[], pid: string): WorkItem[] {
   // Nhiều bản lồng tiếng cùng 1 video gốc: ưu tiên bản thuộc dự án đang mở (cùng hạng thì bản sau thắng, như trước).

@@ -1,11 +1,11 @@
 "use client";
 import { LogsBody } from "@/components/LogConsole";
-import { ProjectTopbar } from "@/components/ProjectTopbar";
+import { Topbar } from "@/components/Shell";
 
 export default function ProjectLogsPage() {
   return (
     <>
-      <ProjectTopbar title="Nhật ký" sub="Tiến trình đang chạy và kết quả lần chạy gần nhất" />
+      <Topbar title="Nhật ký" />
       <LogsBody />
     </>
   );

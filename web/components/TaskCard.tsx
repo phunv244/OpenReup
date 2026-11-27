@@ -42,7 +42,8 @@ const LOW_DISK_GB = 10;
 export function TaskCard({ variant }: { variant: "sidebar" | "rail" | "page" }) {
   const { task, stopTask, system } = useStudio();
   if (!task) return null;
-  const lowDisk = !task.running && system.total_gb > 0 && system.free_gb < LOW_DISK_GB;
+  // Cảnh báo ổ đầy và "Sẵn sàng" chỉ hiện ở thanh trái — trang Nhật ký/cột phải không lặp lại.
+  const lowDisk = variant === "sidebar" && !task.running && system.total_gb > 0 && system.free_gb < LOW_DISK_GB;
   const wrap = (node: React.ReactNode) => (
     <div className="js-task" data-variant={variant}>
       {node}
@@ -93,6 +94,7 @@ export function TaskCard({ variant }: { variant: "sidebar" | "rail" | "page" }) 
       </div>
     );
   }
+  if (variant !== "sidebar") return null;
   return wrap(
     <div className="task-card">
       <div className="task-head">

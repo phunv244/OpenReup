@@ -9,7 +9,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
-import { ProjectTopbar } from "@/components/ProjectTopbar";
+import { Topbar } from "@/components/Shell";
 import { DubScript } from "@/components/video/DubScript";
 import { LogoToggle, RegionTarget, activeTarget } from "@/components/video/FrameStage";
 import { SubtitleStudio } from "@/components/video/SubtitleStudio";
@@ -17,6 +17,7 @@ import { TimelineEditor } from "@/components/video/TimelineEditor";
 import { DetailBar } from "@/components/video/studio/DetailBar";
 import { Stage, StageView } from "@/components/video/studio/Stage";
 import { useDubDetail } from "@/components/video/studio/useDubDetail";
+import { displayTitle } from "@/components/video/items";
 import { VoicePane } from "@/components/video/studio/VoicePane";
 import { fmtDur, fmtSize } from "@/lib/format";
 import { useProjectId } from "@/lib/project";
@@ -27,7 +28,7 @@ type Tab = "script" | "voice" | "video";
 function Detail() {
   const jobId = useSearchParams().get("job") || "";
   const pid = useProjectId();
-  const { projects } = useStudio();
+  const { projects, bili } = useStudio();
   const s = useDubDetail(jobId);
   const [tab, setTabRaw] = useState<Tab>("script");
   const [view, setView] = useState<StageView>("video");
@@ -68,7 +69,7 @@ function Detail() {
 
   return (
     <>
-      <ProjectTopbar title={info.title} sub={meta.join(" · ")} />
+      <Topbar title={displayTitle(info.title, bili)} sub={meta.join(" · ")} />
       <main className="studio">
         <Stage
           s={s}

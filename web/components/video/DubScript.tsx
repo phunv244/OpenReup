@@ -99,6 +99,7 @@ export function DubScript({ jobId, video, speakers, edits, setEdits, spk, setSpk
                     <select
                       className={`select input-sm seg-spk spk-${spkIndex(who)}`}
                       aria-label={`Nhân vật câu ${id}`}
+                      title={speakers.find(([k]) => k === who)?.[1].name || who}
                       value={who}
                       onChange={(e) => setMap(spk, setSpk, id, e.target.value, s.speaker || "NV1")}
                     >
@@ -126,8 +127,10 @@ export function DubScript({ jobId, video, speakers, edits, setEdits, spk, setSpk
           <p className="muted line-empty">Không có câu nào khớp.</p>
         )}
       </div>
+      {/* Chỉ 1 trang thì hàng phân trang không có tác dụng: ẩn. */}
+      {page && (page.offset > 0 || page.offset + page.items.length < page.matched) && (
       <div className="editor-pager">
-        <button className="btn btn-light btn-sm" type="button" disabled={!page || page.offset <= 0}
+        <button className="btn btn-light btn-sm" type="button" disabled={page.offset <= 0}
           onClick={() => setQ({ ...q, offset: Math.max(0, q.offset - LIMIT) })}>
           ‹ Trước
         </button>
@@ -136,11 +139,12 @@ export function DubScript({ jobId, video, speakers, edits, setEdits, spk, setSpk
             ? `${(page.offset + 1).toLocaleString("vi")}–${(page.offset + page.items.length).toLocaleString("vi")} / ${page.matched.toLocaleString("vi")} câu`
             : "0 câu"}
         </span>
-        <button className="btn btn-light btn-sm" type="button" disabled={!page || page.offset + page.items.length >= page.matched}
+        <button className="btn btn-light btn-sm" type="button" disabled={page.offset + page.items.length >= page.matched}
           onClick={() => setQ({ ...q, offset: q.offset + LIMIT })}>
           Sau ›
         </button>
       </div>
+      )}
     </div>
   );
 }

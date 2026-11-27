@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { API_TOKEN, DATA_DIR, DUBBED_DIR, DUB_PROJECTS_DIR, ROOT } from "../config.mjs";
+import { P_VOICE, bool, num, str } from "../core/schema.mjs";
 import { db } from "../lib/db.mjs";
 import { readDubJobs, readDubbed } from "../lib/store.mjs";
 import { taskEvents } from "../lib/tasks.mjs";
@@ -17,13 +18,9 @@ import { nowIso, relOf, resolveDownload } from "../lib/util.mjs";
 const LOG_DIR = path.join(DATA_DIR, "function_logs");
 const MAX_WAIT_SEC = 3600;
 
-const str = (description, extra = {}) => ({ type: "string", description, ...extra });
-const bool = (description) => ({ type: "boolean", description });
-const num = (description, extra = {}) => ({ type: "number", description, ...extra });
 
 const P_DELOGO = str('Xóa logo: "none" | "top-right" | "top-left" | "both-top" | vùng pixel "x,y,w,h" trên khung hình gốc.');
 const P_SUBCOVER = str('Xóa phụ đề gốc tiếng Trung: "none" hoặc vùng pixel "x,y,w,h" bao quanh dòng phụ đề.');
-const P_VOICE = str('Giọng đọc: "vieneu:<tên preset>" hoặc "vieneu-clone:<slug>". Lấy danh sách bằng list_options.');
 const P_PROJECT = str("Mã dự án truyện (id trong list_options.projects) để dùng chung nhân vật / thuật ngữ. Bỏ trống = không gắn dự án.");
 const P_SUB_STYLE = {
   type: "object",
@@ -59,6 +56,8 @@ const dubJobOf = (relPath) => readDubJobs().get(resolveDownload(relPath)) || nul
 const savedResult = (a, ev) => ({ files: ev.saved_files.map(fileInfo) });
 
 /**
+ * Thứ tự hàm trong GET /api/functions. { slot: "<module>" } = chỗ đặt các hàm do module đó khai (server/modules/<module>/functions.mjs);
+ * hàm của module không có slot được nối vào cuối. Giữ thứ tự ổn định cho MausBot / snapshot.
  * route: [method, url] của API có sẵn. task: true = chạy nền (trả ngay, kết quả đến sau). nolog: không ghi nhật ký.
  * result(args, sự kiện kết thúc) -> kết quả khi tác vụ nền xong; fail(args) -> lỗi do script ghi lại (nếu có).
  */
@@ -240,53 +239,7 @@ export const FUNCTIONS = [
     parameters: { job_id: str("Mã bản lồng tiếng (job_id trong list_dubbed).") },
     required: ["job_id"],
   },
-  {
-    name: "list_projects",
-    description: "Liệt kê đầy đủ các dự án Reup: giọng đọc dùng chung, nhân vật (tên gốc/Việt, xưng hô, tính cách), thuật ngữ, mạch truyện, danh sách bản lồng tiếng đã gán; video_count = số video nguồn (mỗi video đếm 1 lần dù lồng tiếng nhiều lần), dubbed_count = số video đã lồng tiếng, pending_count = số video chưa lồng tiếng.",
-    route: ["GET", "/api/projects"],
-    parameters: {},
-  },
-  {
-    name: "create_project",
-    description: "Tạo dự án Reup mới để nhóm nhiều video cùng bộ truyện, dùng chung nhân vật / thuật ngữ / mạch truyện khi dịch.",
-    route: ["POST", "/api/projects"],
-    parameters: {
-      name: str("Tên dự án."),
-      type: str("Thể loại.", { default: "Truyện / Hoạt hình" }),
-      style: str("Phong cách dịch & giọng văn mong muốn."),
-      synopsis: str("Cốt truyện chung, càng chi tiết AI dịch càng đúng mạch."),
-      voice: P_VOICE,
-    },
-    required: ["name"],
-  },
-  {
-    name: "update_project",
-    description:
-      "Sửa thông tin dự án Reup: ngữ cảnh chung, giọng đọc dùng chung cho mọi nhân vật (chọn từ list_options.voices ở Tài nguyên), danh sách nhân vật và thuật ngữ.",
-    route: ["POST", "/api/projects/save"],
-    parameters: {
-      id: str("Mã dự án (id trong list_options.projects)."),
-      name: str("Tên dự án."),
-      type: str("Thể loại."),
-      style: str("Phong cách dịch & giọng văn."),
-      synopsis: str("Cốt truyện chung."),
-      voice: P_VOICE,
-      characters: {
-        type: "array",
-        description: "Toàn bộ danh sách nhân vật (ghi đè danh sách cũ). Mọi nhân vật dùng chung giọng đọc của dự án (field voice trên).",
-        items: {
-          type: "object",
-          properties: {
-            zh: str("Tên gốc."), vi: str("Tên Việt."), pronouns: str("Xưng hô."), role: str("Vai trò."),
-            personality: str("Tính cách, giọng điệu."),
-          },
-        },
-      },
-      glossary: { type: "array", description: "Toàn bộ từ điển thuật ngữ (ghi đè danh sách cũ).", items: { type: "object", properties: { zh: str("Từ gốc."), vi: str("Dịch tiếng Việt.") } } },
-    },
-    required: ["id"],
-  },
-  { name: "delete_project", description: "Xóa 1 dự án Reup (chỉ mất ngữ cảnh AI; các file video vẫn được giữ, trở về trạng thái chưa gán dự án).", route: ["POST", "/api/projects/delete"], parameters: { id: str("Mã dự án (id trong list_options.projects).") }, required: ["id"] },
+  { slot: "project" }, // list_projects, create_project, update_project, delete_project: server/modules/project/functions.mjs
   {
     name: "create_voice",
     description: "Thêm giọng clone mới vào Tài nguyên (dùng chung mọi dự án) từ 1 video đã tải (rel_path) hoặc 1 link audio/video.",
@@ -459,9 +412,23 @@ function checkArgs(def, args) {
   return "";
 }
 
+/** Xếp hàm của registry theo FUNCTIONS (slot module), phần còn lại nối cuối. */
+function listingOrder(functions) {
+  const out = [];
+  const placed = new Set();
+  const put = (f) => placed.has(f.name) || (placed.add(f.name), out.push(f));
+  for (const item of FUNCTIONS) {
+    if (item.slot) functions.filter((f) => f.module === item.slot).forEach(put);
+    else put(functions.find((f) => f.name === item.name));
+  }
+  functions.forEach(put);
+  return out;
+}
+
 /** functions: mọi hàm do các module khai (ctx.functions() của loader). */
 export default async function functionRoutes(app, functions) {
   const BY_NAME = new Map(functions.map((f) => [f.name, f]));
+  const LISTED = listingOrder(functions);
   // Server bị tắt giữa chừng: các lần gọi còn "đang chạy" không bao giờ có kết quả nữa.
   db.prepare("UPDATE function_calls SET status = 'stopped', error = 'Server khởi động lại khi tác vụ chưa xong.', ended_at = ? WHERE status IN ('queued', 'running')").run(nowIso());
 
@@ -481,7 +448,7 @@ export default async function functionRoutes(app, functions) {
 
   async function call(name, args = {}, waitSec = 0) {
     const def = BY_NAME.get(name);
-    if (!def) return { ok: false, status: "error", error: `Không có hàm "${name}". Các hàm: ${functions.map((f) => f.name).join(", ")}.` };
+    if (!def) return { ok: false, status: "error", error: `Không có hàm "${name}". Các hàm: ${LISTED.map((f) => f.name).join(", ")}.` };
     // Hàm chỉ để xem trạng thái thì không ghi vào nhật ký (model gọi lặp lại nhiều lần khi chờ).
     if (def.nolog) {
       try {
@@ -518,7 +485,7 @@ export default async function functionRoutes(app, functions) {
 
   app.get("/api/functions", async () => ({
     ok: true,
-    functions: functions.map((f) => ({
+    functions: LISTED.map((f) => ({
       type: "function",
       function: {
         name: f.name,

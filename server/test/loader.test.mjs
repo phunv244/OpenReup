@@ -63,3 +63,11 @@ test("ctx.functions() đóng băng: module không sửa được danh sách hàm
   assert.throws(() => got.push({ name: "x" }), TypeError);
   assert.throws(() => { got[0].name = "x"; }, TypeError);
 });
+
+test("routes nhận service của chính module; mỗi hàm kèm tên module khai nó", async () => {
+  const app = Fastify();
+  const { functions } = await loadModules(app, [{ name: "p", init: () => ({ hi: () => "chào" }), routes: (a, ctx, svc) => a.get("/p", async () => svc.hi()), functions: [{ name: "f" }] }]);
+  assert.equal((await app.inject({ url: "/p" })).body, "chào");
+  assert.equal(functions[0].module, "p");
+  await app.close();
+});

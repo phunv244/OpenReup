@@ -1,7 +1,8 @@
 /**
  * Dựng app Fastify (chưa listen): server/index.mjs chạy thật, test gọi qua app.inject.
  * Server ghép từ các module (server/core/loader.mjs): thêm chức năng = thêm 1 module vào MODULES.
- * Hiện các module bọc lại file route cũ ở server/routes/ (đường dẫn API giữ nguyên); sẽ chuyển dần sang server/modules/.
+ * Module đã tách: server/modules/<tên>/ (index, routes, service, repo, functions). Các module còn lại bọc file route cũ
+ * ở server/routes/ (đường dẫn API giữ nguyên) và sẽ chuyển dần sang server/modules/.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -12,23 +13,23 @@ import { loadModules } from "./core/loader.mjs";
 import { runMigrations } from "./lib/migrate.mjs";
 import { clearVoiceTmp } from "./lib/voices.mjs";
 import dubRoutes from "./routes/dub.mjs";
-import projectRoutes from "./routes/projects.mjs";
 import sourceRoutes from "./routes/sources.mjs";
 import taskRoutes from "./routes/tasks.mjs";
 import resourceRoutes from "./routes/resources.mjs";
 import voiceRoutes from "./routes/voices.mjs";
 import functionRoutes, { FUNCTIONS } from "./routes/functions.mjs";
+import projectModule from "./modules/project/index.mjs";
 
 /** Danh sách module của server. Thứ tự nạp do loader sắp theo deps. */
 export const MODULES = [
   { name: "tasks", routes: taskRoutes },
   { name: "source", routes: sourceRoutes },
-  { name: "project", routes: projectRoutes },
+  projectModule,
   { name: "voices", routes: voiceRoutes },
   { name: "resources", routes: resourceRoutes },
   { name: "dub", routes: dubRoutes },
   // Tạm giữ toàn bộ định nghĩa hàm ở đây; mỗi module chuyển sang server/modules/ sẽ mang hàm của nó theo.
-  { name: "functions", functions: FUNCTIONS, routes: (app, ctx) => functionRoutes(app, ctx.functions()) },
+  { name: "functions", functions: FUNCTIONS.filter((f) => !f.slot), routes: (app, ctx) => functionRoutes(app, ctx.functions()) },
 ];
 
 export async function buildApp({ logger = false } = {}) {

@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 
 from pipeline.common import NARRATOR_ZH, log, read_json, write_json_atomic
 from pipeline.job import Job, Progress
-from pipeline.store import story_project_path
+from pipeline.store import STORY_PROJECTS_DIR, story_project_path
 
 AGY_BIN = shutil.which("agy") or str(Path.home() / ".local" / "bin" / "agy")
 
@@ -99,12 +99,13 @@ class Translator:
     MAX_CHARS, MAX_GLOSS = 200, 600
 
     def __init__(self, job: Job, story_ctx: Dict, project_id: str, workers: int, prog: Progress, on_chunk_done, agy_model: str = "",
-                 ask_who: bool = False):
+                 ask_who: bool = False, story_dir: Path = STORY_PROJECTS_DIR):
         self.job = job
         self.ask_who = ask_who  # chỉ hỏi AI "ai nói câu này" khi lồng tiếng nhiều giọng (bước phân vai cần)
         self.agy_model = agy_model  # "" = model mặc định của Antigravity (id đã gồm mức suy nghĩ, vd gemini-4-neon-high)
         self.ctx = story_ctx or {}
         self.project_id = project_id
+        self.story_dir = story_dir
         self.prog = prog
         self.on_chunk_done = on_chunk_done or (lambda chunk: None)
         self.pool = ThreadPoolExecutor(max_workers=max(1, workers), thread_name_prefix="translate")
@@ -330,7 +331,7 @@ class Translator:
             summaries = list(self.summaries)
         if not (add_chars or add_gloss or notes_add or final):
             return
-        p = story_project_path(self.project_id)
+        p = story_project_path(self.project_id, self.story_dir)
         proj = read_json(p, None)
         if not proj:
             return

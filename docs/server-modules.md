@@ -28,7 +28,7 @@ Thêm chức năng = thêm 1 thư mục `server/modules/<tên>/` rồi thêm mod
 
 `ai` chỉ giữ phần server tự làm với AI: danh sách model dịch của Antigravity (gọi `agy models`, cache, gom theo mức suy nghĩ) và kiểm tra id model. Những phần dưới đây cố ý không chuyển vào:
 
-- Dịch và nhận diện giọng nói chạy trong `pipeline/` (điều phối bởi `pipeline/dub_video.py`, đường dẫn script lấy từ hằng số `PIPELINE` trong `config.mjs`), do module `dub` khởi chạy; server không gọi model nào trực tiếp. Tách ra thì `ai` chỉ còn bọc lại việc chạy script của `dub`.
+- Dịch và nhận diện giọng nói chạy trong `pipeline/` (điều phối bởi `pipeline/dub_video.py`, đường dẫn script lấy từ hằng số `PY_SCRIPTS` trong `config.mjs`), do module `dub` khởi chạy; server không gọi model nào trực tiếp. Tách ra thì `ai` chỉ còn bọc lại việc chạy script của `dub`.
 - Mô hình nhận diện (`/api/asr-models*`, hàm `download_asr_model`) là tài nguyên tải về máy giống font và giọng đọc, nên ở lại `resources` (đã duyệt ở `a6b5c40`).
 - `list_options` gom giá trị hợp lệ của nhiều module (giọng, mô hình nhận diện, model dịch, dự án, font) qua HTTP (không import module khác), nằm ở `resources`. `get_task`, `stop_task`, `get_call`, `list_calls` thuộc module `tasks`.
 - Hàm `/api/functions` duy nhất của `ai` là `refresh_ai_models` (gọi `/api/agy-models/refresh`); danh sách sau khi làm mới đọc lại qua `list_options.agy_models`.

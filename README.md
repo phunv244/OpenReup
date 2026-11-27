@@ -33,7 +33,7 @@ Toàn bộ pipeline được thiết kế để chạy nhiều ngày liên tục
 
 Kiểm tra nhanh phần lõi (không cần mạng): `.venv/bin/python pipeline/tests/test_dub_video.py`
 
-Mã pipeline nằm trong gói `pipeline/`, mỗi bước một module; server gọi script qua hằng số `PIPELINE` trong `server/config.mjs`:
+Mã pipeline nằm trong gói `pipeline/`, mỗi bước một module; server gọi script qua hằng số `PY_SCRIPTS` trong `server/config.mjs`:
 
 | Module | Việc |
 | --- | --- |

@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 from pipeline.common import NARRATOR_ZH, fmt_clock, log, read_json, run_cmd, write_json_atomic
-from pipeline.store import story_project_path
+from pipeline.store import STORY_PROJECTS_DIR, story_project_path
 from pipeline.tts import VOICES_DIR, VieNeuEngine
 
 if TYPE_CHECKING:
@@ -149,9 +149,9 @@ def match_characters(segments: List[Dict], characters: List[Dict], known_zh) -> 
     return out
 
 
-def save_character_voices(project_id: str, voices: Dict[str, str]) -> None:
+def save_character_voices(project_id: str, voices: Dict[str, str], story_dir: Path = STORY_PROJECTS_DIR) -> None:
     """Ghi giọng máy vừa tự chọn vào nhân vật chưa có giọng trong dự án, để các video sau dùng lại đúng giọng đó."""
-    p = story_project_path(project_id) if project_id else None
+    p = story_project_path(project_id, story_dir) if project_id else None
     proj = read_json(p, None) if project_id and voices else None
     if not proj:
         return

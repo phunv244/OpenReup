@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tự kiểm tra phần lõi không cần mạng/whisper: .venv/bin/python pipeline/tests/test_dub_video.py"""
 import atexit
+import json
 import os
 import shutil
 import subprocess
@@ -335,16 +336,20 @@ def test_video_encode_args_and_render_parts():
 
 def test_paths_from_args():
     with tempfile.TemporaryDirectory() as tmp:
-        old = store.STORY_PROJECTS_DIR
-        try:
-            store.STORY_PROJECTS_DIR = Path(tmp)
-            assert store.story_project_path("a") == Path(tmp) / "a.json"  # dạng cũ
-            (Path(tmp) / "a").mkdir()
-            (Path(tmp) / "a" / "project.json").write_text("{}")
-            assert store.story_project_path("a") == Path(tmp) / "a" / "project.json"  # dạng thư mục
-            assert store.story_project_path("../a") == Path(tmp) / "a" / "project.json"  # không thoát ra ngoài
-        finally:
-            store.STORY_PROJECTS_DIR = old
+        d = Path(tmp)
+        assert store.story_project_path("a", d) == d / "a.json"  # dạng cũ
+        (d / "a").mkdir()
+        (d / "a" / "project.json").write_text("{}")
+        assert store.story_project_path("a", d) == d / "a" / "project.json"  # dạng thư mục
+        assert store.story_project_path("../a", d) == d / "a" / "project.json"  # không thoát ra ngoài
+        ctx = {"name": "x"}
+        (d / "a" / "project.json").write_text(json.dumps(ctx))
+        assert store.load_story_context("a", d) == ctx
+        idx = d / "idx" / "dubbed.json"
+        idx.parent.mkdir()
+        store.update_dubbed_index({"job_id": "j1", "updated_at": "1"}, idx)
+        store.update_dubbed_index({"job_id": "j1", "updated_at": "2"}, idx)
+        assert [v["updated_at"] for v in json.loads(idx.read_text())["videos"]] == ["2"]
         assert common.rel_to_base(paths.BASE_DIR / "downloads" / "dubbed") == "downloads/dubbed"
         assert common.from_base("downloads/dubbed") == paths.BASE_DIR / "downloads" / "dubbed"
         assert common.rel_to_base(Path(tmp)) == str(Path(tmp).resolve())

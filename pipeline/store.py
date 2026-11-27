@@ -1,7 +1,9 @@
 """Lưu trữ dự án lồng tiếng: SQLite câu thoại, file project, dự án truyện, danh sách bản lồng tiếng, kiểm job_id.
 
-Các đường dẫn ở đây có thể bị dub_video.main() đổi theo tham số --index-file/--story-dir/--out-dir."""
+Hằng số đường dẫn ở đây là mặc định, không bị đổi lúc chạy; tham số --out-dir/--project-file/--index-file/--story-dir
+được gói vào StorePaths và truyền vào từng hàm."""
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -18,6 +20,15 @@ STORY_PROJECTS_DIR = DATA_DIR / "projects"
 DB_PATH = DATA_DIR / "openreup.db"  # câu thoại của mọi bản lồng tiếng (server.mjs đọc/sửa cùng file này)
 
 DUBBED_INDEX_JSON = DATA_DIR / "dubbed.json"
+
+
+@dataclass(frozen=True)
+class StorePaths:
+    """Nơi một lượt lồng tiếng đọc/ghi kết quả (server truyền qua tham số dòng lệnh; bỏ trống = mặc định ở trên)."""
+    out_dir: Path = DUB_OUT_DIR  # <job>.mp4 / <job>.srt
+    projects_dir: Path = PROJECTS_DIR  # file project lồng tiếng <job>.json
+    story_dir: Path = STORY_PROJECTS_DIR  # dự án truyện (ngữ cảnh dịch, giọng nhân vật)
+    index_json: Path = DUBBED_INDEX_JSON  # danh sách bản lồng tiếng
 
 
 def open_db():
@@ -69,26 +80,26 @@ def load_segments(job_id: str) -> List[Dict]:
     return out
 
 
-def story_project_path(project_id: str) -> Path:
+def story_project_path(project_id: str, story_dir: Path = STORY_PROJECTS_DIR) -> Path:
     """File dự án truyện: dạng thư mục <dir>/<id>/project.json (mới) hoặc <dir>/<id>.json (cũ)."""
     pid = Path(project_id).name
-    folder = STORY_PROJECTS_DIR / pid / "project.json"
-    return folder if folder.is_file() else STORY_PROJECTS_DIR / f"{pid}.json"
+    folder = story_dir / pid / "project.json"
+    return folder if folder.is_file() else story_dir / f"{pid}.json"
 
 
-def load_story_context(project_id: str) -> Dict:
+def load_story_context(project_id: str, story_dir: Path = STORY_PROJECTS_DIR) -> Dict:
     if not project_id:
         return {}
-    return read_json(story_project_path(project_id), {})
+    return read_json(story_project_path(project_id, story_dir), {})
 
 
-def update_dubbed_index(entry: Dict) -> None:
-    items = read_json(DUBBED_INDEX_JSON, {}).get("videos", [])
+def update_dubbed_index(entry: Dict, index_json: Path = DUBBED_INDEX_JSON) -> None:
+    items = read_json(index_json, {}).get("videos", [])
     by_id = {x["job_id"]: x for x in items if "job_id" in x}
     by_id[entry["job_id"]] = entry
     merged = sorted(by_id.values(), key=lambda x: x.get("updated_at", ""), reverse=True)
     write_json_atomic(
-        DUBBED_INDEX_JSON,
+        index_json,
         {"updated_at": datetime.now().isoformat(timespec="seconds"), "total": len(merged), "videos": merged},
         indent=2,
     )

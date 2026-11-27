@@ -182,14 +182,15 @@ function usePrefs() {
   const [prefs, setPrefs] = useState<{ view: View; filter: Filter; sort: Sort }>({ view: "grid", filter: "all", sort: "updated" });
   useEffect(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem(PREF_KEY) || "{}");
-      setPrefs((p) => ({ ...p, ...saved }));
+      // Chỉ khôi phục kiểu hiển thị và sắp xếp; bộ lọc luôn về "Tất cả" khi mở trang.
+      const { view, sort } = JSON.parse(localStorage.getItem(PREF_KEY) || "{}");
+      setPrefs((p) => ({ ...p, ...(view && { view }), ...(sort && { sort }) }));
     } catch {}
   }, []);
   const update = (patch: Partial<typeof prefs>) =>
     setPrefs((p) => {
       const next = { ...p, ...patch };
-      localStorage.setItem(PREF_KEY, JSON.stringify(next));
+      localStorage.setItem(PREF_KEY, JSON.stringify({ view: next.view, sort: next.sort }));
       return next;
     });
   return [prefs, update] as const;
@@ -307,11 +308,15 @@ export default function ProjectsPage() {
               <span />
             </div>
             {shown.map((p) => (
-              <ProjectRow key={p.id} p={p} />
+              <div role="listitem" key={p.id}>
+                <ProjectRow p={p} />
+              </div>
             ))}
-            <button className="prow prow-new" type="button" onClick={() => setCreating(true)}>
-              <Icon name="plus" size={16} /> Tạo dự án mới
-            </button>
+            <div role="listitem">
+              <button className="prow prow-new" type="button" onClick={() => setCreating(true)}>
+                <Icon name="plus" size={16} /> Tạo dự án mới
+              </button>
+            </div>
           </div>
         ) : (
           <div className="proj-grid">

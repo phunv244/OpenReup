@@ -18,11 +18,36 @@ export const useOpenDrawer = () => useContext(DrawerContext);
 const RailContext = createContext<{ open: boolean; toggle: (v?: boolean) => void }>({ open: false, toggle: () => {} });
 export const useRail = () => useContext(RailContext);
 
+/** Thanh trái thu gọn thành dải icon (data-sb="mini" trên <html>, nhớ trong localStorage) — thêm chỗ làm việc trên màn rộng. */
+function useSidebarMini() {
+  const [mini, setMini] = useState(false);
+  useEffect(() => setMini(document.documentElement.dataset.sb === "mini"), []);
+  // Đọc trạng thái thật từ <html> (không dùng giá trị state cũ trong closure của phím tắt).
+  const toggle = () => {
+    const next = document.documentElement.dataset.sb !== "mini";
+    document.documentElement.dataset.sb = next ? "mini" : "full";
+    localStorage.setItem("sb", next ? "mini" : "full");
+    setMini(next);
+  };
+  // Ctrl/⌘ + B bật/tắt (như VS Code); ở màn hẹp thanh trái đã là menu trượt nên bỏ qua.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "b" && window.innerWidth > 900) {
+        e.preventDefault();
+        toggle();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  return { mini, toggle };
+}
+
 const clean = (p: string) => p.replace(/\/+$/, "") || "/";
 
 function NavLink({ href, icon, label, count, active }: { href: string; icon: string; label: string; count?: number; active: boolean }) {
   return (
-    <Link className={`nav-link ${active ? "active" : ""}`} href={href} aria-current={active ? "page" : undefined}>
+    <Link className={`nav-link ${active ? "active" : ""}`} href={href} title={label} aria-current={active ? "page" : undefined}>
       <Icon name={icon} />
       <span>{label}</span>
       {count != null && <span className="nav-count">{count}</span>}
@@ -42,8 +67,8 @@ function Nav() {
     const sub = path.split("/")[2] || "videos";
     return (
       <nav className="nav" aria-label="Điều hướng dự án">
-        <Link className="sb-back" href="/">
-          <Icon name="back" size={15} /> Tất cả Reup
+        <Link className="sb-back" href="/" title="Tất cả Reup">
+          <Icon name="back" size={15} /> <span>Tất cả Reup</span>
         </Link>
         <div className="sb-proj">
           <div className="sb-proj-label">Reup · Dự án</div>
@@ -54,7 +79,7 @@ function Nav() {
         <NavLink href={projHref(pid, "videos")} icon="film" label="Video & Lồng tiếng" active={sub === "videos" || sub === "video"}
           count={sources.filter((s) => s.project_id === pid).length} />
         <NavLink href={projHref(pid, "douyin")} icon="list" label="Kho Douyin" active={sub === "douyin"} count={videos.length} />
-        <button className="nav-link" type="button" onClick={() => openDrawer(pid)}>
+        <button className="nav-link" type="button" title="Ngữ cảnh AI" onClick={() => openDrawer(pid)}>
           <Icon name="brain" />
           <span>Ngữ cảnh AI</span>
           <span className="nav-count">{(proj.characters || []).length + (proj.glossary || []).length}</span>
@@ -109,6 +134,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       localStorage.setItem("rail", next ? "open" : "closed");
       return next;
     });
+  const sb = useSidebarMini();
   // Đóng menu trượt (màn hẹp) khi chuyển trang
   useEffect(() => document.body.classList.remove("sb-open"), [path]);
 
@@ -118,7 +144,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <div className="app">
         <aside className="sidebar">
           <Resizer cssVar="sb-w" min={200} max={420} side="left" label="Kéo để đổi độ rộng thanh bên trái" />
-          <Link className="brand" href="/">
+          <button
+            className="icon-btn sb-collapse"
+            type="button"
+            title={sb.mini ? "Mở rộng thanh bên (Ctrl+B)" : "Thu gọn thanh bên (Ctrl+B)"}
+            aria-label={sb.mini ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
+            aria-expanded={!sb.mini}
+            onClick={sb.toggle}
+          >
+            <Icon name={sb.mini ? "sidebarOpen" : "sidebar"} size={17} />
+          </button>
+          <Link className="brand" href="/" title="OpenReup Studio">
             <span className="brand-logo">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M8 5v14l11-7z" />
@@ -137,7 +173,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <div className="sb-foot">
             <TaskCard variant="sidebar" />
             <div className="sb-tools">
-              <Link className="sb-tool" href="/help/">
+              <Link className="sb-tool" href="/help/" title="Hướng dẫn">
                 <Icon name="help" size={16} />
                 <span>Hướng dẫn</span>
               </Link>

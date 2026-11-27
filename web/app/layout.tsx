@@ -14,6 +14,7 @@ const BOOT = `(() => {
   const d = document.documentElement;
   d.dataset.theme = localStorage.getItem("theme") || "dark";
   d.dataset.rail = localStorage.getItem("rail") === "open" ? "open" : "closed";
+  d.dataset.sb = localStorage.getItem("sb") === "mini" ? "mini" : "full";
   for (const k of ["sb-w", "rail-w"]) {
     const w = Number(localStorage.getItem(k));
     if (w) d.style.setProperty("--" + k, w + "px");

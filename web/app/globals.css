@@ -230,7 +230,34 @@ code {
 }
 .sb-tool:hover { background: var(--surface-3); color: var(--text); text-decoration: none; }
 
-.main { flex: 1; min-width: 0; margin-left: var(--sb-w); display: flex; flex-direction: column; }
+.main { flex: 1; min-width: 0; margin-left: var(--sb-w); display: flex; flex-direction: column; transition: margin-left 0.2s var(--ease); }
+
+/* Nút thu gọn thanh trái (Ctrl+B): mở rộng thì nằm góc phải trên, thu gọn thì nằm trên logo. */
+.sb-collapse { position: absolute; top: 22px; right: 10px; width: 28px; height: 28px; color: var(--muted); z-index: 6; }
+.sb-collapse:hover { color: var(--text); }
+.brand { padding-right: 44px; }
+@media (max-width: 900px) { .sb-collapse { display: none; } .brand { padding-right: 18px; } }
+/* Thanh trái dạng dải icon: chỉ giữ icon, tên hiện ở tooltip; nội dung chính rộng thêm ~180px. */
+@media (min-width: 901px) {
+  [data-sb="mini"] { --sb-mini: 64px; }
+  [data-sb="mini"] .sidebar { width: var(--sb-mini); transition: width 0.2s var(--ease); }
+  [data-sb="mini"] .main { margin-left: var(--sb-mini); }
+  [data-sb="mini"] .sidebar > .resizer,
+  [data-sb="mini"] .brand > span:not(.brand-logo),
+  [data-sb="mini"] .nav-link > span,
+  [data-sb="mini"] .sb-back > span,
+  [data-sb="mini"] .sb-proj,
+  [data-sb="mini"] .sb-foot .js-task,
+  [data-sb="mini"] .sb-tool > span { display: none; }
+  [data-sb="mini"] .sb-collapse { position: static; margin: 14px auto 0; }
+  [data-sb="mini"] .brand { justify-content: center; padding: 10px 0 12px; }
+  [data-sb="mini"] .nav { padding: 4px 8px 14px; align-items: center; }
+  [data-sb="mini"] .nav-link { width: 44px; justify-content: center; padding: 10px 0; }
+  [data-sb="mini"] .nav-link:hover, [data-sb="mini"] .nav-link:active { transform: none; }
+  [data-sb="mini"] .sb-back { justify-content: center; padding: 6px 0 10px; }
+  [data-sb="mini"] .sb-foot { padding: 10px 8px; }
+  [data-sb="mini"] .sb-tools { flex-direction: column; }
+}
 .topbar {
   position: sticky;
   top: 0;
@@ -1397,7 +1424,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
   background: #000; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
 }
 .stage-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 14px; background: var(--surface); border-bottom: 1px solid var(--border); }
-.stage-bar .back-link { margin: 0; }
+.stage-bar .back-link { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .stage-chip { font-size: 11.5px; color: var(--muted); padding: 0 6px; white-space: nowrap; }
 .stage-video { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #000; display: block; }
 .back-link { display: inline-block; color: var(--muted); font-size: 13px; font-weight: 550; }

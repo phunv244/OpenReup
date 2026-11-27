@@ -42,6 +42,10 @@ const ICONS: Record<string, string> = {
   scissors: '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M20 4L8 14M8 10L20 20M9 12l2 0"/>',
   merge: '<path d="M8 4v6a4 4 0 0 0 4 4h4M16 4v16M8 20v-6"/><path d="M13 11l3 3-3 3"/>',
   zoomIn: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/>',
+  sidebar: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M14 10l-2 2 2 2"/>',
+  sidebarOpen: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M13 10l2 2-2 2"/>',
+  compare: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 3v18M6.5 12h2M15.5 12h2"/>',
+  image: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 16l-5-5-9 8"/>',
   zoomOut: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6"/>',
 };
 

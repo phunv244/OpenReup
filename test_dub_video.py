@@ -320,6 +320,25 @@ def test_video_encode_args_and_render_parts():
         assert part_mp4.exists() and part_mp4.stat().st_size > 1000
 
 
+
+def test_paths_from_args():
+    with tempfile.TemporaryDirectory() as tmp:
+        old = d.STORY_PROJECTS_DIR
+        try:
+            d.STORY_PROJECTS_DIR = Path(tmp)
+            assert d.story_project_path("a") == Path(tmp) / "a.json"  # dạng cũ
+            (Path(tmp) / "a").mkdir()
+            (Path(tmp) / "a" / "project.json").write_text("{}")
+            assert d.story_project_path("a") == Path(tmp) / "a" / "project.json"  # dạng thư mục
+            assert d.story_project_path("../a") == Path(tmp) / "a" / "project.json"  # không thoát ra ngoài
+        finally:
+            d.STORY_PROJECTS_DIR = old
+        assert d.rel_to_base(d.BASE_DIR / "downloads" / "dubbed") == "downloads/dubbed"
+        assert d.from_base("downloads/dubbed") == d.BASE_DIR / "downloads" / "dubbed"
+        assert d.rel_to_base(Path(tmp)) == str(Path(tmp).resolve())
+        assert d.Job("j1", Path(tmp) / "w").meta_path == Path(tmp) / "w" / "meta.json"
+        assert d.Job("j1").work == d.WORK_ROOT / "j1"
+
 if __name__ == "__main__":
     import os
 

@@ -11,22 +11,19 @@ import fastifyStatic from "@fastify/static";
 import { API_TOKEN, DOWNLOADS_DIR, WEB_OUT_DIR } from "./config.mjs";
 import { loadModules } from "./core/loader.mjs";
 import { runMigrations } from "./lib/migrate.mjs";
-import { clearVoiceTmp } from "./lib/voices.mjs";
 import taskRoutes from "./routes/tasks.mjs";
-import resourceRoutes from "./routes/resources.mjs";
-import voiceRoutes from "./routes/voices.mjs";
 import functionRoutes, { FUNCTIONS } from "./routes/functions.mjs";
 import dubModule from "./modules/dub/index.mjs";
 import projectModule from "./modules/project/index.mjs";
 import sourcesModule from "./modules/sources/index.mjs";
+import resourcesModule from "./modules/resources/index.mjs";
 
 /** Danh sách module của server. Thứ tự nạp do loader sắp theo deps. */
 export const MODULES = [
   { name: "tasks", routes: taskRoutes },
   sourcesModule,
   projectModule,
-  { name: "voices", routes: voiceRoutes },
-  { name: "resources", routes: resourceRoutes },
+  resourcesModule,
   dubModule,
   // Tạm giữ toàn bộ định nghĩa hàm ở đây; mỗi module chuyển sang server/modules/ sẽ mang hàm của nó theo.
   { name: "functions", functions: FUNCTIONS.filter((f) => !f.slot && !f.ref), routes: (app, ctx) => functionRoutes(app, ctx.functions()) },
@@ -34,7 +31,6 @@ export const MODULES = [
 
 export async function buildApp({ logger = false } = {}) {
   runMigrations();
-  clearVoiceTmp();
 
   const app = Fastify({ bodyLimit: 8_000_000, logger });
 

@@ -18,7 +18,8 @@ Thêm chức năng = thêm 1 thư mục `server/modules/<tên>/` rồi thêm mod
 | project | đã tách (`server/modules/project/`), `deps: ["dub"]` |
 | dub | đã tách (`server/modules/dub/`); các route sửa câu thoại vẫn gọi DB trực tiếp trong `routes.mjs` |
 | sources | đã tách (`server/modules/sources/`), `deps: ["dub", "project"]`; job lồng tiếng của video nguồn lấy qua `ctx.get("dub")` (`jobsBySource`, `removeWorkDir`, `removeJob`, `busyError`) |
-| tasks, voices, resources, functions | còn bọc `server/routes/*.mjs` |
+| resources | đã tách (`server/modules/resources/`), `deps: ["dub", "project", "sources"]`; font, giọng đọc, mô hình nhận diện, xem trước phụ đề (gộp `routes/voices.mjs` + `routes/resources.mjs` + `lib/voices.mjs`). Giọng của dự án qua `ctx.get("project")` (`addVoice`, `dropVoice`), video nguồn qua `ctx.get("sources").fileOf`, chặn xóa khi đang lồng tiếng qua `ctx.get("dub").busyError`. `lib/fonts.mjs` chỉ còn `checkSubStyle`/`validFontFamily` dùng chung với `dub`. Mọi file ghi ra nằm dưới `REUP_DATA_DIR` (`fonts/`, `fonts.json`, `voices/`, `voices.json`) |
+| tasks, functions | còn bọc `server/routes/*.mjs` |
 
 ## Checklist bước 6 (module `dub`)
 
@@ -41,3 +42,5 @@ Thêm chức năng = thêm 1 thư mục `server/modules/<tên>/` rồi thêm mod
 `server/test/helpers.mjs` (`setupApp`) đặt `REUP_DATA_DIR` và `REUP_MEDIA_ROOT` cùng trỏ vào một thư mục tạm trong `/tmp`. Hàm này phải chạy trước mọi import của server, vì `config.mjs` đọc các biến môi trường ngay lúc nạp. Server thật không đặt 2 biến này.
 
 Script tải `download_videos.mjs` (Douyin), `download_bilibili.mjs` (Bilibili/YouTube) và `list_channel_web.mjs` chạy như tiến trình con, kế thừa env của server nên cũng ghi theo `REUP_MEDIA_ROOT` (`downloads/`) và `REUP_DATA_DIR` (`videos.json`, `bilibili.json`). `lib/tasks.mjs` tính đường dẫn `SAVED_FILE:::` từ `MEDIA_ROOT`. Còn dùng thư mục repo: `chrome_profile/` (đăng nhập Douyin) và `cookies.txt`.
+
+`asr.py` (`set-vad`, `download`) vẫn ghi theo thư mục cố định `data/asr_models/` cạnh script, chưa theo `REUP_DATA_DIR`: test mô hình nhận diện thật sẽ ghi vào `data/` thật. Test API dùng Python giả (`REUP_PYTHON`) nên không chạm tới. `voice_tool.py` và `subtitles.py` nhận đường dẫn ra qua `--out` nên đã theo thư mục tạm.

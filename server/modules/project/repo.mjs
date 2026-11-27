@@ -20,6 +20,25 @@ export const projectRepo = {
     fs.mkdirSync(STORY_PROJECTS_DIR, { recursive: true });
     writeJson(projectFile(proj.id), proj);
   },
+  /** Sửa 1 dự án tại chỗ (fn(proj) đổi trực tiếp); false nếu không có dự án. */
+  update(id, fn) {
+    const file = projectFile(id);
+    const proj = fs.existsSync(file) ? readJson(file, null) : null;
+    if (!proj) return false;
+    fn(proj);
+    writeJson(file, proj);
+    return true;
+  },
+  /** Sửa mọi dự án: fn(proj) trả true thì ghi lại file đó. */
+  updateAll(fn) {
+    if (!fs.existsSync(STORY_PROJECTS_DIR)) return;
+    for (const f of fs.readdirSync(STORY_PROJECTS_DIR)) {
+      if (!f.endsWith(".json")) continue;
+      const file = path.join(STORY_PROJECTS_DIR, f);
+      const proj = readJson(file, null);
+      if (proj && fn(proj)) writeJson(file, proj);
+    }
+  },
   /** Xóa file dự án; video nguồn của dự án thành "chưa gán dự án" (file media không bị xóa). */
   remove(id) {
     fs.rmSync(projectFile(id), { force: true });

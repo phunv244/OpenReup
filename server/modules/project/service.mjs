@@ -90,6 +90,19 @@ export function createProjectService(repo, dub) {
       return updated;
     },
 
+    /** Thêm 1 giọng vào danh sách giọng của dự án (dự án không có thì bỏ qua). */
+    addVoice(id, voiceId) {
+      repo.update(id, (proj) => (proj.voices = [...new Set([...(proj.voices || []), voiceId])]));
+    },
+    /** Gỡ 1 giọng khỏi mọi dự án đang chọn nó (giọng bị xóa khỏi Tài nguyên). */
+    dropVoice(voiceId) {
+      repo.updateAll((proj) => {
+        if (!proj.voices?.includes(voiceId)) return false;
+        proj.voices = proj.voices.filter((x) => x !== voiceId);
+        return true;
+      });
+    },
+
     /** Xóa dự án; bản lồng tiếng của nó về "chưa gán". Đang lồng tiếng video của dự án thì từ chối (Python sẽ ghi lại project_id cũ). */
     remove(id) {
       if (!id) return;

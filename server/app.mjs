@@ -1,12 +1,14 @@
 /**
  * Dựng app Fastify (chưa listen): server/index.mjs chạy thật, test gọi qua app.inject.
- * Mỗi nhóm API nằm trong một file ở server/routes/.
+ * Server ghép từ các module (server/core/loader.mjs): thêm chức năng = thêm 1 module vào MODULES.
+ * Hiện các module bọc lại file route cũ ở server/routes/ (đường dẫn API giữ nguyên); sẽ chuyển dần sang server/modules/.
  */
 import fs from "node:fs";
 import path from "node:path";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import { API_TOKEN, DOWNLOADS_DIR, WEB_OUT_DIR } from "./config.mjs";
+import { loadModules } from "./core/loader.mjs";
 import { runMigrations } from "./lib/migrate.mjs";
 import { clearVoiceTmp } from "./lib/voices.mjs";
 import dubRoutes from "./routes/dub.mjs";
@@ -15,7 +17,19 @@ import sourceRoutes from "./routes/sources.mjs";
 import taskRoutes from "./routes/tasks.mjs";
 import resourceRoutes from "./routes/resources.mjs";
 import voiceRoutes from "./routes/voices.mjs";
-import functionRoutes from "./routes/functions.mjs";
+import functionRoutes, { FUNCTIONS } from "./routes/functions.mjs";
+
+/** Danh sách module của server. Thứ tự nạp do loader sắp theo deps. */
+export const MODULES = [
+  { name: "tasks", routes: taskRoutes },
+  { name: "source", routes: sourceRoutes },
+  { name: "project", routes: projectRoutes },
+  { name: "voices", routes: voiceRoutes },
+  { name: "resources", routes: resourceRoutes },
+  { name: "dub", routes: dubRoutes },
+  // Tạm giữ toàn bộ định nghĩa hàm ở đây; mỗi module chuyển sang server/modules/ sẽ mang hàm của nó theo.
+  { name: "functions", functions: FUNCTIONS, routes: (app, ctx) => functionRoutes(app, ctx.functions()) },
+];
 
 export async function buildApp({ logger = false } = {}) {
   runMigrations();
@@ -82,13 +96,7 @@ export async function buildApp({ logger = false } = {}) {
     return fs.existsSync(path.join(WEB_OUT_DIR, "404.html")) ? reply.code(404).sendFile("404.html") : reply.code(404).send("Not found");
   });
 
-  await app.register(taskRoutes);
-  await app.register(sourceRoutes);
-  await app.register(projectRoutes);
-  await app.register(voiceRoutes);
-  await app.register(resourceRoutes);
-  await app.register(dubRoutes);
-  await app.register(functionRoutes);
+  await loadModules(app, MODULES);
 
   return app;
 }

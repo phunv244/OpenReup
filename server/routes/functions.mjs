@@ -62,7 +62,7 @@ const savedResult = (a, ev) => ({ files: ev.saved_files.map(fileInfo) });
  * route: [method, url] của API có sẵn. task: true = chạy nền (trả ngay, kết quả đến sau). nolog: không ghi nhật ký.
  * result(args, sự kiện kết thúc) -> kết quả khi tác vụ nền xong; fail(args) -> lỗi do script ghi lại (nếu có).
  */
-const FUNCTIONS = [
+export const FUNCTIONS = [
   {
     name: "download_video",
     description:
@@ -366,7 +366,6 @@ const FUNCTIONS = [
     run: async (a) => ({ calls: listCalls(a) }),
   },
 ];
-const BY_NAME = new Map(FUNCTIONS.map((f) => [f.name, f]));
 
 /* ---------- Nhật ký lần gọi (SQLite: bảng function_calls) ---------- */
 const parse = (s) => {
@@ -460,7 +459,9 @@ function checkArgs(def, args) {
   return "";
 }
 
-export default async function functionRoutes(app) {
+/** functions: mọi hàm do các module khai (ctx.functions() của loader). */
+export default async function functionRoutes(app, functions) {
+  const BY_NAME = new Map(functions.map((f) => [f.name, f]));
   // Server bị tắt giữa chừng: các lần gọi còn "đang chạy" không bao giờ có kết quả nữa.
   db.prepare("UPDATE function_calls SET status = 'stopped', error = 'Server khởi động lại khi tác vụ chưa xong.', ended_at = ? WHERE status IN ('queued', 'running')").run(nowIso());
 
@@ -480,7 +481,7 @@ export default async function functionRoutes(app) {
 
   async function call(name, args = {}, waitSec = 0) {
     const def = BY_NAME.get(name);
-    if (!def) return { ok: false, status: "error", error: `Không có hàm "${name}". Các hàm: ${FUNCTIONS.map((f) => f.name).join(", ")}.` };
+    if (!def) return { ok: false, status: "error", error: `Không có hàm "${name}". Các hàm: ${functions.map((f) => f.name).join(", ")}.` };
     // Hàm chỉ để xem trạng thái thì không ghi vào nhật ký (model gọi lặp lại nhiều lần khi chờ).
     if (def.nolog) {
       try {

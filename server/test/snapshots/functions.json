@@ -1,0 +1,997 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "download_video",
+      "description": "Tải video Bilibili / YouTube về downloads/bilibili. Chạy nền: trả call_id ngay, dùng get_call để lấy đường dẫn file khi xong. Kết quả: files[].rel_path dùng làm rel_path cho dub_video.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Link video hoặc playlist (bắt đầu bằng http)."
+          },
+          "quality": {
+            "type": "string",
+            "description": "Độ phân giải.",
+            "enum": [
+              "720p",
+              "best"
+            ],
+            "default": "best"
+          },
+          "playlist": {
+            "type": "boolean",
+            "description": "Tải cả playlist / mọi phần (P1, P2...) thay vì chỉ 1 video."
+          },
+          "playlist_items": {
+            "type": "string",
+            "description": "Chỉ tải một số phần của playlist, ví dụ \"1-5\" hoặc \"1,3,7\"."
+          },
+          "section": {
+            "type": "string",
+            "description": "Chỉ tải 1 đoạn thời gian \"HH:MM:SS-HH:MM:SS\", ví dụ \"00:00:00-01:00:00\"."
+          },
+          "delogo": {
+            "type": "string",
+            "description": "Xóa logo: \"none\" | \"top-right\" | \"top-left\" | \"both-top\" | vùng pixel \"x,y,w,h\" trên khung hình gốc."
+          },
+          "perf": {
+            "type": "string",
+            "description": "Mức dùng máy khi phải mã hóa lại (xóa logo).",
+            "enum": [
+              "eco",
+              "balanced",
+              "fast"
+            ],
+            "default": "balanced"
+          },
+          "project_id": {
+            "type": "string",
+            "description": "Mã dự án truyện (id trong list_options.projects) để dùng chung nhân vật / thuật ngữ. Bỏ trống = không gắn dự án."
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "douyin_scan_channel",
+      "description": "Quét danh sách video của 1 kênh Douyin (cần đã đăng nhập Chrome). Chạy nền; kết quả nằm trong data/videos.json.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Link kênh Douyin. Bỏ trống = kênh mặc định."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Số video tối đa cần quét. Bỏ trống = tất cả."
+          },
+          "resume": {
+            "type": "boolean",
+            "description": "Quét tiếp từ lần trước thay vì quét lại từ đầu."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "douyin_download",
+      "description": "Tải video Douyin đã quét về downloads/. Chạy nền; kết quả files[] là các file đã lưu.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "string",
+            "description": "Danh sách aweme_id cách nhau bằng dấu phẩy."
+          },
+          "episodes": {
+            "type": "string",
+            "description": "Khoảng số tập, ví dụ \"1-10\"."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Số video tối đa."
+          },
+          "project_id": {
+            "type": "string",
+            "description": "Mã dự án truyện (id trong list_options.projects) để dùng chung nhân vật / thuật ngữ. Bỏ trống = không gắn dự án."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "dub_video",
+      "description": "Reup 1 video: nhận diện lời thoại tiếng Trung, dịch, lồng tiếng Việt, in phụ đề, xóa logo. Chạy nền (vài phút tới vài giờ): trả call_id ngay, dùng get_call để lấy video + phụ đề khi xong. Chạy lại cùng video sẽ nối tiếp từ chỗ dở.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "rel_path": {
+            "type": "string",
+            "description": "Video nguồn, ví dụ \"downloads/bilibili/abc.mp4\" (lấy từ list_sources hoặc kết quả download_video)."
+          },
+          "voice": {
+            "type": "string",
+            "description": "Giọng đọc: \"vieneu:<tên preset>\" hoặc \"vieneu-clone:<slug>\". Lấy danh sách bằng list_options."
+          },
+          "model": {
+            "type": "string",
+            "description": "Mô hình nhận diện giọng nói (id trong list_options.asr_models).",
+            "default": "sensevoice-small"
+          },
+          "speed": {
+            "type": "number",
+            "description": "Tốc độ phát khi nhận diện (làm chậm để nghe rõ hơn).",
+            "default": 0.5,
+            "minimum": 0.25,
+            "maximum": 1
+          },
+          "bg_volume": {
+            "type": "number",
+            "description": "Âm lượng tiếng gốc giữ lại làm nền, 0 = tắt hẳn.",
+            "default": 0.05,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "delogo": {
+            "type": "string",
+            "description": "Xóa logo: \"none\" | \"top-right\" | \"top-left\" | \"both-top\" | vùng pixel \"x,y,w,h\" trên khung hình gốc."
+          },
+          "subcover": {
+            "type": "string",
+            "description": "Xóa phụ đề gốc tiếng Trung: \"none\" hoặc vùng pixel \"x,y,w,h\" bao quanh dòng phụ đề."
+          },
+          "burn_sub": {
+            "type": "boolean",
+            "description": "In cứng phụ đề Việt lên hình (mặc định true)."
+          },
+          "agy_model": {
+            "type": "string",
+            "description": "Model dịch của Antigravity (id trong list_options.agy_models). Bỏ trống = mặc định."
+          },
+          "sub_style": {
+            "type": "object",
+            "description": "Kiểu phụ đề Việt in cứng. Bỏ trống = mặc định (chữ trắng, nền đen 87%).",
+            "properties": {
+              "font": {
+                "type": "string",
+                "description": "Tên font (family) trong list_options.fonts."
+              },
+              "size_pct": {
+                "type": "number",
+                "description": "Cỡ chữ, % so với cỡ tự tính.",
+                "minimum": 40,
+                "maximum": 250
+              },
+              "bold": {
+                "type": "boolean",
+                "description": "Chữ đậm."
+              },
+              "color": {
+                "type": "string",
+                "description": "Màu chữ #RRGGBB."
+              },
+              "bg": {
+                "type": "string",
+                "description": "Màu nền sau chữ #RRGGBB."
+              },
+              "bg_opacity": {
+                "type": "number",
+                "description": "Độ đặc của nền, 0 = không nền.",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "outline": {
+                "type": "string",
+                "description": "Màu viền chữ #RRGGBB."
+              },
+              "outline_width": {
+                "type": "number",
+                "description": "Độ dày viền chữ, 0 = không viền."
+              }
+            },
+            "additionalProperties": false
+          },
+          "project_id": {
+            "type": "string",
+            "description": "Mã dự án truyện (id trong list_options.projects) để dùng chung nhân vật / thuật ngữ. Bỏ trống = không gắn dự án."
+          },
+          "fresh": {
+            "type": "boolean",
+            "description": "Bỏ toàn bộ tiến độ / cache cũ của video này và làm lại từ đầu."
+          }
+        },
+        "required": [
+          "rel_path"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "rerender_video",
+      "description": "Xuất lại 1 bản lồng tiếng đã có sau khi đổi cấu hình hoặc sửa lời thoại. Chỉ làm lại phần bị ảnh hưởng (hình hoặc tiếng). Chạy nền.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "Mã bản lồng tiếng (job_id trong list_dubbed)."
+          },
+          "voice": {
+            "type": "string",
+            "description": "Giọng đọc: \"vieneu:<tên preset>\" hoặc \"vieneu-clone:<slug>\". Lấy danh sách bằng list_options."
+          },
+          "bg_volume": {
+            "type": "number",
+            "description": "Âm lượng tiếng gốc làm nền.",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "burn_sub": {
+            "type": "boolean",
+            "description": "In cứng phụ đề Việt."
+          },
+          "delogo": {
+            "type": "string",
+            "description": "Xóa logo: \"none\" | \"top-right\" | \"top-left\" | \"both-top\" | vùng pixel \"x,y,w,h\" trên khung hình gốc."
+          },
+          "subcover": {
+            "type": "string",
+            "description": "Xóa phụ đề gốc tiếng Trung: \"none\" hoặc vùng pixel \"x,y,w,h\" bao quanh dòng phụ đề."
+          },
+          "sub_style": {
+            "type": "object",
+            "description": "Kiểu phụ đề Việt in cứng. Bỏ trống = mặc định (chữ trắng, nền đen 87%).",
+            "properties": {
+              "font": {
+                "type": "string",
+                "description": "Tên font (family) trong list_options.fonts."
+              },
+              "size_pct": {
+                "type": "number",
+                "description": "Cỡ chữ, % so với cỡ tự tính.",
+                "minimum": 40,
+                "maximum": 250
+              },
+              "bold": {
+                "type": "boolean",
+                "description": "Chữ đậm."
+              },
+              "color": {
+                "type": "string",
+                "description": "Màu chữ #RRGGBB."
+              },
+              "bg": {
+                "type": "string",
+                "description": "Màu nền sau chữ #RRGGBB."
+              },
+              "bg_opacity": {
+                "type": "number",
+                "description": "Độ đặc của nền, 0 = không nền.",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "outline": {
+                "type": "string",
+                "description": "Màu viền chữ #RRGGBB."
+              },
+              "outline_width": {
+                "type": "number",
+                "description": "Độ dày viền chữ, 0 = không viền."
+              }
+            },
+            "additionalProperties": false
+          },
+          "edits": {
+            "type": "object",
+            "description": "Sửa lời Việt theo mã câu: {\"12\": \"lời mới\"}.",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "speaker_voices": {
+            "type": "object",
+            "description": "Đổi giọng của nhân vật: {\"NV1\": \"vieneu:Hải Đăng\"}.",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "speaker_edits": {
+            "type": "object",
+            "description": "Đổi người nói của câu: {\"12\": \"NV2\"}.",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "list_segments_outline",
+      "description": "Lấy mốc giờ + người nói của mọi câu trong 1 bản lồng tiếng (không kèm lời) — dùng để vẽ/duyệt timeline. Tối đa 4000 câu đầu.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "Mã bản lồng tiếng (job_id trong list_dubbed)."
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "edit_segment",
+      "description": "Sửa mốc giờ (kéo đầu/cuối) hoặc người nói của 1 câu trong bản lồng tiếng. Ghi ngay; cần rerender_video để thấy trên video đã xuất.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "Mã bản lồng tiếng."
+          },
+          "id": {
+            "type": "number",
+            "description": "Mã câu (id trong list_segments_outline / get_call của dub_video)."
+          },
+          "start": {
+            "type": "number",
+            "description": "Mốc giờ bắt đầu mới, giây."
+          },
+          "end": {
+            "type": "number",
+            "description": "Mốc giờ kết thúc mới, giây."
+          },
+          "speaker": {
+            "type": "string",
+            "description": "Người nói mới (mã nhân vật, ví dụ \"NV2\")."
+          }
+        },
+        "required": [
+          "job_id",
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "split_segment",
+      "description": "Cắt 1 câu làm 2 tại 1 mốc giờ. Câu đầu giữ lời cũ, câu sau để trống để gõ lại lời mới.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "Mã bản lồng tiếng."
+          },
+          "id": {
+            "type": "number",
+            "description": "Mã câu cần cắt."
+          },
+          "at": {
+            "type": "number",
+            "description": "Mốc giờ cắt, giây (phải nằm giữa câu)."
+          }
+        },
+        "required": [
+          "job_id",
+          "id",
+          "at"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "merge_segments",
+      "description": "Ghép 2 câu liền kề làm 1 (nối lời Trung + Việt, giữ người nói của câu trước).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "Mã bản lồng tiếng."
+          },
+          "id": {
+            "type": "number",
+            "description": "Mã câu thứ nhất."
+          },
+          "with_id": {
+            "type": "number",
+            "description": "Mã câu thứ hai (cần liền kề câu thứ nhất)."
+          }
+        },
+        "required": [
+          "job_id",
+          "id",
+          "with_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "delete_segment",
+      "description": "Xóa 1 câu khỏi bản lồng tiếng (chỉ xóa dòng lời, cần rerender_video để video khớp lại).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "Mã bản lồng tiếng."
+          },
+          "id": {
+            "type": "number",
+            "description": "Mã câu cần xóa."
+          }
+        },
+        "required": [
+          "job_id",
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "delogo_video",
+      "description": "Xóa logo trên 1 video đã tải trong downloads/bilibili (mã hóa lại, ghi đè file). Chạy nền.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "local_file": {
+            "type": "string",
+            "description": "Tên file trong downloads/bilibili."
+          },
+          "delogo": {
+            "type": "string",
+            "description": "Xóa logo: \"none\" | \"top-right\" | \"top-left\" | \"both-top\" | vùng pixel \"x,y,w,h\" trên khung hình gốc."
+          },
+          "perf": {
+            "type": "string",
+            "description": "Mức dùng máy.",
+            "enum": [
+              "eco",
+              "balanced",
+              "fast"
+            ],
+            "default": "balanced"
+          }
+        },
+        "required": [
+          "local_file"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "list_sources",
+      "description": "Liệt kê video nguồn đã tải (rel_path, thời lượng, độ phân giải, trạng thái lồng tiếng).",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "list_dubbed",
+      "description": "Liệt kê các bản lồng tiếng đã xuất (job_id, file mp4 / srt, cấu hình đã dùng).",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "assign_video_project",
+      "description": "Gán 1 bản lồng tiếng (job_id) vào 1 dự án Reup, để dùng chung nhân vật / thuật ngữ / mạch truyện.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "Mã bản lồng tiếng (job_id trong list_dubbed)."
+          },
+          "project_id": {
+            "type": "string",
+            "description": "Mã dự án (id trong list_options.projects). Bỏ trống = gỡ khỏi dự án."
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "clean_dub_cache",
+      "description": "Xóa cache tạm (âm thanh giọng đã tổng hợp + hình đã mã hóa) của 1 bản lồng tiếng để lấy lại ổ cứng. Bản lồng tiếng cuối cùng vẫn được giữ.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "Mã bản lồng tiếng (job_id trong list_dubbed)."
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "delete_dub_job",
+      "description": "Xóa hẳn 1 bản lồng tiếng (file video/phụ đề xuất ra + toàn bộ dữ liệu câu thoại). Không thể hoàn tác.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "Mã bản lồng tiếng (job_id trong list_dubbed)."
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "list_projects",
+      "description": "Liệt kê đầy đủ các dự án Reup: giọng đọc dùng chung, nhân vật (tên gốc/Việt, xưng hô, tính cách), thuật ngữ, mạch truyện, danh sách bản lồng tiếng đã gán; video_count = số video nguồn (mỗi video đếm 1 lần dù lồng tiếng nhiều lần), dubbed_count = số video đã lồng tiếng, pending_count = số video chưa lồng tiếng.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "create_project",
+      "description": "Tạo dự án Reup mới để nhóm nhiều video cùng bộ truyện, dùng chung nhân vật / thuật ngữ / mạch truyện khi dịch.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Tên dự án."
+          },
+          "type": {
+            "type": "string",
+            "description": "Thể loại.",
+            "default": "Truyện / Hoạt hình"
+          },
+          "style": {
+            "type": "string",
+            "description": "Phong cách dịch & giọng văn mong muốn."
+          },
+          "synopsis": {
+            "type": "string",
+            "description": "Cốt truyện chung, càng chi tiết AI dịch càng đúng mạch."
+          },
+          "voice": {
+            "type": "string",
+            "description": "Giọng đọc: \"vieneu:<tên preset>\" hoặc \"vieneu-clone:<slug>\". Lấy danh sách bằng list_options."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "update_project",
+      "description": "Sửa thông tin dự án Reup: ngữ cảnh chung, giọng đọc dùng chung cho mọi nhân vật (chọn từ list_options.voices ở Tài nguyên), danh sách nhân vật và thuật ngữ.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Mã dự án (id trong list_options.projects)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Tên dự án."
+          },
+          "type": {
+            "type": "string",
+            "description": "Thể loại."
+          },
+          "style": {
+            "type": "string",
+            "description": "Phong cách dịch & giọng văn."
+          },
+          "synopsis": {
+            "type": "string",
+            "description": "Cốt truyện chung."
+          },
+          "voice": {
+            "type": "string",
+            "description": "Giọng đọc: \"vieneu:<tên preset>\" hoặc \"vieneu-clone:<slug>\". Lấy danh sách bằng list_options."
+          },
+          "characters": {
+            "type": "array",
+            "description": "Toàn bộ danh sách nhân vật (ghi đè danh sách cũ). Mọi nhân vật dùng chung giọng đọc của dự án (field voice trên).",
+            "items": {
+              "type": "object",
+              "properties": {
+                "zh": {
+                  "type": "string",
+                  "description": "Tên gốc."
+                },
+                "vi": {
+                  "type": "string",
+                  "description": "Tên Việt."
+                },
+                "pronouns": {
+                  "type": "string",
+                  "description": "Xưng hô."
+                },
+                "role": {
+                  "type": "string",
+                  "description": "Vai trò."
+                },
+                "personality": {
+                  "type": "string",
+                  "description": "Tính cách, giọng điệu."
+                }
+              }
+            }
+          },
+          "glossary": {
+            "type": "array",
+            "description": "Toàn bộ từ điển thuật ngữ (ghi đè danh sách cũ).",
+            "items": {
+              "type": "object",
+              "properties": {
+                "zh": {
+                  "type": "string",
+                  "description": "Từ gốc."
+                },
+                "vi": {
+                  "type": "string",
+                  "description": "Dịch tiếng Việt."
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "delete_project",
+      "description": "Xóa 1 dự án Reup (chỉ mất ngữ cảnh AI; các file video vẫn được giữ, trở về trạng thái chưa gán dự án).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Mã dự án (id trong list_options.projects)."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "create_voice",
+      "description": "Thêm giọng clone mới vào Tài nguyên (dùng chung mọi dự án) từ 1 video đã tải (rel_path) hoặc 1 link audio/video.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Tên hiển thị của giọng."
+          },
+          "rel_path": {
+            "type": "string",
+            "description": "Video nguồn đã tải, ví dụ \"downloads/bilibili/abc.mp4\" (lấy từ list_sources). Dùng 1 trong 2: rel_path hoặc url."
+          },
+          "url": {
+            "type": "string",
+            "description": "Link audio/video trực tiếp để lấy mẫu giọng. Dùng 1 trong 2: rel_path hoặc url."
+          },
+          "gender": {
+            "type": "string",
+            "description": "Giới tính giọng.",
+            "enum": [
+              "male",
+              "female"
+            ]
+          },
+          "start": {
+            "type": "number",
+            "description": "Giây bắt đầu đoạn mẫu trong nguồn. Bỏ trống = máy tự chọn đoạn rõ giọng nhất."
+          },
+          "end": {
+            "type": "number",
+            "description": "Giây kết thúc đoạn mẫu (nên dài 5-15s)."
+          },
+          "project_id": {
+            "type": "string",
+            "description": "Mã dự án truyện (id trong list_options.projects) để dùng chung nhân vật / thuật ngữ. Bỏ trống = không gắn dự án."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "update_voice",
+      "description": "Đổi tên / giới tính của 1 giọng clone đã có.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "Mã giọng (phần sau \"vieneu-clone:\" trong id)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Tên mới."
+          },
+          "gender": {
+            "type": "string",
+            "description": "Giới tính.",
+            "enum": [
+              "male",
+              "female",
+              ""
+            ]
+          }
+        },
+        "required": [
+          "slug"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "delete_voice",
+      "description": "Xóa 1 giọng clone khỏi Tài nguyên (gỡ khỏi mọi dự án đang dùng).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "Mã giọng (phần sau \"vieneu-clone:\" trong id)."
+          }
+        },
+        "required": [
+          "slug"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "download_asr_model",
+      "description": "Tải 1 mô hình nhận diện giọng nói (ASR) về máy để dùng cho dub_video. Chạy nền.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Mã mô hình (id trong list_options.asr_models)."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "delete_font",
+      "description": "Xóa 1 font chữ phụ đề đã tải lên Tài nguyên (video đang dùng font này quay về font mặc định ở lần xuất lại sau).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Mã font."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "list_options",
+      "description": "Các giá trị hợp lệ cho tham số: giọng đọc, mô hình nhận diện, model dịch, dự án, font phụ đề.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_task",
+      "description": "Tác vụ nền đang chạy: loại, tiến độ %, hàng đợi, các dòng nhật ký gần nhất.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "log_lines": {
+            "type": "number",
+            "description": "Số dòng nhật ký cuối cần lấy.",
+            "default": 30
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "stop_task",
+      "description": "Dừng tác vụ nền đang chạy (tiến độ lồng tiếng đã lưu, chạy lại sẽ nối tiếp).",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_call",
+      "description": "Xem 1 lần gọi hàm: trạng thái (queued/running/done/error/stopped), kết quả kèm đường dẫn file, lỗi đầy đủ, file log.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "call_id": {
+            "type": "number",
+            "description": "Mã lần gọi (call_id)."
+          },
+          "wait_sec": {
+            "type": "number",
+            "description": "Chờ tối đa bấy nhiêu giây cho tới khi xong rồi mới trả.",
+            "maximum": 3600
+          }
+        },
+        "required": [
+          "call_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "list_calls",
+      "description": "Nhật ký các lần gọi hàm gần đây, mới nhất trước.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Số bản ghi.",
+            "default": 20,
+            "maximum": 200
+          },
+          "status": {
+            "type": "string",
+            "description": "Lọc theo trạng thái.",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "error",
+              "stopped"
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  }
+]

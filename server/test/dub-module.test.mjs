@@ -125,6 +125,7 @@ test("luôn truyền đường dẫn cho dub_video.py: mặc định theo DATA_D
   let done = ended();
   let args = await startRerender("job_paths");
   await done;
+  assert.equal(argOf(args, "--job-id"), "job_paths");
   assert.equal(argOf(args, "--work-dir"), path.join(dir, "dub_work", "job_paths"));
   assert.equal(argOf(args, "--project-file"), path.join(dir, "dub_projects", "job_paths.json"));
   assert.equal(argOf(args, "--index-file"), path.join(dir, "dubbed.json"));

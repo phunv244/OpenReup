@@ -349,6 +349,41 @@ def test_paths_from_args():
         assert d.Job("j1").work == d.WORK_ROOT / "j1"
 
 
+def test_job_id_arg():
+    """--job-id: id hợp lệ được dùng, sai định dạng báo lỗi, lệch với file project có sẵn thì báo lỗi và không ghi đè."""
+    import json
+    import sys
+
+    assert d.check_job_id("", "dub_a_0p5x") == "dub_a_0p5x"  # không truyền: giữ id suy ra
+    assert d.check_job_id("dub_a_0p5x", "dub_a_0p5x") == "dub_a_0p5x"
+    assert d.check_job_id("job-B_1", "dub_a_0p5x") == "job-B_1"  # chưa có file project: dùng id server cấp
+    for bad in ["../x", "a.b", "a b", "..", "x/y", "Việt"]:
+        try:
+            d.check_job_id(bad, "dub_a_0p5x")
+            raise AssertionError(f"phải từ chối {bad!r}")
+        except RuntimeError as e:
+            assert "không hợp lệ" in str(e)
+    try:
+        d.check_job_id("dub_b_0p5x", "dub_a_0p5x", Path("p.json"))
+        raise AssertionError("phải báo lệch")
+    except RuntimeError as e:
+        assert "lệch" in str(e)
+
+    # Chạy thật dub_video.py --project với file project có job_id khác: dừng với lỗi, file giữ nguyên.
+    with tempfile.TemporaryDirectory() as tmp:
+        proj = Path(tmp) / "p.json"
+        proj.write_text(json.dumps({"job_id": "dub_a_0p5x", "input_path": str(Path(tmp) / "a.mp4")}))
+        before = proj.read_bytes()
+        r = subprocess.run([sys.executable, str(d.BASE_DIR / "dub_video.py"), "--project", "dub_a_0p5x",
+                            "--project-file", str(proj), "--job-id", "dub_b_0p5x"],
+                           cwd=tmp, capture_output=True, text=True)
+        assert r.returncode != 0 and "lệch" in (r.stdout + r.stderr), r.stdout + r.stderr
+        assert proj.read_bytes() == before
+        r = subprocess.run([sys.executable, str(d.BASE_DIR / "dub_video.py"), "--project", "dub_a_0p5x",
+                            "--project-file", str(proj), "--job-id", "../x"], cwd=tmp, capture_output=True, text=True)
+        assert r.returncode != 0 and "không hợp lệ" in (r.stdout + r.stderr), r.stdout + r.stderr
+
+
 def _paths_in_child(env_extra, code):
     """Chạy Python con với env cho trước (bỏ REUP_* của tiến trình cha) để module đọc lại biến lúc import."""
     import json

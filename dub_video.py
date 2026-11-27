@@ -1818,6 +1818,21 @@ def assert_disk_space(target_dir: Path, need_gb: float) -> None:
 # ----------------------------------------------------------------------------
 # Luồng chính
 # ----------------------------------------------------------------------------
+
+JOB_ID_RE = re.compile(r"^[0-9A-Za-z_-]+$")  # cùng quy tắc safeJobId (server/lib/util.mjs)
+
+
+def check_job_id(given: str, existing: str, proj_path: Optional[Path] = None) -> str:
+    """Kiểm --job-id: rỗng thì dùng id có sẵn; sai định dạng hoặc lệch với job_id trong file project thì báo lỗi, không ghi đè."""
+    if not given:
+        return existing
+    if not JOB_ID_RE.match(given):
+        raise RuntimeError(f"--job-id không hợp lệ (chỉ gồm chữ/số/_/-): {given!r}")
+    if proj_path is not None and existing and existing != given:
+        raise RuntimeError(f"--job-id {given} lệch với job_id {existing} trong {proj_path}")
+    return given
+
+
 def main() -> int:
     global JOB, RERENDER, DUB_OUT_DIR, DUBBED_INDEX_JSON, STORY_PROJECTS_DIR
     parser = argparse.ArgumentParser(description="Dịch & Lồng tiếng Việt tự động cho video tiếng Trung")
@@ -1848,6 +1863,7 @@ def main() -> int:
     # out_dir/work_dir đã lưu trong file project của lần chạy trước.
     parser.add_argument("--out-dir", default="", help="Thư mục ghi <job>.mp4 / <job>.srt (mặc định downloads/dubbed)")
     parser.add_argument("--work-dir", default="", help="Thư mục làm việc/checkpoint của job (mặc định data/dub_work/<job>)")
+    parser.add_argument("--job-id", default="", help="Mã job do server cấp (chữ/số/_/-); rỗng = tự suy từ tên file và tốc độ")
     parser.add_argument("--project-file", default="", help="File project lồng tiếng để đọc/ghi (mặc định data/dub_projects/<job>.json)")
     parser.add_argument("--index-file", default="", help="File danh sách bản lồng tiếng (mặc định data/dubbed.json)")
     parser.add_argument("--story-dir", default="", help="Thư mục chứa dự án truyện (mặc định data/projects)")
@@ -1866,7 +1882,7 @@ def main() -> int:
         proj = read_json(proj_path, None)
         if not proj:
             raise RuntimeError(f"Không tìm thấy project: {proj_path}")
-        job_id = proj["job_id"]
+        job_id = check_job_id(args.job_id, proj["job_id"], proj_path)
         input_mp4 = Path(proj["input_path"])
         speed = float(proj.get("speed", args.speed))
         voice = proj.get("voice") or args.voice
@@ -1902,6 +1918,8 @@ def main() -> int:
             # Tên có chữ Trung / quá dài bị rút gọn: thêm mã băm để 2 video khác nhau không đè job của nhau.
             stem += "_" + hashlib.sha1(input_mp4.name.encode("utf-8")).hexdigest()[:6]
         job_id = f"dub_{stem}_{str(speed).replace('.', 'p')}x"
+        if args.job_id:
+            job_id = check_job_id(args.job_id, job_id)
         segments = []
     if not input_mp4.exists():
         raise RuntimeError(f"Không tìm thấy video đầu vào: {input_mp4}")
@@ -1910,6 +1928,8 @@ def main() -> int:
         DUB_OUT_DIR = from_base(args.out_dir or proj["out_dir"])
     work_dir = from_base(args.work_dir or proj["work_dir"]) if (args.work_dir or proj.get("work_dir")) else None
     proj_path = from_base(args.project_file) if args.project_file else PROJECTS_DIR / f"{job_id}.json"
+    if not rerender and args.job_id:
+        check_job_id(job_id, read_json(proj_path, {}).get("job_id") or job_id, proj_path)
     for d in (DUB_OUT_DIR, proj_path.parent, DUBBED_INDEX_JSON.parent):
         d.mkdir(parents=True, exist_ok=True)
 

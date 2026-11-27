@@ -63,6 +63,7 @@ export function createDubService(repo) {
       const proj = repo.loadDubProject(jobId) || {};
       const at = (saved, dflt) => (saved ? path.resolve(ROOT, String(saved)) : dflt);
       return [
+        "--job-id", jobId,
         "--work-dir", at(proj.work_dir, path.join(DUB_WORK_DIR, jobId)),
         "--out-dir", at(proj.out_dir, DUBBED_DIR),
         "--project-file", path.join(DUB_PROJECTS_DIR, `${jobId}.json`),

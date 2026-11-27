@@ -71,3 +71,11 @@ test("routes nhận service của chính module; mỗi hàm kèm tên module kha
   assert.equal(functions[0].module, "p");
   await app.close();
 });
+
+test("MODULES của server: thiếu module ai (list_options đọc /api/agy-models) -> lỗi lúc khởi động", async () => {
+  const { MODULES } = await import("../app.mjs");
+  assert.deepEqual(MODULES.find((m) => m.name === "functions").deps, ["tasks", "ai", "project", "resources"]);
+  // Module dub cũng cần ai: gỡ deps "ai" của module khác để chắc lỗi đến từ khai báo của "functions".
+  const noAi = MODULES.filter((m) => m.name !== "ai").map((m) => (m.name === "functions" ? m : { ...m, deps: (m.deps || []).filter((d) => d !== "ai") }));
+  assert.throws(() => orderModules(noAi), /"functions" cần "ai"/);
+});

@@ -28,7 +28,14 @@ export const MODULES = [
   dubModule,
   aiModule,
   // Tạm giữ toàn bộ định nghĩa hàm ở đây; mỗi module chuyển sang server/modules/ sẽ mang hàm của nó theo.
-  { name: "functions", functions: FUNCTIONS.filter((f) => !f.slot && !f.ref), routes: (app, ctx) => functionRoutes(app, ctx.functions()) },
+  // deps: các module có route mà hàm riêng của module này gọi qua app.inject (list_options: /api/agy-models, /api/projects,
+  // /api/voices, /api/asr-models, /api/fonts; get_task/stop_task: /api/task*) -> thiếu module thì lỗi ngay lúc khởi động, không im lặng trả rỗng.
+  {
+    name: "functions",
+    deps: ["tasks", "ai", "project", "resources"],
+    functions: FUNCTIONS.filter((f) => !f.slot && !f.ref),
+    routes: (app, ctx) => functionRoutes(app, ctx.functions()),
+  },
 ];
 
 export async function buildApp({ logger = false } = {}) {

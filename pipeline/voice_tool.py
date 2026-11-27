@@ -62,7 +62,7 @@ def auto_pick(src: Path):
     from faster_whisper.vad import VadOptions, get_speech_timestamps
 
     sr = 16000
-    raw = common.run_cmd(["ffmpeg", "-v", "error", "-t", str(ANALYZE_SEC), "-i", str(src), "-vn", "-ac", "1", "-ar", str(sr), "-f", "f32le", "-"])
+    raw = common.run_cmd([common.FFMPEG_BIN, "-v", "error", "-t", str(ANALYZE_SEC), "-i", str(src), "-vn", "-ac", "1", "-ar", str(sr), "-f", "f32le", "-"])
     y = np.frombuffer(raw, dtype=np.float32)
     speech = get_speech_timestamps(y, VadOptions(min_silence_duration_ms=250, speech_pad_ms=60), sampling_rate=sr)
     # Hội thoại câu ngắn không có cụm 4,5 giây: chấp nhận cụm từ 3 giây (mức tối thiểu VieNeu clone được).
@@ -103,7 +103,7 @@ def cmd_clone(args) -> dict:
             a, b, f0 = auto_pick(src)
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp_out = out.with_suffix(".tmp.wav")
-        common.run_cmd(["ffmpeg", "-v", "error", "-y", "-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", str(src),
+        common.run_cmd([common.FFMPEG_BIN, "-v", "error", "-y", "-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", str(src),
                    "-vn", "-ac", "1", "-ar", str(REF_SR), str(tmp_out)])
         if not tmp_out.exists() or tmp_out.stat().st_size < REF_SR:  # < ~0,5 giây: mốc nằm ngoài audio
             tmp_out.unlink(missing_ok=True)
@@ -111,7 +111,7 @@ def cmd_clone(args) -> dict:
         if not f0:
             import numpy as np
 
-            clip = np.frombuffer(common.run_cmd(["ffmpeg", "-v", "error", "-i", str(tmp_out), "-ac", "1", "-ar", "16000", "-f", "f32le", "-"]), dtype=np.float32)
+            clip = np.frombuffer(common.run_cmd([common.FFMPEG_BIN, "-v", "error", "-i", str(tmp_out), "-ac", "1", "-ar", "16000", "-f", "f32le", "-"]), dtype=np.float32)
             f0 = speakers._median_f0(clip, 16000)
         tmp_out.replace(out)
     return {"ok": True, "start": round(a, 2), "end": round(b, 2), "f0": round(f0), "gender": "female" if f0 > speakers.FEMALE_F0 else "male"}

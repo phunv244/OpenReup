@@ -110,28 +110,211 @@ def get(model_id: str) -> Dict:
 
 
 def cuda_devices() -> int:
+    from pipeline.common import cpu_forced, preload_nvidia_libs
+
+    if cpu_forced():
+        return 0
+    lib_ok, _ = preload_nvidia_libs()
+    if not lib_ok:
+        return 0
     try:
         import ctranslate2
 
-        return ctranslate2.get_cuda_device_count()
+        return int(ctranslate2.get_cuda_device_count())
     except Exception:
         return 0
 
 
+def _ct2_raw_cuda_count() -> int:
+    try:
+        import ctranslate2
+
+        return int(ctranslate2.get_cuda_device_count())
+    except Exception:
+        return 0
+
+
+def _probe_tts_gpu(has_hw_gpu: bool, ct2_cuda: bool) -> tuple:
+    """Kiểm tra tầng TTS (PyTorch CUDA) nhanh (<5ms ở đường chuẩn) mà không dựng CUDA context nặng."""
+    import importlib.metadata
+    import importlib.util
+
+    torch_mod = sys.modules.get("torch")
+    if torch_mod is not None:
+        try:
+            if torch_mod.cuda.is_available():
+                return True, ""
+            if getattr(torch_mod.version, "cuda", None) is None:
+                return False, "Đang cài PyTorch bản CPU. Cài lại vieneu[cuda] với wheel CUDA."
+            return False, "PyTorch không thấy GPU CUDA (kiểm tra driver NVIDIA)."
+        except Exception as e:
+            return False, f"Không kiểm tra được PyTorch CUDA ({e})."
+
+    try:
+        ver = importlib.metadata.version("torch")
+    except importlib.metadata.PackageNotFoundError:
+        return False, "Chưa cài PyTorch CUDA trong .venv. Cài gói vieneu[cuda] để bật GPU."
+
+    if "+cpu" in ver:
+        return False, "Đang cài PyTorch bản CPU. Cài lại vieneu[cuda] với wheel CUDA."
+    if not has_hw_gpu:
+        return False, "Không phát hiện GPU NVIDIA trên máy."
+
+    spec = importlib.util.find_spec("torch")
+    if spec and spec.origin:
+        torch_lib = Path(spec.origin).parent / "lib" / "libtorch_cuda.so"
+        if "+cu" in ver and ct2_cuda and torch_lib.is_file():
+            return True, ""
+
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return True, ""
+        if getattr(torch.version, "cuda", None) is None:
+            return False, "Đang cài PyTorch bản CPU. Cài lại vieneu[cuda] với wheel CUDA."
+        return False, "PyTorch không thấy GPU CUDA (kiểm tra driver NVIDIA)."
+    except Exception as e:
+        return False, f"Không kiểm tra được PyTorch CUDA ({e})."
+
+
 def gpu_info() -> Dict:
-    """Tên + VRAM của GPU NVIDIA (qua nvidia-smi), và faster-whisper có dùng được CUDA không."""
+    """Tên + VRAM của GPU NVIDIA (qua nvidia-smi) và sức khỏe 3 tầng GPU (STT, TTS, NVENC)."""
     import subprocess
 
-    info = {"name": "", "vram_gb": 0, "cuda": cuda_devices() > 0}
+    from pipeline.common import cpu_forced, preload_nvidia_libs
+    from pipeline.render import probe_nvenc
+
+    name, vram_gb = "", 0.0
     try:
-        out = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
-                             capture_output=True, text=True, timeout=5).stdout.strip().splitlines()
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip().splitlines()
         if out:
-            name, mem = out[0].rsplit(",", 1)
-            info.update(name=name.strip(), vram_gb=round(int(mem) / 1024, 1))
+            n, mem = out[0].rsplit(",", 1)
+            name, vram_gb = n.strip(), round(int(mem) / 1024, 1)
     except Exception:
         pass
-    return info
+
+    forced = cpu_forced()
+    has_hw_gpu = bool(name)
+
+    if forced:
+        force_reason = "Đang ép chạy CPU (REUP_FORCE_CPU=1). Bỏ biến môi trường này để bật lại GPU."
+        tiers = {
+            "stt": {
+                "gpu": False,
+                "backend": "CPU",
+                "detail": "Nhận diện đang chạy CPU (int8).",
+                "reason": force_reason,
+            },
+            "tts": {
+                "gpu": False,
+                "backend": "ONNX CPU",
+                "detail": "VieNeu-TTS đang chạy ONNX trên CPU.",
+                "reason": force_reason,
+            },
+            "nvenc": {
+                "gpu": False,
+                "backend": "libx264",
+                "detail": "Xuất video đang dùng CPU libx264.",
+                "reason": force_reason,
+            },
+        }
+    else:
+        lib_ok, lib_err = preload_nvidia_libs()
+        ct2_count = _ct2_raw_cuda_count() if lib_ok else 0
+        stt_ok = lib_ok and ct2_count > 0
+
+        if stt_ok:
+            stt_tier = {
+                "gpu": True,
+                "backend": "CUDA",
+                "detail": "Whisper chạy CUDA; SenseVoice / FireRedASR chạy CPU.",
+                "reason": "",
+            }
+        elif not has_hw_gpu:
+            stt_tier = {
+                "gpu": False,
+                "backend": "CPU",
+                "detail": "Nhận diện chạy trên CPU.",
+                "reason": "Không phát hiện GPU NVIDIA trên máy.",
+            }
+        elif not lib_ok:
+            stt_tier = {
+                "gpu": False,
+                "backend": "CPU",
+                "detail": "Whisper lùi về CPU do thiếu thư viện CUDA.",
+                "reason": f"Thiếu libcublas.so.12 ({lib_err[:80]}). Cài vieneu[cuda] vào .venv.",
+            }
+        else:
+            stt_tier = {
+                "gpu": False,
+                "backend": "CPU",
+                "detail": "Whisper lùi về CPU.",
+                "reason": "CTranslate2 không thấy thiết bị CUDA. Kiểm tra driver NVIDIA.",
+            }
+
+        tts_ok, tts_reason = _probe_tts_gpu(has_hw_gpu, stt_ok)
+        if tts_ok:
+            bs = 8 if (vram_gb and vram_gb <= 4.5) else (16 if (vram_gb and vram_gb <= 8.5) else 32)
+            vram_note = f" ({vram_gb:.1f} GB VRAM)" if vram_gb else ""
+            tts_tier = {
+                "gpu": True,
+                "backend": "PyTorch CUDA",
+                "detail": f"PyTorch CUDA · batch tối đa {bs}{vram_note}.",
+                "reason": "",
+            }
+        elif not has_hw_gpu:
+            tts_tier = {
+                "gpu": False,
+                "backend": "ONNX CPU",
+                "detail": "VieNeu-TTS chạy ONNX trên CPU.",
+                "reason": "Không phát hiện GPU NVIDIA trên máy.",
+            }
+        else:
+            tts_tier = {
+                "gpu": False,
+                "backend": "ONNX CPU",
+                "detail": "VieNeu-TTS đang chạy ONNX trên CPU.",
+                "reason": tts_reason,
+            }
+
+        nvenc_ok, nvenc_reason = probe_nvenc(force=True)
+        if nvenc_ok:
+            nvenc_tier = {
+                "gpu": True,
+                "backend": "h264_nvenc",
+                "detail": "Mã hóa phần cứng NVENC tốc độ cao.",
+                "reason": "",
+            }
+        elif not has_hw_gpu:
+            nvenc_tier = {
+                "gpu": False,
+                "backend": "libx264",
+                "detail": "Xuất video bằng CPU libx264.",
+                "reason": "Không phát hiện GPU NVIDIA hỗ trợ NVENC.",
+            }
+        else:
+            nvenc_tier = {
+                "gpu": False,
+                "backend": "libx264",
+                "detail": "Xuất video đang dùng CPU libx264.",
+                "reason": nvenc_reason,
+            }
+
+        tiers = {"stt": stt_tier, "tts": tts_tier, "nvenc": nvenc_tier}
+
+    active_tiers = sum(1 for t in tiers.values() if t["gpu"])
+    return {
+        "name": name,
+        "vram_gb": vram_gb,
+        "cuda": bool(tiers["stt"]["gpu"]),
+        "active_tiers": active_tiers,
+        "total_tiers": 3,
+        "tiers": tiers,
+    }
 
 
 def _whisper_dir(repo: str) -> Optional[Path]:

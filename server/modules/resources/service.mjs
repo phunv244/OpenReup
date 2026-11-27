@@ -78,9 +78,9 @@ export function createResourceService(repo, { dub, project, sources, tasks }) {
     },
 
     /* ---------- Mô hình nhận diện ---------- */
-    /** Danh sách mô hình (cache ASR_LIST_TTL_MS; request đồng thời dùng chung 1 lần chạy asr.py). Lỗi không được cache. */
-    asrModels() {
-      if (asrList && performance.now() - asrList.at < ASR_LIST_TTL_MS) return asrList.promise;
+    /** Danh sách mô hình (cache ASR_LIST_TTL_MS; request đồng thời dùng chung 1 lần chạy asr.py). refresh=true bỏ qua cache. Lỗi không được cache. */
+    asrModels({ refresh = false } = {}) {
+      if (!refresh && asrList && performance.now() - asrList.at < ASR_LIST_TTL_MS) return asrList.promise;
       const entry = { at: performance.now() };
       entry.promise = repo
         .runAsr(["list"])

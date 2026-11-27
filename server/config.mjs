@@ -4,10 +4,51 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+export const LOCAL_BIN = path.join(ROOT, ".local", "bin");
 const VENV_BIN = path.join(ROOT, ".venv", "bin");
-if (fs.existsSync(VENV_BIN) && !(process.env.PATH || "").split(path.delimiter).includes(VENV_BIN)) {
-  process.env.PATH = `${VENV_BIN}${path.delimiter}${process.env.PATH || ""}`;
+
+const prependPath = (dir) => {
+  if (!fs.existsSync(dir)) return;
+  const parts = (process.env.PATH || "").split(path.delimiter).filter(Boolean);
+  if (parts[0] === dir) return;
+  process.env.PATH = [dir, ...parts.filter((p) => p !== dir)].join(path.delimiter);
+};
+// Thứ tự ưu tiên trên PATH: .local/bin (FFmpeg NVENC cô lập) → .venv/bin → PATH hệ thống.
+prependPath(VENV_BIN);
+prependPath(LOCAL_BIN);
+
+// Tự nạp thư mục nvidia/*/lib trong .venv vào LD_LIBRARY_PATH cho các script Python/CT2 con.
+try {
+  const libDir = path.join(ROOT, ".venv", "lib");
+  if (fs.existsSync(libDir)) {
+    const nvLibs = [];
+    for (const py of fs.readdirSync(libDir)) {
+      if (!py.startsWith("python")) continue;
+      const nvRoot = path.join(libDir, py, "site-packages", "nvidia");
+      if (!fs.existsSync(nvRoot)) continue;
+      for (const pkg of fs.readdirSync(nvRoot)) {
+        const d = path.join(nvRoot, pkg, "lib");
+        if (fs.existsSync(d)) nvLibs.push(d);
+      }
+    }
+    if (nvLibs.length) {
+      const cur = (process.env.LD_LIBRARY_PATH || "").split(path.delimiter).filter(Boolean);
+      const merged = [...nvLibs, ...cur.filter((p) => !nvLibs.includes(p))];
+      process.env.LD_LIBRARY_PATH = merged.join(path.delimiter);
+    }
+  }
+} catch {}
+
+export function resolveBin(name, envKey = "") {
+  const override = envKey ? String(process.env[envKey] || "").trim() : "";
+  if (override) return override;
+  const local = path.join(LOCAL_BIN, name);
+  if (fs.existsSync(local)) return local;
+  return name;
 }
+
+export const FFMPEG_BIN = resolveBin("ffmpeg", "REUP_FFMPEG");
+export const FFPROBE_BIN = resolveBin("ffprobe", "REUP_FFPROBE");
 // REUP_DATA_DIR: chỉ dùng cho test (DB + JSON tạm), mặc định là data/ trong repo.
 export const DATA_DIR = process.env.REUP_DATA_DIR ? path.resolve(process.env.REUP_DATA_DIR) : path.join(ROOT, "data");
 export const DATA_JSON = path.join(DATA_DIR, "videos.json");

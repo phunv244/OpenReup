@@ -24,7 +24,7 @@ SR = common.SAMPLE_RATE
 
 def _sine_mp3(path, seconds):
     subprocess.run(
-        ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds}",
+        [paths.FFMPEG_BIN, "-y", "-v", "error", "-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds}",
          "-ar", "24000", "-ac", "1", "-b:a", "48k", str(path)],
         check=True,
     )
@@ -41,7 +41,7 @@ def test_audio_part_is_sample_exact_and_fits_slots():
         mp3s = [tmp / "short.mp3", tmp / "long.mp3", None, tmp / "long.mp3"]
         inputs, graph, total = mix.audio_part_graph(segs, mp3s, 0.0, 10.37)
         assert total == mix.sample_index(10.37) and len(inputs) == 3 and "atempo=1.95" in graph
-        cmd = ["ffmpeg", "-y", "-v", "error"]
+        cmd = [paths.FFMPEG_BIN, "-y", "-v", "error"]
         for f in inputs:
             cmd += ["-i", f]
         pcm = subprocess.run(
@@ -313,7 +313,7 @@ def test_video_encode_args_and_render_parts():
         tmp = Path(tmp)
         src = tmp / "in.mp4"
         subprocess.run(
-            ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=duration=1.5:size=640x360:rate=15",
+            [paths.FFMPEG_BIN, "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=duration=1.5:size=640x360:rate=15",
              "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast", str(src)],
             check=True,
         )
@@ -458,6 +458,52 @@ def test_reup_data_dir_isolates_writes():
         assert (tmp / "data" / "openreup.db").exists()
     after = {str(w): (w.exists() and w.stat().st_mtime_ns) for w in watch}
     assert before == after, (before, after)
+
+
+def test_resolve_bin_and_gpu_diagnostics():
+    """Resolve binary ưu tiên REUP_FFMPEG -> .local/bin -> PATH; gpu_info() đủ 3 tầng và tôn trọng REUP_FORCE_CPU=1."""
+    from pipeline import asr
+
+    old_env = os.environ.get("REUP_FFMPEG")
+    old_force = os.environ.get("REUP_FORCE_CPU")
+    try:
+        os.environ["REUP_FFMPEG"] = "/tmp/custom-ffmpeg-bin"
+        assert paths.resolve_bin("ffmpeg", "REUP_FFMPEG") == "/tmp/custom-ffmpeg-bin"
+        os.environ.pop("REUP_FFMPEG", None)
+        local_ff = paths.LOCAL_BIN / "ffmpeg"
+        if local_ff.is_file() and os.access(local_ff, os.X_OK):
+            assert paths.resolve_bin("ffmpeg", "REUP_FFMPEG") == str(local_ff)
+
+        # Kiểm tra gpu_info() chuẩn 3 tầng
+        os.environ.pop("REUP_FORCE_CPU", None)
+        g = asr.gpu_info()
+        assert {"name", "vram_gb", "cuda", "active_tiers", "total_tiers", "tiers"} <= set(g.keys()), g
+        assert g["total_tiers"] == 3 and set(g["tiers"].keys()) == {"stt", "tts", "nvenc"}
+        for k, tier in g["tiers"].items():
+            assert isinstance(tier["gpu"], bool) and tier["backend"] and tier["detail"], (k, tier)
+        assert g["active_tiers"] == sum(1 for t in g["tiers"].values() if t["gpu"])
+        assert g["cuda"] == g["tiers"]["stt"]["gpu"]
+
+        # Ép CPU qua REUP_FORCE_CPU=1: cả 3 tầng phải rơi về CPU và probe_nvenc trả False
+        os.environ["REUP_FORCE_CPU"] = "1"
+        assert common.cpu_forced() is True
+        assert asr.cuda_devices() == 0
+        assert tts.tts_will_use_gpu() is False
+        ok_nv, reason_nv = render.probe_nvenc(force=True)
+        assert ok_nv is False and "REUP_FORCE_CPU" in reason_nv
+        g_cpu = asr.gpu_info()
+        assert g_cpu["cuda"] is False and g_cpu["active_tiers"] == 0
+        assert all(not t["gpu"] and "REUP_FORCE_CPU" in t["reason"] for t in g_cpu["tiers"].values())
+    finally:
+        if old_env is None:
+            os.environ.pop("REUP_FFMPEG", None)
+        else:
+            os.environ["REUP_FFMPEG"] = old_env
+        if old_force is None:
+            os.environ.pop("REUP_FORCE_CPU", None)
+        else:
+            os.environ["REUP_FORCE_CPU"] = old_force
+
 
 if __name__ == "__main__":
     # CI không cài VieNeu-TTS (nặng, kèm model): bỏ qua đúng các test được liệt kê, không bỏ ngầm test nào khác.

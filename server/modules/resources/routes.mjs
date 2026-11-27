@@ -32,7 +32,8 @@ export default async function resourceRoutes(app, ctx, res) {
   /* ---------- Mô hình nhận diện ---------- */
   app.get("/api/asr-models", async (req, reply) => {
     try {
-      return await res.asrModels();
+      const refresh = ["1", "true"].includes(String(req.query?.refresh || "").toLowerCase());
+      return await res.asrModels({ refresh });
     } catch (err) {
       return reply.code(500).send({ ok: false, error: err.message, models: [] });
     }

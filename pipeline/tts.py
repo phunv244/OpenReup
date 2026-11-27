@@ -10,12 +10,14 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from pipeline.paths import DATA_DIR
-from pipeline.common import SAMPLE_RATE, free_gpu_memory, log
+from pipeline.common import FFMPEG_BIN, SAMPLE_RATE, cpu_forced, free_gpu_memory, log
 from pipeline.job import Progress
 
 
 def tts_will_use_gpu() -> bool:
     """Kiểm tra VieNeu có chạy trên CUDA không (không tạo CUDA context để nhường trọn VRAM cho Whisper)."""
+    if cpu_forced():
+        return False
     if importlib.util.find_spec("torch") is None:
         return False
     try:
@@ -69,17 +71,24 @@ class VieNeuEngine:
 
                 kw: Dict = {}
                 dev_desc = "CPU (ONNX)"
-                try:
-                    import torch
+                if cpu_forced():
+                    kw = {"backend": "onnx", "device": "cpu"}
+                    dev_desc = "CPU (ONNX, REUP_FORCE_CPU=1)"
+                else:
+                    try:
+                        import torch
 
-                    if torch.cuda.is_available():
-                        vram_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
-                        # GPU 4 GB (như GTX 1650): giữ batch vừa phải để CUDA graph KV cache không tràn VRAM.
-                        bs = 8 if vram_gb <= 4.5 else (16 if vram_gb <= 8.5 else 32)
-                        kw = {"max_batch_size": bs, "max_streams": max(4, bs // 2)}
-                        dev_desc = f"GPU {torch.cuda.get_device_name(0)} ({vram_gb:.1f} GB VRAM, batch={bs})"
-                except Exception:
-                    pass
+                        if torch.cuda.is_available():
+                            vram_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                            major, _minor = torch.cuda.get_device_capability(0)
+                            # Turing (sm_75 như GTX 1650) không hỗ trợ BF16 Cutlass -> ép float32.
+                            dtype = "float32" if major < 8 else "auto"
+                            # GPU 4 GB (như GTX 1650): giữ batch vừa phải để CUDA graph KV cache không tràn VRAM.
+                            bs = 8 if vram_gb <= 4.5 else (16 if vram_gb <= 8.5 else 32)
+                            kw = {"dtype": dtype, "max_batch_size": bs, "max_streams": max(4, bs // 2)}
+                            dev_desc = f"GPU {torch.cuda.get_device_name(0)} ({vram_gb:.1f} GB VRAM, dtype={dtype}, batch={bs})"
+                    except Exception:
+                        pass
                 log(f"[Giọng đọc] Đang nạp mô hình VieNeu-TTS trên {dev_desc}...")
                 cls._model = Vieneu(**kw)
         return cls._model
@@ -91,6 +100,16 @@ class VieNeuEngine:
             m = cls._model
             cls._model = None
         if m is not None:
+            for owner in (m, getattr(m, "engine", None)):
+                be = getattr(owner, "_batch_engine", None) if owner is not None else None
+                if be is not None:
+                    for attr in ("_fused", "_graphs"):
+                        coll = getattr(be, attr, None)
+                        if hasattr(coll, "clear"):
+                            try:
+                                coll.clear()
+                            except Exception:
+                                pass
             close = getattr(m, "close", None)
             if callable(close):
                 try:
@@ -106,7 +125,7 @@ class VieNeuEngine:
             return False
         # mp3 CBR không thẻ ID3: mp3_duration() đọc được thời lượng ngay từ header, không cần ffprobe.
         subprocess.run(
-            ["ffmpeg", "-y", "-loglevel", "error", "-f", "f32le", "-ar", str(sample_rate), "-ac", "1", "-i", "-",
+            [FFMPEG_BIN, "-y", "-loglevel", "error", "-f", "f32le", "-ar", str(sample_rate), "-ac", "1", "-i", "-",
              "-ar", str(SAMPLE_RATE), "-b:a", "64k", "-write_xing", "0", "-id3v2_version", "0", "-f", "mp3", str(out)],
             input=wav.astype("float32").tobytes(), check=True,
         )

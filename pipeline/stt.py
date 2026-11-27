@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Callable, Dict, List
 
-from pipeline.common import build_atempo_chain, fmt_clock, free_gpu_memory, log, run_cmd
+from pipeline.common import FFMPEG_BIN, build_atempo_chain, cpu_forced, fmt_clock, free_gpu_memory, log, preload_nvidia_libs, run_cmd
 from pipeline.job import Job, Progress
 
 STT_PAD_SEC = 30.0  # giải mã dư ra để tìm khoảng lặng mà cắt khối, không cắt giữa câu
@@ -19,7 +19,7 @@ def decode_audio_window(input_mp4: Path, t0: float, dur: float, speed: float):
 
     raw = run_cmd(
         [
-            "ffmpeg",
+            FFMPEG_BIN,
             "-v",
             "error",
             "-ss",
@@ -143,20 +143,37 @@ def run_stt(
     else:
         from faster_whisper import WhisperModel
 
-        gpu = asr.cuda_devices() > 0
+        gpu = False
+        if not cpu_forced():
+            lib_ok, lib_err = preload_nvidia_libs()
+            if lib_ok and asr.cuda_devices() > 0:
+                gpu = True
+            elif not lib_ok and asr.cuda_devices() > 0:
+                log(f"[Nhận diện] ⚠ Thiếu thư viện CUDA ({lib_err}), lùi {spec['name']} về CPU.")
         threads = max(2, min(8, (os.cpu_count() or 4) - 2))
         log(f"[Nhận diện] Nạp {spec['name']} trên {'GPU' if gpu else 'CPU'} — tách âm chậm {speed}x, quy đổi mốc giờ về tốc độ gốc 1.0x.")
         try:
             model = WhisperModel(spec["repo"], device="cuda" if gpu else "cpu",
                                  compute_type="int8_float16" if gpu else "int8", cpu_threads=threads)
         except RuntimeError as e:
-            if not gpu or "out of memory" not in str(e).lower():
+            if not gpu:
                 raise
-            log(f"[Nhận diện] ⚠ {spec['name']} thiếu VRAM ở chế độ float16, thử hạ xuống int8 / CPU...")
-            free_gpu_memory()
-            try:
-                model = WhisperModel(spec["repo"], device="cuda", compute_type="int8", cpu_threads=threads)
-            except RuntimeError:
+            err_l = str(e).lower()
+            is_oom = "out of memory" in err_l
+            is_cuda_lib = any(k in err_l for k in ("cublas", "cudnn", "cuda", "libcu", "driver", "cannot be loaded", "no kernel image"))
+            if not is_oom and not is_cuda_lib:
+                raise
+            if is_oom:
+                log(f"[Nhận diện] ⚠ {spec['name']} thiếu VRAM ở chế độ float16, thử hạ xuống int8 / CPU...")
+                free_gpu_memory()
+                try:
+                    model = WhisperModel(spec["repo"], device="cuda", compute_type="int8", cpu_threads=threads)
+                except RuntimeError:
+                    gpu = False
+                    free_gpu_memory()
+                    model = WhisperModel(spec["repo"], device="cpu", compute_type="int8", cpu_threads=threads)
+            else:
+                log(f"[Nhận diện] ⚠ Lỗi thư viện CUDA/cuBLAS/cuDNN ({e}), lùi {spec['name']} về CPU (int8)...")
                 gpu = False
                 free_gpu_memory()
                 model = WhisperModel(spec["repo"], device="cpu", compute_type="int8", cpu_threads=threads)

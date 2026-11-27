@@ -17,10 +17,30 @@ import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const LOCAL_BIN = path.join(__dirname, ".local", "bin");
 const VENV_BIN = path.join(__dirname, ".venv", "bin");
-if (fs.existsSync(VENV_BIN) && !(process.env.PATH || "").split(path.delimiter).includes(VENV_BIN)) {
-  process.env.PATH = `${VENV_BIN}${path.delimiter}${process.env.PATH || ""}`;
-}
+const prependPath = (dir) => {
+  if (!fs.existsSync(dir)) return;
+  const parts = (process.env.PATH || "").split(path.delimiter).filter(Boolean);
+  if (parts[0] === dir) return;
+  process.env.PATH = [dir, ...parts.filter((p) => p !== dir)].join(path.delimiter);
+};
+prependPath(VENV_BIN);
+prependPath(LOCAL_BIN);
+const resolveBin = (name, envKey) => {
+  const override = String(process.env[envKey] || "").trim();
+  if (override) return override;
+  const local = path.join(LOCAL_BIN, name);
+  return fs.existsSync(local) ? local : name;
+};
+const FFMPEG_BIN = resolveBin("ffmpeg", "REUP_FFMPEG");
+const FFPROBE_BIN = resolveBin("ffprobe", "REUP_FFPROBE");
+const cpuForced = () => {
+  const v = String(process.env.REUP_FORCE_CPU || "").trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(v)) return true;
+  if (process.env.CUDA_VISIBLE_DEVICES !== undefined && ["", "-1"].includes(String(process.env.CUDA_VISIBLE_DEVICES).trim())) return true;
+  return false;
+};
 // REUP_MEDIA_ROOT / REUP_DATA_DIR: server truyền xuống khi chạy test (thư mục tạm), mặc định là repo.
 const MEDIA_ROOT = process.env.REUP_MEDIA_ROOT ? path.resolve(process.env.REUP_MEDIA_ROOT) : __dirname;
 const DATA_ROOT = process.env.REUP_DATA_DIR ? path.resolve(process.env.REUP_DATA_DIR) : path.join(__dirname, "data");
@@ -165,7 +185,7 @@ function runStreamingCmd(cmd, args, { niceLevel = 0, onLine = null, onSavedFile 
 function probeVideo(mp4Path) {
   try {
     const out = execFileSync(
-      "ffprobe",
+      FFPROBE_BIN,
       [
         "-v",
         "error",
@@ -194,10 +214,11 @@ function probeVideo(mp4Path) {
 
 let cachedNvencAvailable = null;
 function hasWorkingNvenc() {
+  if (cpuForced()) return false;
   if (cachedNvencAvailable !== null) return cachedNvencAvailable;
   try {
     execFileSync(
-      "ffmpeg",
+      FFMPEG_BIN,
       ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=duration=0.2:size=640x360:rate=10", "-pix_fmt", "yuv420p", "-c:v", "h264_nvenc", "-f", "null", "-"],
       { stdio: "ignore", timeout: 5000 }
     );
@@ -285,7 +306,7 @@ async function removeLogoInPlace(mp4Path, mode, perf = "balanced") {
 
   try {
     await runStreamingCmd(
-      "ffmpeg",
+      FFMPEG_BIN,
       [
         "-y",
         "-loglevel",

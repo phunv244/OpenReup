@@ -17,7 +17,7 @@ export default {
   init(ctx) {
     const project = ctx.get("project");
     // File tải xong khi bấm tải trong 1 dự án (lib/tasks báo theo dòng SAVED_FILE::: của script tải) → gán vào dự án đó.
-    taskEvents.on("saved_file", ({ rel, project_id }) => project.setVideoOwner(rel, project_id));
+    ctx.listen(taskEvents, "saved_file", ({ rel, project_id }) => project.setVideoOwner(rel, project_id));
     return createSourceService(sourceRepo, { dub: ctx.get("dub"), project, tasks });
   },
   routes: sourceRoutes,

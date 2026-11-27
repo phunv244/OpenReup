@@ -84,3 +84,18 @@ test("module dub khai phụ thuộc ai: bỏ module ai khỏi danh sách thì b�
   const noAi = MODULES.filter((m) => m.name !== "ai").map((m) => (m.name === "dub" ? m : { ...m, deps: (m.deps || []).filter((d) => d !== "ai") }));
   assert.throws(() => orderModules(noAi), /Module "dub" cần "ai"/);
 });
+
+test("refresh_ai_models qua /api/functions: hỏi lại agy, trả { models }, list_options.agy_models đọc lại danh sách mới; agy lỗi -> status error", async () => {
+  const call = async (name) => (await post("/api/functions/call", { name, arguments: {} })).json();
+  fs.writeFileSync(OUT, "gemini-5-high\tGemini 5 (High)\nclaude-y\tClaude Y\n");
+  const r = await call("refresh_ai_models");
+  assert.equal(r.status, "done", JSON.stringify(r));
+  assert.deepEqual(r.result, { models: [{ id: "gemini-5-high", name: "Gemini 5 (High)" }, { id: "claude-y", name: "Claude Y" }] });
+  assert.ok(r.call_id, "có ghi nhật ký lần gọi");
+  const opts = await call("list_options");
+  assert.deepEqual(opts.result.agy_models, r.result.models);
+  fs.writeFileSync(OUT, "Fetching models...\n");
+  const bad = await call("refresh_ai_models");
+  assert.equal(bad.status, "error");
+  assert.match(bad.error, /không trả về model nào/);
+});

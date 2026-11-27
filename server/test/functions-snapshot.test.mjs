@@ -55,3 +55,16 @@ test("routes/functions.mjs chỉ còn chỗ giữ; chỗ giữ của module chư
   assert.deepEqual(res.json().functions.map((f) => f.function.name), own.map((f) => f.name));
   await lone.close();
 });
+
+test("đóng app gỡ hết bộ nghe taskEvents (sources, dub editor, resources, /api/functions)", async () => {
+  // App thứ 2 trên cùng thư mục tạm của setupApp (config đã trỏ REUP_DATA_DIR tạm): không chạm data/ thật.
+  const { taskEvents } = await import("../lib/tasks.mjs");
+  const { buildApp } = await import("../app.mjs");
+  const count = () => ["start", "end", "saved_file"].map((e) => taskEvents.listenerCount(e));
+  const before = count();
+  const second = await buildApp();
+  await second.ready();
+  assert.deepEqual(count(), [before[0] + 1, before[1] + 3, before[2] + 1]);
+  await second.close();
+  assert.deepEqual(count(), before);
+});

@@ -5,10 +5,10 @@
 import fs from "node:fs";
 import { DEFAULT_VOICE, PY_SCRIPTS, VENV_PYTHON } from "../../config.mjs";
 import { checkSubStyle } from "../../lib/fonts.mjs";
-import { spawnTask, task, taskEvents } from "../../lib/tasks.mjs";
-import { httpError, validDelogo, validModelId, validSubcover, validVoice } from "../../lib/util.mjs";
+import { spawnTask, task } from "../../lib/tasks.mjs";
+import { httpError, projectIdOf, validDelogo, validModelId, validSubcover, validVoice } from "../../lib/util.mjs";
 import { legacyJobFields, lookupDownload } from "../../lib/videos.mjs";
-import { loadDubProject, saveDubProject } from "./repo.mjs";
+import { loadDubProject, saveDubProject, updateDubbed } from "./repo.mjs";
 import { segmentsRepo as seg } from "./segments-repo.mjs";
 
 const OUTLINE_CAP = 4000; // thanh timeline vẽ tối đa ngần này câu đầu; video siêu dài dùng bảng tìm kiếm
@@ -21,14 +21,15 @@ function assertIdle() {
 }
 
 /**
- * dub: service của chính module dub (pathArgs, jobIdFor); validAgyModel: kiểm id model dịch (service module ai).
+ * dub: service của chính module dub (pathArgs, jobIdFor, list, busyError, removeWorkDir); validAgyModel: kiểm id model dịch (service module ai);
+ * onTaskEnd(fn): nghe sự kiện tác vụ nền kết thúc (ctx.listen, tự gỡ khi app đóng).
  */
-export function createDubEditor(dub, validAgyModel) {
+export function createDubEditor(dub, validAgyModel, onTaskEnd) {
   const { pathArgs } = dub;
   // task_id → {jobId, rev} của các lần xuất lại toàn phần đang chạy: xong (exit 0) thì xóa cờ timeline_dirty,
   // trừ khi có sửa mới trong lúc chạy (rev tăng). Lỗi / bị dừng thì giữ cờ.
   const pendingFullRender = new Map();
-  taskEvents.on("end", ({ task_id, exit_code }) => {
+  onTaskEnd(({ task_id, exit_code }) => {
     const p = pendingFullRender.get(task_id);
     if (!p) return;
     pendingFullRender.delete(task_id);
@@ -202,6 +203,47 @@ export function createDubEditor(dub, validAgyModel) {
       if (!loadDubProject(jobId) || !Number.isInteger(id)) throw httpError(400, "Thiếu tham số.");
       assertIdle();
       if (!seg.remove(jobId, id)) throw httpError(404, "Không tìm thấy câu này.");
+      return { ok: true };
+    },
+
+    /** Bản lồng tiếng còn file .mp4 trên đĩa (bản mất file xuất không hiện trong danh sách). */
+    dubbed() {
+      const videos = dub.list().filter((v) => {
+        const abs = v.mp4_file && lookupDownload(`downloads/dubbed/${v.mp4_file}`)?.abs;
+        return abs && fs.existsSync(abs);
+      });
+      return { total: videos.length, videos };
+    },
+
+    /** Gán bản lồng tiếng vào dự án (projectId rỗng = gỡ khỏi dự án). Dự án phải có thật, như sources.assign. */
+    assign(jobId, projectId) {
+      if (!jobId) throw httpError(400, "Thiếu job_id.");
+      const pid = String(projectId || "").trim();
+      if (pid && projectIdOf({ project_id: pid }) !== pid) throw httpError(404, "Không tìm thấy dự án.");
+      const proj = loadDubProject(jobId);
+      if (!proj && !dub.list().some((v) => v.job_id === jobId)) throw httpError(404, "Không tìm thấy bản lồng tiếng.");
+      updateDubbed((vids) => vids.forEach((v) => v.job_id === jobId && (v.project_id = pid)));
+      if (proj) {
+        proj.project_id = pid;
+        saveDubProject(jobId, proj);
+      }
+      return { ok: true };
+    },
+
+    /** Xóa cache (giọng đọc + các phần video đã mã hóa) để lấy lại ổ cứng; bản lồng tiếng vẫn giữ nguyên. */
+    clean(jobId) {
+      if (!jobId) throw httpError(400, "Thiếu job_id.");
+      if (dub.busyError()) throw httpError(409, dub.busyError());
+      dub.removeWorkDir(jobId);
+      updateDubbed((vids) => vids.forEach((v) => v.job_id === jobId && (v.cache_mb = 0)));
+      return { ok: true };
+    },
+
+    /** Xóa hẳn 1 bản lồng tiếng (file xuất + dữ liệu câu thoại). */
+    remove(jobId) {
+      if (!jobId) throw httpError(400, "Thiếu job_id.");
+      if (dub.busyError()) throw httpError(409, dub.busyError());
+      dub.removeJob(jobId);
       return { ok: true };
     },
   };

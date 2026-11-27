@@ -993,5 +993,18 @@
         "additionalProperties": false
       }
     }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "refresh_ai_models",
+      "description": "Hỏi lại Antigravity (`agy models`, mất vài giây) để cập nhật danh sách model dịch. Trả { models: [{id, name}] }. Sau khi làm mới, list_options.agy_models đọc lại đúng danh sách này (id dùng cho tham số agy_model của dub_video).",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
   }
 ]

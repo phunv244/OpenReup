@@ -1,7 +1,7 @@
 /** Nghiệp vụ video nguồn: quét/tải Douyin, tải Bilibili/YouTube, xóa logo, danh sách video đã tải, gán dự án, xóa. Lỗi do input: ném Error có statusCode. */
 import path from "node:path";
 import { BILIBILI_DIR, DEFAULT_CHANNEL_URL, DOWNLOADS_DIR, ROOT } from "../../config.mjs";
-import { flushMediaCache, mediaKey, probeMedia } from "../../lib/media.mjs";
+import { ensureThumb, extractFrame, flushMediaCache, mediaKey, probeMedia } from "../../lib/media.mjs";
 import { httpError, projectIdOf, relOf, resolveDownload, safeJobId, validDelogo } from "../../lib/util.mjs";
 import { lookupDownload } from "../../lib/videos.mjs";
 
@@ -19,6 +19,12 @@ const normalizeUrl = (url) =>
 export function createSourceService(repo, { dub, project, tasks }) {
   /** Chạy 1 script node làm tác vụ nền: trả {ok, task_id} hoặc {ok:false, error} (đang bận). */
   const run = (type, args, target = "", projectId = "") => tasks.spawnTask(type, NODE, args, target, projectId);
+
+  /** Đường dẫn tuyệt đối của 1 video nguồn (rel "downloads/...") nếu là file có thật, không thì "". */
+  const fileOf = (rel) => {
+    const full = resolveDownload(rel);
+    return full && repo.isFile(full) ? full : "";
+  };
 
   return {
     /* ---------- Douyin ---------- */
@@ -102,10 +108,19 @@ export function createSourceService(repo, { dub, project, tasks }) {
       sources.sort((a, b) => b.mtime - a.mtime);
       return { total: sources.length, sources };
     },
-    /** Đường dẫn tuyệt đối của 1 video nguồn (rel "downloads/...") nếu là file có thật, không thì "". */
-    fileOf(rel) {
-      const full = resolveDownload(rel);
-      return full && repo.isFile(full) ? full : "";
+    fileOf,
+    /** Ảnh thu nhỏ (file jpg, tạo 1 lần rồi dùng lại) của 1 video nguồn; "" nếu không phải video nguồn hoặc không tạo được. */
+    async thumb(rel) {
+      const full = fileOf(rel);
+      return full ? ensureThumb(full, repo.stat(full)) : "";
+    },
+    /** 1 khung hình jpg (Buffer) của video nguồn để chọn vùng logo / phụ đề. 404 nếu không phải video nguồn, 500 nếu ffmpeg không trích được. */
+    async frame(rel) {
+      const full = fileOf(rel);
+      if (!full) throw httpError(404, "Không tìm thấy video.");
+      const img = await extractFrame(full);
+      if (!img) throw httpError(500, "Không trích được khung hình");
+      return img;
     },
     assign(rel, projectId) {
       const hit = lookupDownload(rel);

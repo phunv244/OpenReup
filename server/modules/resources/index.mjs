@@ -19,7 +19,7 @@ export default {
       dub: ctx.get("dub"),
       project: ctx.get("project"),
       sources: ctx.get("sources"),
-      tasks: { spawnTask, python: VENV_PYTHON, onEnd: (fn) => taskEvents.on("end", fn) },
+      tasks: { spawnTask, python: VENV_PYTHON, onEnd: (fn) => ctx.listen(taskEvents, "end", fn) },
     });
   },
   routes: resourceRoutes,

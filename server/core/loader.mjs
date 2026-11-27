@@ -4,6 +4,8 @@
  * - Thứ tự nạp sắp theo deps; thiếu phụ thuộc, phụ thuộc vòng, trùng tên module/hàm -> lỗi ngay lúc khởi động.
  * - Module chỉ lấy service của module khác qua ctx.get(tên), và chỉ với tên đã khai trong deps.
  * - ctx.get(tên) báo lỗi ngay nếu module đó không có service (không có init hoặc init trả undefined).
+ * - ctx.listen(emitter, event, fn): nghe sự kiện (vd taskEvents của lib/tasks); tự gỡ khi app đóng (app.close), để dựng lại app
+ *   trong cùng tiến trình (test) không chồng bộ nghe cũ.
  * - ctx.functions(): mảng đóng băng gồm mọi hàm do các module khai, theo thứ tự nạp (module "functions" dùng để dựng /api/functions).
  */
 
@@ -51,12 +53,20 @@ export async function loadModules(app, mods) {
   const frozen = Object.freeze(functions.map((f) => Object.freeze({ ...f, module: owner.get(f.name) })));
 
   const services = new Map();
+  const listeners = []; // [emitter, event, fn] do ctx.listen đăng ký
+  app.addHook("onClose", async () => {
+    for (const [em, ev, fn] of listeners.splice(0)) em.off(ev, fn);
+  });
   const ctxOf = (m) => ({
     get(name) {
       if (!(m.deps || []).includes(name)) throw new Error(`Module "${m.name}" gọi ctx.get("${name}") nhưng chưa khai "${name}" trong deps.`);
       const svc = services.get(name);
       if (svc === undefined) throw new Error(`Module "${m.name}" gọi ctx.get("${name}") nhưng "${name}" không có service (thiếu init hoặc init không trả gì).`);
       return svc;
+    },
+    listen(emitter, event, fn) {
+      emitter.on(event, fn);
+      listeners.push([emitter, event, fn]);
     },
     functions: () => frozen,
   });

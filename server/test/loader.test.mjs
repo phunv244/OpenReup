@@ -85,3 +85,14 @@ test("MODULES của server: module \"functions\" không khai hàm riêng; get_ta
   assert.equal(MODULES.find((m) => m.name === "functions").functions, undefined);
   assert.deepEqual(MODULES.find((m) => m.name === "tasks").functions.map((f) => f.name), ["get_task", "stop_task", "get_call", "list_calls"]);
 });
+
+test("ctx.listen: bộ nghe sự kiện được gỡ khi app đóng", async () => {
+  const { EventEmitter } = await import("node:events");
+  const em = new EventEmitter();
+  const app = Fastify();
+  await loadModules(app, [{ name: "a", init: (ctx) => (ctx.listen(em, "end", () => {}), {}) }, { name: "b", routes: (a, ctx) => ctx.listen(em, "end", () => {}) }]);
+  await app.ready();
+  assert.equal(em.listenerCount("end"), 2);
+  await app.close();
+  assert.equal(em.listenerCount("end"), 0);
+});

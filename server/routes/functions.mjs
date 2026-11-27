@@ -5,7 +5,9 @@
  *   GET  /api/functions/calls      nhật ký các lần gọi (?limit=&status=&name=)
  *   GET  /api/functions/calls/:id  1 lần gọi: trạng thái, kết quả (đường dẫn file), lỗi đầy đủ, file log
  * File này chỉ là danh sách đăng ký (thứ tự FUNCTIONS) + lớp chạy hàm: định nghĩa hàm nằm ở server/modules/<module>/functions.mjs,
- * nhật ký lần gọi ở lib/function-calls.mjs. Hàm không tự làm gì mới: gọi lại đúng route /api/* mà giao diện đang dùng (app.inject).
+ * nhật ký lần gọi ở lib/function-calls.mjs. Hàm có `route` gọi lại đúng route /api/* mà giao diện đang dùng (app.inject);
+ * hàm có `run(args, get, post)` tự gom kết quả (get/post = gọi route nội bộ), hoặc đọc thẳng lib dùng chung khi chỉ xem trạng thái
+ * (get_task: lib/tasks.mjs; get_call, list_calls: lib/function-calls.mjs).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -41,6 +43,7 @@ export const FUNCTIONS = [
   { slot: "project" }, // list_projects, create_project, update_project, delete_project: server/modules/project/functions.mjs
   { slot: "resources" }, // create_voice, update_voice, delete_voice, download_asr_model, delete_font, list_options: server/modules/resources/functions.mjs
   { slot: "tasks" }, // get_task, stop_task, get_call, list_calls: server/modules/tasks/functions.mjs
+  { slot: "ai" }, // refresh_ai_models: server/modules/ai/functions.mjs
 ];
 
 const pending = new Map(); // task_id -> {callId, def, args}
@@ -52,11 +55,11 @@ function errorText(code, logs, scriptError) {
   return [`Tiến trình thoát với mã ${code}.`, scriptError, tail].filter(Boolean).join("\n");
 }
 
-taskEvents.on("start", ({ task_id }) => {
+const onTaskStart = ({ task_id }) => {
   const p = pending.get(task_id);
   if (p) markRunning(p.callId);
-});
-taskEvents.on("end", (ev) => {
+};
+const onTaskEnd = (ev) => {
   const p = pending.get(ev.task_id);
   if (!p) return;
   pending.delete(ev.task_id);
@@ -74,7 +77,7 @@ taskEvents.on("end", (ev) => {
   } catch (e) {
     finish(p.callId, "error", { error: `Tác vụ xong nhưng không đọc được kết quả: ${e.stack || e.message}`, logFile });
   }
-});
+};
 
 function checkArgs(def, args) {
   if (!args || typeof args !== "object" || Array.isArray(args)) return "arguments phải là 1 object.";
@@ -120,6 +123,13 @@ function listingOrder(functions) {
 export default async function functionRoutes(app, functions) {
   const BY_NAME = new Map(functions.map((f) => [f.name, f]));
   const LISTED = listingOrder(functions);
+  // Nghe tác vụ nền để chốt kết quả lần gọi; gỡ khi app đóng (dựng lại app trong cùng tiến trình không chồng bộ nghe).
+  taskEvents.on("start", onTaskStart);
+  taskEvents.on("end", onTaskEnd);
+  app.addHook("onClose", async () => {
+    taskEvents.off("start", onTaskStart);
+    taskEvents.off("end", onTaskEnd);
+  });
   // Server bị tắt giữa chừng: các lần gọi còn "đang chạy" không bao giờ có kết quả nữa.
   stopOrphans();
 
@@ -136,6 +146,7 @@ export default async function functionRoutes(app, functions) {
     return body;
   };
   const get = (url) => hit("GET", url);
+  const post = (url, payload) => hit("POST", url, payload);
 
   async function call(name, args = {}, waitSec = 0) {
     const def = BY_NAME.get(name);
@@ -145,7 +156,7 @@ export default async function functionRoutes(app, functions) {
       try {
         const bad = checkArgs(def, args);
         if (bad) throw new Error(bad);
-        return { ok: true, name, status: "done", result: await def.run(args, get) };
+        return { ok: true, name, status: "done", result: await def.run(args, get, post) };
       } catch (e) {
         return { ok: false, name, status: "error", error: e.message };
       }
@@ -154,7 +165,7 @@ export default async function functionRoutes(app, functions) {
     try {
       const bad = checkArgs(def, args);
       if (bad) throw new Error(bad);
-      const out = def.run ? await def.run(args, get) : await hit(def.route[0], def.route[1], args);
+      const out = def.run ? await def.run(args, get, post) : await hit(def.route[0], def.route[1], args);
       if (!def.task) finish(callId, "done", { result: out });
       else {
         // Tác vụ nền: kết quả thật đến ở sự kiện "end" của tasks.mjs.

@@ -46,6 +46,7 @@ export const sourceRepo = {
   },
   exists: (full) => fs.existsSync(full),
   isFile: (full) => fs.existsSync(full) && fs.statSync(full).isFile(),
+  stat: (full) => fs.statSync(full),
   /** Xóa file video + file .info.json đi kèm. */
   removeVideo(full) {
     if (fs.existsSync(full) && fs.statSync(full).isFile()) fs.unlinkSync(full);

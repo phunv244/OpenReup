@@ -1,5 +1,7 @@
 # Gom mỗi video vào một thư mục riêng
 
+> Ghi chú: `dub_video.py` nay nằm ở `pipeline/dub_video.py` và được tách theo bước (`pipeline/stt.py`, `translate.py`, `tts.py`, `mix.py`, `render.py`, `store.py`, `job.py`...). Số dòng `dub_video.py:NNNN` trong tài liệu này là của bản trước khi tách (commit `f4b2acb`).
+
 Bản thiết kế, giai đoạn 1. Tài liệu này chỉ mô tả hiện trạng và đề xuất. Chưa có dữ liệu thật nào được chuyển, chưa có code chạy nào bị sửa. Cần Techlead duyệt trước khi sang giai đoạn 2.
 
 Số liệu đếm trên `data/` và `downloads/` thật ngày 2026-11-27, nhánh `claude` @ `0e6b04d`.

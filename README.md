@@ -31,7 +31,20 @@ Toàn bộ pipeline được thiết kế để chạy nhiều ngày liên tục
 - **Ổ cứng:** cần trống ~2,2 lần dung lượng video nếu in phụ đề / xóa logo, ~1,2 lần nếu giữ nguyên hình. Lấy lại chỗ bằng **⋯ → Xóa cache**.
 - **Thời gian (máy 8 nhân, không GPU):** nhận diện `base` ≈ 0,3 lần thời lượng video, `small` ≈ 0,8 lần; in phụ đề ≈ 0,3 lần. Video 90 tiếng với `base` + in phụ đề mất khoảng 2–3 ngày.
 
-Kiểm tra nhanh phần lõi (không cần mạng): `.venv/bin/python test_dub_video.py`
+Kiểm tra nhanh phần lõi (không cần mạng): `.venv/bin/python pipeline/tests/test_dub_video.py`
+
+Mã pipeline nằm trong gói `pipeline/`, mỗi bước một module; server gọi script qua hằng số `PIPELINE` trong `server/config.mjs`:
+
+| Module | Việc |
+| --- | --- |
+| `dub_video.py` | Điều phối cả quy trình (script server chạy), dừng/tiếp tục, ghi file project |
+| `stt.py` / `asr.py` | Nhận diện theo khối / danh mục + tải mô hình nhận diện (script) |
+| `translate.py` | Dịch theo ngữ cảnh dự án bằng `agy` |
+| `speakers.py`, `tts.py` | Phân biệt nhân vật, gán giọng (mỗi nhân vật 1 giọng) / VieNeu-TTS, cache theo câu |
+| `mix.py` | Dựng track lồng tiếng theo phần, trộn với âm gốc |
+| `render.py`, `subtitles.py` | Xuất video theo phần (phụ đề, xóa logo, che phụ đề gốc), ghép hình + tiếng / kiểu phụ đề, xem trước (script) |
+| `voice_tool.py` | Clone giọng, nghe thử (script) |
+| `paths.py`, `common.py`, `store.py`, `job.py` | Thư mục dữ liệu, tiện ích chung, SQLite + file project, checkpoint + tiến độ |
 
 ## Cài đặt & Chạy
 
@@ -53,7 +66,7 @@ uv pip install --python .venv/bin/python faster-whisper requests vieneu
 
 ### Mô hình nhận diện tiếng Trung
 Mục **Mô hình nhận diện** (thanh trái, ngoài dự án) liệt kê các mô hình kèm ghi chú, mô hình chưa có thì có nút **Tải về**.
-Danh mục nằm ở `asr.py` (`CATALOG`); mô hình sherpa-onnx lưu ở `data/asr_models/`, mô hình Whisper ở cache Hugging Face.
+Danh mục nằm ở `pipeline/asr.py` (`CATALOG`); mô hình sherpa-onnx lưu ở `data/asr_models/`, mô hình Whisper ở cache Hugging Face.
 - **SenseVoice-Small** (mặc định): nhanh nhất trên CPU, có dấu câu. Đo trên video 8 phút: 31 giây, sót ~4% lời thoại
   (Whisper base: 145 giây, sót 21%; Whisper small: 464 giây, sót 22%).
 - Whisper (medium, large-v3-turbo, BELLE large-v3-zh) tự chạy trên GPU NVIDIA khi có; FireRedASR chạy qua sherpa-onnx (CPU).

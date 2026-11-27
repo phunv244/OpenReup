@@ -7,7 +7,7 @@ Server Node chạy script con với ...process.env nên script tự nhận biế
 import os
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent  # gốc repo (pipeline/ nằm ngay dưới)
 
 
 def _env_dir(name: str, default: Path) -> Path:

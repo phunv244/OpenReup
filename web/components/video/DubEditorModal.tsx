@@ -105,9 +105,9 @@ export function DubEditorModal({ jobId, projectId, onClose }: { jobId: string; p
     if (ok) onClose();
   }
 
-  const onStructuralChange = (removedIds: number[]) => {
+  const onStructuralChange = (removedIds: number[], patch: Record<string, string> = {}) => {
     const dropIds = new Set(removedIds.map(String));
-    setEdits((m) => Object.fromEntries(Object.entries(m).filter(([k]) => !dropIds.has(k))) as Record<string, string>);
+    setEdits((m) => ({ ...(Object.fromEntries(Object.entries(m).filter(([k]) => !dropIds.has(k))) as Record<string, string>), ...patch }));
     setSpk((m) => Object.fromEntries(Object.entries(m).filter(([k]) => !dropIds.has(k))) as Record<string, string>);
     setQ((q) => ({ ...q }));
   };

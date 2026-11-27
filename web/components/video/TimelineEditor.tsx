@@ -82,7 +82,8 @@ type Props = {
   setEdits: (m: Record<string, string>) => void;
   spk: Record<string, string>;
   setSpk: (m: Record<string, string>) => void;
-  onStructuralChange: (removedIds: number[]) => void;
+  /** Báo bảng "Lời thoại" tải lại sau khi cắt/ghép/xóa; `patch` ghi đè bản sửa chưa lưu của các câu còn lại. */
+  onStructuralChange: (removedIds: number[], patch?: Record<string, string>) => void;
 };
 
 export function TimelineEditor({ jobId, video, speakers, edits, setEdits, spk, setSpk, onStructuralChange }: Props) {
@@ -263,15 +264,25 @@ export function TimelineEditor({ jobId, video, speakers, edits, setEdits, spk, s
     if (!sel) return;
     const d = await postJSON("/api/dub/segment/split", { job_id: jobId, id: sel.id, at: cur });
     if (d.error) return toast(d.error, "error");
+    onStructuralChange([]);
     toast("Đã cắt câu — câu sau để trống, gõ lại lời rồi Lưu & xuất lại.", "success");
     await load();
   }
   async function mergeNext() {
     if (!sel || !canMergeNext) return;
-    const withId = items[idxOfSel + 1].id;
+    const nxt = items[idxOfSel + 1];
+    const withId = nxt.id;
     const d = await postJSON("/api/dub/segment/merge", { job_id: jobId, id: sel.id, with_id: withId });
     if (d.error) return toast(d.error, "error");
-    onStructuralChange([withId]);
+    // Server ghép lời đã lưu của 2 câu; nếu một trong hai còn bản sửa chưa lưu thì gộp lại thành bản sửa của câu đã ghép,
+    // để khi Lưu không câu nào bị mất lời (trước đây bản sửa câu 1 đè mất lời câu 2).
+    const a = String(sel.id);
+    const b = String(withId);
+    const patch: Record<string, string> = {};
+    if (a in edits || b in edits) {
+      patch[a] = [a in edits ? edits[a] : sel.vi, b in edits ? edits[b] : nxt.vi].map((t) => t.trim()).filter(Boolean).join(" ");
+    }
+    onStructuralChange([withId], patch);
     toast("Đã ghép 2 câu.", "success");
     await load();
   }

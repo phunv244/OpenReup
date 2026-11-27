@@ -242,7 +242,7 @@ const FUNCTIONS = [
   },
   {
     name: "list_projects",
-    description: "Liệt kê đầy đủ các dự án Reup: giọng đọc dùng chung, nhân vật (tên gốc/Việt, xưng hô, tính cách), thuật ngữ, mạch truyện, danh sách video đã gán.",
+    description: "Liệt kê đầy đủ các dự án Reup: giọng đọc dùng chung, nhân vật (tên gốc/Việt, xưng hô, tính cách), thuật ngữ, mạch truyện, danh sách bản lồng tiếng đã gán; video_count = số video nguồn (mỗi video đếm 1 lần dù lồng tiếng nhiều lần), dubbed_count = số video đã lồng tiếng, pending_count = số video chưa lồng tiếng.",
     route: ["GET", "/api/projects"],
     parameters: {},
   },
@@ -326,7 +326,7 @@ const FUNCTIONS = [
         voices: [...(voices.presets || []), ...(voices.clones || [])].map((v) => ({ id: v.id, name: v.name, gender: v.gender, kind: v.kind || "vieneu" })),
         asr_models: (asr.models || []).map((m) => ({ id: m.id, name: m.name, installed: m.installed, hw: m.hw })),
         agy_models: (agy.models || []).map((m) => ({ id: m.id, name: m.name })),
-        projects: (projects.projects || []).map((p) => ({ id: p.id, name: p.name, video_count: p.video_count })),
+        projects: (projects.projects || []).map((p) => ({ id: p.id, name: p.name, video_count: p.video_count, dubbed_count: p.dubbed_count, pending_count: p.pending_count })),
         fonts: (fonts.fonts || []).map((f) => ({ family: f.family, vi: f.vi })),
         delogo: ["none", "top-right", "top-left", "both-top", "x,y,w,h"],
         quality: ["720p", "best"],

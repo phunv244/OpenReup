@@ -51,6 +51,16 @@ function migrateVideoProjects() {
   writeJson(VIDEO_PROJECTS_JSON, map);
 }
 
+/** Bản lồng tiếng trỏ tới dự án đã bị xóa (trước khi xóa dự án biết gỡ bản lồng tiếng) thành "chưa gán dự án". */
+function dropOrphanDubProjects() {
+  const d = readJson(DUBBED_JSON, null);
+  const orphans = (d?.videos || []).filter((v) => v.project_id && !fs.existsSync(path.join(STORY_PROJECTS_DIR, `${v.project_id}.json`)));
+  if (!orphans.length) return;
+  for (const v of orphans) v.project_id = "";
+  writeJson(DUBBED_JSON, d);
+  console.log(`[DATA] Gỡ ${orphans.length} bản lồng tiếng khỏi dự án đã xóa: ${orphans.map((v) => v.job_id).join(", ")}`);
+}
+
 /** Bỏ Edge-TTS: đổi giọng Edge đã lưu (dự án, bản lồng tiếng, job dở) sang giọng VieNeu gần nhất. */
 function migrateEdgeVoices() {
   const MAP = { "vi-VN-NamMinhNeural": "vieneu:Thiện Minh", "vi-VN-HoaiMyNeural": "vieneu:Ngọc Huyền" };
@@ -80,4 +90,5 @@ export function runMigrations() {
   migrateDubProjects();
   migrateVideoProjects();
   migrateEdgeVoices();
+  dropOrphanDubProjects();
 }

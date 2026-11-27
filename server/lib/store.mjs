@@ -7,7 +7,7 @@ import {
 } from "../config.mjs";
 import { db } from "./db.mjs";
 import { task } from "./tasks.mjs";
-import { readJson, writeJson } from "./util.mjs";
+import { readJson, relOf, writeJson } from "./util.mjs";
 
 /* ---------- Video nào thuộc dự án nào ---------- */
 export function readVideoProjects() {
@@ -21,10 +21,23 @@ export function setVideoProject(rel, projectId) {
   writeJson(VIDEO_PROJECTS_JSON, map);
 }
 
+/** Gỡ mọi video nguồn và bản lồng tiếng khỏi dự án (dự án bị xóa). File media không bị xóa. */
 export function unassignProject(projectId) {
   const map = readVideoProjects();
   for (const rel of Object.keys(map)) if (map[rel] === projectId) delete map[rel];
   writeJson(VIDEO_PROJECTS_JSON, map);
+  updateDubbed((vids) => vids.forEach((v) => v.project_id === projectId && (v.project_id = "")));
+}
+
+/** job_id → video nguồn (đường dẫn tương đối) của bản lồng tiếng, đọc từ meta.json của job. */
+export function readDubSources() {
+  const out = new Map();
+  if (!fs.existsSync(DUB_WORK_DIR)) return out;
+  for (const dir of fs.readdirSync(DUB_WORK_DIR)) {
+    const meta = readJson(path.join(DUB_WORK_DIR, dir, "meta.json"), null);
+    if (meta?.input_path) out.set(meta.job_id || dir, relOf(meta.input_path));
+  }
+  return out;
 }
 
 /* ---------- Douyin ---------- */

@@ -2,20 +2,32 @@
 import fs from "node:fs";
 import path from "node:path";
 import { STORY_PROJECTS_DIR } from "../config.mjs";
-import { readDubbed, unassignProject } from "../lib/store.mjs";
-import { fail, nowIso, projectFile, readJson, validVoice, writeJson } from "../lib/util.mjs";
+import { readDubSources, readDubbed, readVideoProjects, unassignProject } from "../lib/store.mjs";
+import { fail, nowIso, projectFile, readJson, resolveDownload, validVoice, writeJson } from "../lib/util.mjs";
 
 export default async function projectRoutes(app) {
   app.get("/api/projects", async () => {
     fs.mkdirSync(STORY_PROJECTS_DIR, { recursive: true });
     const dubbed = readDubbed();
+    const dubSources = readDubSources();
+    const owners = readVideoProjects();
     const projects = [];
     for (const f of fs.readdirSync(STORY_PROJECTS_DIR)) {
       if (!f.endsWith(".json")) continue;
       const p = readJson(path.join(STORY_PROJECTS_DIR, f), null);
       if (!p) continue;
       const vids = dubbed.filter((v) => v.project_id === p.id);
-      projects.push({ ...p, video_count: vids.length, videos: vids });
+      // 1 video = 1 video nguồn, dù lồng tiếng bao nhiêu lần. Bản lồng tiếng mất meta thì tự nó là 1 video.
+      const dubbedKeys = new Set(vids.map((v) => dubSources.get(v.job_id) || `job:${v.job_id}`));
+      const all = new Set(dubbedKeys);
+      for (const [rel, pid] of Object.entries(owners)) if (pid === p.id && fs.existsSync(resolveDownload(rel))) all.add(rel);
+      projects.push({
+        ...p,
+        video_count: all.size,
+        dubbed_count: dubbedKeys.size,
+        pending_count: all.size - dubbedKeys.size,
+        videos: vids,
+      });
     }
     projects.sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
     return { total: projects.length, projects };

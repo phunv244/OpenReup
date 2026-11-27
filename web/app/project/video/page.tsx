@@ -15,8 +15,9 @@ import { Options } from "@/components/ui";
 import { DubScript } from "@/components/video/DubScript";
 import { TimelineEditor } from "@/components/video/TimelineEditor";
 import { SubtitleStudio } from "@/components/video/SubtitleStudio";
+import { CompareAudio, CompareBar } from "@/components/video/CompareBar";
 import { FrameStage, LogoToggle, RegionTarget, activeTarget, regionInit } from "@/components/video/FrameStage";
-import { Speaker, SubStyle, dubFileUrl, getJSON } from "@/lib/api";
+import { Speaker, SubStyle, dubFileUrl, fileUrl, getJSON } from "@/lib/api";
 import { fmtDur, fmtSize, projHref } from "@/lib/format";
 import { useProjectId } from "@/lib/project";
 import { useStudio } from "@/lib/studio";
@@ -43,8 +44,8 @@ type Info = {
 };
 
 type Tab = "script" | "voice" | "video";
-/** Sân khấu lớn: phát video, hay khung hình tĩnh để xem trước/khoanh vùng logo & phụ đề. */
-type View = "video" | "frame";
+/** Sân khấu lớn: phát video, khung hình tĩnh để xem trước/khoanh vùng, hoặc so sánh gốc | đã chỉnh chia đôi. */
+type View = "video" | "frame" | "compare";
 
 const BG_OPTIONS: [string, string][] = [["0", "Tắt hẳn"], ["0.05", "5% — rất nhỏ"], ["0.12", "12% — rõ tiếng động nền"]];
 const nz = (s?: string) => s || "none";
@@ -75,6 +76,8 @@ function Detail() {
   const [tableKey, setTableKey] = useState(0);
   const [stamp, setStamp] = useState(0); // đổi để tải lại sau khi xuất lại xong / hoàn tác
   const video = useRef<HTMLVideoElement>(null);
+  const srcVideo = useRef<HTMLVideoElement>(null);
+  const [cmpAudio, setCmpAudio] = useState<CompareAudio>("dub");
   const [detailHost, setDetailHost] = useState<HTMLDivElement | null>(null);
 
   const d = dubbed.find((x) => x.job_id === jobId);
@@ -115,7 +118,7 @@ function Detail() {
   // Sang tab "Hình & phụ đề" thì sân khấu lớn chuyển sang khung hình xem trước; rời tab thì về video.
   const setTab = (t: Tab) => {
     setTabRaw(t);
-    setView(t === "video" ? "frame" : "video");
+    setView((v) => (t === "video" ? "frame" : v === "frame" ? "video" : v));
     if (t === "video") video.current?.pause();
   };
   const pick = (t: RegionTarget) => {
@@ -185,6 +188,9 @@ function Detail() {
   }
 
   const curTarget = activeTarget(target, delogo, subcover);
+  // Video nguồn (chưa lồng tiếng) phục vụ tĩnh dưới /downloads/...
+  const inputPath = info.input_path || "";
+  const srcUrl = inputPath.includes("downloads/") ? fileUrl(inputPath.slice(inputPath.lastIndexOf("downloads/"))) : "";
 
   const meta = [info.resolution, d?.duration_sec ? fmtDur(d.duration_sec) : "", d?.size_mb ? fmtSize(d.size_mb) : "", info.speed ? `${info.speed}x` : "", `${info.total.toLocaleString("vi")} câu`, d?.agy_model || ""].filter(Boolean);
 
@@ -197,7 +203,7 @@ function Detail() {
             <Link className="back-link" href={projHref(pid, "videos")}>‹ Video &amp; Lồng tiếng</Link>
             <span className="grow" />
             <div className="seg stage-mode" role="group" aria-label="Sân khấu">
-              <button type="button" className={view === "video" ? "active" : ""} aria-pressed={view === "video"} title="Phát bản đã xuất" onClick={() => setView("video")}>
+              <button type="button" className={view !== "frame" ? "active" : ""} aria-pressed={view !== "frame"} title="Phát bản đã xuất" onClick={() => setView("video")}>
                 <Icon name="play" size={13} /> Video
               </button>
               <button type="button" className={view === "frame" ? "active" : ""} aria-pressed={view === "frame"}
@@ -206,6 +212,18 @@ function Detail() {
                 <Icon name="image" size={13} /> Khung hình
               </button>
             </div>
+            {srcUrl && (
+              <button
+                className={`icon-btn cmp-toggle ${view === "compare" ? "on" : ""}`}
+                type="button"
+                aria-pressed={view === "compare"}
+                aria-label="So sánh video gốc và bản đã chỉnh"
+                title={view === "compare" ? "Tắt so sánh" : "So sánh: video gốc | bản đã chỉnh, chia đôi màn"}
+                onClick={() => setView((v) => (v === "compare" ? "video" : "compare"))}
+              >
+                <Icon name="compare" size={16} />
+              </button>
+            )}
             {d?.cache_mb ? <span className="stage-chip" title="Cache giúp xuất lại nhanh">Cache {fmtSize(d.cache_mb)}</span> : null}
             {d?.mp4_file && <a className="btn btn-quiet btn-sm" href={dubFileUrl(d.mp4_file)} download><Icon name="download" size={14} /> MP4</a>}
             {d?.srt_file && <a className="btn btn-quiet btn-sm" href={dubFileUrl(d.srt_file)} download><Icon name="cc" size={14} /> SRT</a>}
@@ -222,7 +240,19 @@ function Detail() {
               onRegion={(t, v) => (t === "logo" ? setDelogo(v) : setSubcover(v))}
             />
           )}
-          <video ref={video} key={stamp} className="stage-video" hidden={view !== "video"} controls preload="metadata" src={dubFileUrl(`${jobId}.mp4`) + `?v=${stamp}`} />
+          <div className={`stage-view ${view === "compare" ? "split" : ""}`} hidden={view === "frame"}>
+            {view === "compare" && (
+              <div className="cmp-pane" key="src">
+                <video ref={srcVideo} className="stage-video" src={srcUrl} muted={cmpAudio !== "src"} playsInline preload="auto" />
+                <span className="cmp-tag">Gốc</span>
+              </div>
+            )}
+            <div className="cmp-pane" key="dub">
+                        <video ref={video} key={stamp} className="stage-video" controls={view !== "compare"} preload="metadata" src={dubFileUrl(`${jobId}.mp4`) + `?v=${stamp}`} />
+              {view === "compare" && <span className="cmp-tag dub">Đã chỉnh</span>}
+            </div>
+          </div>
+          {view === "compare" && <CompareBar master={video} follower={srcVideo} audio={cmpAudio} onAudio={setCmpAudio} reset={stamp} />}
         </section>
 
         <aside className="studio-panel" aria-label="Chỉnh sửa">

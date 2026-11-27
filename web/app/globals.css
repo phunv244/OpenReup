@@ -1427,7 +1427,23 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .stage-bar .back-link { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .stage-chip { font-size: 11.5px; color: var(--muted); padding: 0 6px; white-space: nowrap; }
 .stage-video { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #000; display: block; }
-.stage-video[hidden] { display: none; }
+/* Sân khấu video; chế độ so sánh chia đôi: trái video gốc, phải bản đã chỉnh, chung 1 thanh điều khiển. */
+.stage-view { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); background: #000; }
+.stage-view[hidden] { display: none; }
+.stage-view.split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2px; background: var(--border); }
+.cmp-pane { position: relative; min-width: 0; min-height: 0; display: flex; background: #000; }
+.cmp-pane .stage-video { height: 100%; }
+.cmp-tag {
+  position: absolute; top: 10px; left: 10px; padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  color: #fff; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); pointer-events: none;
+}
+.cmp-tag.dub { background: color-mix(in srgb, var(--accent) 80%, transparent); color: var(--on-accent); }
+.cmp-toggle { width: 30px; height: 30px; }
+.cmp-toggle.on { background: var(--accent-soft); color: var(--accent-text); }
+.cmp-bar { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: var(--surface); border-top: 1px solid var(--border); }
+.cmp-time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cmp-seek { flex: 1; min-width: 60px; accent-color: var(--accent); }
+.cmp-audio button { padding: 4px 9px; font-size: 12px; gap: 5px; white-space: nowrap; }
 .stage-mode { flex: none; }
 .stage-mode button { padding: 4px 10px; font-size: 12px; gap: 5px; }
 
@@ -1510,7 +1526,9 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 @media (max-width: 1100px) {
   .main:has(> .studio) { height: auto; min-height: 100dvh; }
   .studio { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; grid-template-areas: "stage" "tl" "panel"; }
-  .stage-video { flex: none; aspect-ratio: 16 / 9; max-height: 56vh; }
+  .stage-view { flex: none; aspect-ratio: 16 / 9; max-height: 56vh; }
+  .stage-view.split { aspect-ratio: 32 / 9; }
+  .frame-stage { flex: none; aspect-ratio: 16 / 9; max-height: 56vh; }
   .studio-panel { height: min(78vh, 720px); }
 }
 @media (max-width: 900px) { .studio { padding: 10px; } .detail-bar { padding: 10px 12px; } }

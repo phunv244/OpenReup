@@ -3,6 +3,7 @@ import { Shell } from "@/components/Shell";
 import { ToastProvider } from "@/components/Toasts";
 import { StudioProvider } from "@/lib/studio";
 import "./globals.css";
+import "./notifications.css";
 
 export const metadata: Metadata = {
   title: "OpenReup Studio",

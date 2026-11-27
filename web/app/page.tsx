@@ -93,37 +93,41 @@ function ProjectCard({ p }: { p: Project }) {
     <article className="pcard" role="link" tabIndex={0} aria-label={`Mở dự án ${p.name}`} onClick={open} onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && open()}>
       <div className="pcard-top">
         <div className="pcard-ico">
-          <Icon name={ico} size={22} />
+          <Icon name={ico} size={20} />
         </div>
         <div className="pcard-head">
-          <div className="pcard-title">{p.name}</div>
-          <span className="badge violet">{p.type || "Truyện / Hoạt hình"}</span>
+          <div className="pcard-title" title={p.name}>{p.name}</div>
+          <span className="pcard-type">{p.type || "Truyện / Hoạt hình"}</span>
         </div>
         <button
-          className="icon-btn"
+          className="icon-btn pcard-set"
           type="button"
           title="Ngữ cảnh AI & cài đặt dự án"
+          aria-label={`Ngữ cảnh AI & cài đặt dự án ${p.name}`}
           onClick={(e) => {
             e.stopPropagation();
             openDrawer(p.id);
           }}
         >
-          <Icon name="sliders" />
+          <Icon name="sliders" size={17} />
         </button>
       </div>
-      <p className="pcard-syn">{p.synopsis || "Chưa có mô tả cốt truyện. Thêm bối cảnh để AI dịch đúng mạch truyện hơn."}</p>
-      <div className="pcard-foot">
-        <span>
-          <Icon name="mic" size={14} /> {p.video_count || 0} video
-        </span>
-        <span>
-          <Icon name="users" size={14} /> {(p.characters || []).length} nhân vật
-        </span>
-        <span>
-          <Icon name="book" size={14} /> {(p.glossary || []).length} thuật ngữ
-        </span>
-        <span className="pcard-go">
-          Mở <Icon name="chevron" size={15} />
+      <p className={`pcard-syn ${p.synopsis ? "" : "pcard-syn-empty"}`}>{p.synopsis || "Chưa có mô tả cốt truyện — thêm bối cảnh để AI dịch đúng mạch truyện hơn."}</p>
+      <div className="pcard-stats">
+        <div>
+          <b>{p.video_count || 0}</b>
+          <span>video</span>
+        </div>
+        <div>
+          <b>{(p.characters || []).length}</b>
+          <span>nhân vật</span>
+        </div>
+        <div>
+          <b>{(p.glossary || []).length}</b>
+          <span>thuật ngữ</span>
+        </div>
+        <span className="pcard-go" aria-hidden="true">
+          <Icon name="chevron" size={16} />
         </span>
       </div>
     </article>
@@ -167,7 +171,7 @@ export default function ProjectsPage() {
           ))}
           <button className="pcard pcard-new" type="button" onClick={() => setCreating(true)}>
             <span className="plus">
-              <Icon name="plus" size={22} />
+              <Icon name="plus" size={20} />
             </span>
             <b>Tạo dự án mới</b>
             <span>Mỗi bộ truyện / phim một dự án để AI nhớ nhân vật, xưng hô và mạch truyện</span>

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, createContext, useContext, useEffect, useState } from "react";
+import { Suspense, createContext, useContext, useEffect, useRef, useState } from "react";
 import { projHref, taskName } from "@/lib/format";
 import { useStudio } from "@/lib/studio";
 import { Icon } from "./Icon";
@@ -9,6 +9,7 @@ import { ProjectDrawer } from "./ProjectDrawer";
 import { Resizer } from "./Resizer";
 import { TaskCard } from "./TaskCard";
 import { TaskRail } from "./TaskRail";
+import { NotificationBell } from "./Toasts";
 
 /** Mở ngăn "Ngữ cảnh AI" của một dự án từ bất kỳ đâu (thanh trái, thẻ dự án, thanh tiêu đề). */
 const DrawerContext = createContext<(pid: string) => void>(() => {});
@@ -22,13 +23,14 @@ export const useRail = () => useContext(RailContext);
 function useSidebarMini() {
   const [mini, setMini] = useState(false);
   useEffect(() => setMini(document.documentElement.dataset.sb === "mini"), []);
-  // Đọc trạng thái thật từ <html> (không dùng giá trị state cũ trong closure của phím tắt).
-  const toggle = () => {
-    const next = document.documentElement.dataset.sb !== "mini";
+  const set = (next: boolean) => {
+    if ((document.documentElement.dataset.sb === "mini") === next) return;
     document.documentElement.dataset.sb = next ? "mini" : "full";
     localStorage.setItem("sb", next ? "mini" : "full");
     setMini(next);
   };
+  // Đọc trạng thái thật từ <html> (không dùng giá trị state cũ trong closure của phím tắt).
+  const toggle = () => set(document.documentElement.dataset.sb !== "mini");
   // Ctrl/⌘ + B bật/tắt (như VS Code); ở màn hẹp thanh trái đã là menu trượt nên bỏ qua.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -39,8 +41,9 @@ function useSidebarMini() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return { mini, toggle };
+  return { mini, toggle, set };
 }
 
 const clean = (p: string) => p.replace(/\/+$/, "") || "/";
@@ -56,7 +59,7 @@ function NavLink({ href, icon, label, count, active }: { href: string; icon: str
 }
 
 function Nav() {
-  const { projects, sources, videos, asr, fonts, voices } = useStudio();
+  const { projects, sources, videos, fonts, voices } = useStudio();
   const openDrawer = useOpenDrawer();
   const path = clean(usePathname());
   const params = useSearchParams();
@@ -92,30 +95,81 @@ function Nav() {
     <nav className="nav" aria-label="Điều hướng chính">
       <NavLink href="/" icon="folder" label="Reup" count={projects.length} active={path === "/" || path.startsWith("/project")} />
       <NavLink href="/resources/" icon="type" label="Tài nguyên" active={path === "/resources"} count={fonts.length + voices.clones.length} />
-      <NavLink href="/models/" icon="brain" label="Mô hình nhận diện" active={path === "/models"} count={asr.models.filter((m) => m.installed).length} />
-      <NavLink href="/logs/" icon="terminal" label="Nhật ký" active={path === "/logs"} />
     </nav>
   );
 }
 
-function ThemeToggle() {
+function useTheme() {
   const [theme, setTheme] = useState("dark");
   useEffect(() => setTheme(document.documentElement.dataset.theme || "dark"), []);
-  const next = theme === "dark" ? "light" : "dark";
+  const flip = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("theme", next);
+    setTheme(next);
+  };
+  return { theme, flip };
+}
+
+/** Menu "Cài đặt" ở chân thanh trái: Mô hình nhận diện, Nhật ký hệ thống, Hướng dẫn, đổi giao diện. */
+function SettingsMenu() {
+  const { asr } = useStudio();
+  const path = clean(usePathname());
+  const { theme, flip } = useTheme();
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const here = ["/models", "/logs", "/help"].includes(path);
+  useEffect(() => setOpen(false), [path]);
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", down);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", down);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+  const installed = asr.models.filter((m) => m.installed).length;
   return (
-    <button
-      className="sb-tool"
-      type="button"
-      title="Đổi giao diện sáng / tối"
-      onClick={() => {
-        document.documentElement.dataset.theme = next;
-        localStorage.setItem("theme", next);
-        setTheme(next);
-      }}
-    >
-      <Icon name={theme === "dark" ? "sun" : "moon"} size={16} />
-      <span>{theme === "dark" ? "Giao diện sáng" : "Giao diện tối"}</span>
-    </button>
+    <div className="sb-settings" ref={box}>
+      {open && (
+        <div className="sb-menu" role="menu" aria-label="Cài đặt">
+          <div className="sb-menu-label">Hệ thống</div>
+          <Link role="menuitem" className={`sb-menu-item ${path === "/models" ? "active" : ""}`} href="/models/">
+            <Icon name="brain" size={16} />
+            <span>Mô hình nhận diện</span>
+            <em>{installed}</em>
+          </Link>
+          <Link role="menuitem" className={`sb-menu-item ${path === "/logs" ? "active" : ""}`} href="/logs/">
+            <Icon name="terminal" size={16} />
+            <span>Nhật ký hệ thống</span>
+          </Link>
+          <Link role="menuitem" className={`sb-menu-item ${path === "/help" ? "active" : ""}`} href="/help/">
+            <Icon name="help" size={16} />
+            <span>Hướng dẫn</span>
+          </Link>
+          <div className="sb-menu-sep" />
+          <button role="menuitem" className="sb-menu-item" type="button" onClick={flip}>
+            <Icon name={theme === "dark" ? "sun" : "moon"} size={16} />
+            <span>{theme === "dark" ? "Giao diện sáng" : "Giao diện tối"}</span>
+          </button>
+        </div>
+      )}
+      <button
+        className={`sb-tool sb-settings-btn ${open || here ? "on" : ""}`}
+        type="button"
+        title="Cài đặt"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <Icon name="settings" size={16} />
+        <span>Cài đặt</span>
+        <Icon name="chevron" size={14} />
+      </button>
+    </div>
   );
 }
 
@@ -143,7 +197,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
     <RailContext.Provider value={{ open: railOpen, toggle: toggleRail }}>
       <div className="app">
         <aside className="sidebar">
-          <Resizer cssVar="sb-w" min={200} max={420} side="left" label="Kéo để đổi độ rộng thanh bên trái" />
+          <Resizer
+            cssVar="sb-w"
+            min={200}
+            max={420}
+            side="left"
+            snapAt={150}
+            onSnap={sb.set}
+            label="Kéo để đổi độ rộng thanh bên trái — kéo hẹp hẳn để thu thành dải icon"
+          />
           <button
             className="icon-btn sb-collapse"
             type="button"
@@ -172,13 +234,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
           <div className="sb-foot">
             <TaskCard variant="sidebar" />
-            <div className="sb-tools">
-              <Link className="sb-tool" href="/help/" title="Hướng dẫn">
-                <Icon name="help" size={16} />
-                <span>Hướng dẫn</span>
-              </Link>
-              <ThemeToggle />
-            </div>
+            <SettingsMenu />
           </div>
         </aside>
 
@@ -219,6 +275,7 @@ export function Topbar({ title, sub, actions }: { title: string; sub?: string; a
       )}
       <div className="topbar-actions">
         {actions}
+        <NotificationBell />
         <button
           className={`icon-btn rail-toggle ${rail.open ? "on" : ""}`}
           type="button"

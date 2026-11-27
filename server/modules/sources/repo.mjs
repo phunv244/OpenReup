@@ -45,6 +45,7 @@ export const sourceRepo = {
       .map((f) => ({ name: f, full: path.join(dir, f), st: fs.statSync(path.join(dir, f)) }))
       .filter((x) => x.st.isFile());
   },
+  exists: (full) => fs.existsSync(full),
   isFile: (full) => fs.existsSync(full) && fs.statSync(full).isFile(),
   /** Xóa file video + file .info.json đi kèm. */
   removeVideo(full) {

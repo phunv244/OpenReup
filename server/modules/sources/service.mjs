@@ -119,6 +119,9 @@ export function createSourceService(repo, { dub, project, tasks }) {
     remove(body) {
       const resolved = resolveDownload(body.rel_path);
       if (!resolved || resolved.startsWith(DUBBED_DIR + path.sep)) throw httpError(400, "Đường dẫn file không hợp lệ.");
+      // Thư mục (vd downloads/bilibili) không phải video: chặn ở đây, không để rmSync ném EISDIR → 500.
+      // File không còn trên đĩa vẫn cho xóa để dọn mục gán dự án/bilibili.json còn sót.
+      if (repo.exists(resolved) && !repo.isFile(resolved)) throw httpError(400, "Đường dẫn không phải file video.");
       const running = tasks.running();
       if (running?.target && resolveDownload(running.target) === resolved) {
         throw httpError(409, "Video này đang được xử lý. Hãy dừng tiến trình trước khi xóa.");

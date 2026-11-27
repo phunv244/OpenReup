@@ -9,11 +9,11 @@ import { useStudio } from "@/lib/studio";
 import { voiceOptions } from "@/lib/voices";
 import { Icon } from "../Icon";
 import { Modal } from "../Modal";
-import { RegionToggle } from "../RegionPicker";
 import { useToast } from "../Toasts";
 import { Callout, Options } from "../ui";
 import { AgyModelField } from "./AgyModelField";
 import { SubtitleStudio } from "./SubtitleStudio";
+import { FrameStage, LogoToggle, RegionTarget, activeTarget, regionInit } from "./FrameStage";
 import { WorkItem } from "./items";
 
 export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; projectId: string; onClose: () => void }) {
@@ -33,8 +33,9 @@ export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; project
     fresh: false,
     agy: prev.agy_model || "",
   });
-  const [delogo, setDelogo] = useState(prev.delogo || "none");
-  const [subcover, setSubcover] = useState(prev.subcover || "none");
+  const [delogo, setDelogo] = useState(regionInit(prev.delogo));
+  const [subcover, setSubcover] = useState(regionInit(prev.subcover));
+  const [target, setTarget] = useState<RegionTarget | null>(null);
   const [subStyle, setSubStyle] = useState<SubStyle | null>(prev.sub_style || null);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setF({ ...f, [k]: e.target.type === "checkbox" ? (e.target as HTMLInputElement).checked : e.target.value });
@@ -135,14 +136,28 @@ export function DubConfigModal({ v, projectId, onClose }: { v: WorkItem; project
           </select>
         </div>
       </div>
-      <RegionToggle label="Xóa logo khi xuất" rel={v.rel_path} initial={prev.delogo} onChange={setDelogo} />
+      {/* Một khung hình xem trước duy nhất cho cả vùng logo, vùng che và phụ đề Việt */}
+      {encode && (
+        <div className="modal-frame">
+          <FrameStage
+            rel={v.rel_path}
+            burn={f.sub}
+            style={f.sub ? subStyle : null}
+            delogo={delogo}
+            subcover={subcover}
+            target={activeTarget(target, delogo, subcover)}
+            onTarget={setTarget}
+            onRegion={(t, val) => (t === "logo" ? setDelogo(val) : setSubcover(val))}
+          />
+        </div>
+      )}
+      <LogoToggle label="Xóa logo khi xuất" value={delogo} saved={prev.delogo} onChange={setDelogo} onPick={() => setTarget("logo")} />
       <SubtitleStudio
-        rel={v.rel_path}
         burn={f.sub}
         onBurn={(sub) => setF((x) => ({ ...x, sub }))}
         subcover={subcover}
-        initialSubcover={prev.subcover}
         onSubcover={setSubcover}
+        onPick={() => setTarget("sub")}
         style={subStyle}
         onStyle={setSubStyle}
       />

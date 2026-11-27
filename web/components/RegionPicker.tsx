@@ -102,32 +102,3 @@ export function RegionPicker({ rel, initial = "", onChange }: { rel: string; ini
     </div>
   );
 }
-
-/**
- * Công tắc bật/tắt một vùng trên khung hình (xóa logo, che phụ đề gốc): mặc định tắt.
- * Bật lên thì bắt buộc khoanh vùng. onChange nhận giá trị gửi server: "none" khi tắt, "x,y,w,h" khi đã khoanh,
- * "" khi đã bật nhưng chưa kéo vùng nào (bên gọi phải chặn lại).
- */
-export function RegionToggle({ label, hint, rel, initial, onChange }: {
-  label: string;
-  hint?: React.ReactNode;
-  rel: string;
-  initial?: string;
-  onChange: (v: string) => void;
-}) {
-  // Bản cũ có thể đã lưu vị trí góc ("top-right"...): vẫn coi là đang bật, nhưng phải khoanh vùng lại.
-  const [on, setOn] = useState(Boolean(initial && initial !== "none"));
-  const [region, setRegion] = useState(isRegion(initial) ? String(initial) : "");
-  const changed = useRef(onChange);
-  changed.current = onChange;
-  useEffect(() => changed.current(on ? region : "none"), [on, region]);
-  return (
-    <div className="field">
-      <label className="check">
-        <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} /> {label}
-      </label>
-      {hint && <div className="help">{hint}</div>}
-      {on && <RegionPicker rel={rel} initial={isRegion(initial) ? initial : ""} onChange={setRegion} />}
-    </div>
-  );
-}

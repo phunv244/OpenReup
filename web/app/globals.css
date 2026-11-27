@@ -1427,6 +1427,39 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .stage-bar .back-link { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .stage-chip { font-size: 11.5px; color: var(--muted); padding: 0 6px; white-space: nowrap; }
 .stage-video { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #000; display: block; }
+.stage-video[hidden] { display: none; }
+.stage-mode { flex: none; }
+.stage-mode button { padding: 4px 10px; font-size: 12px; gap: 5px; }
+
+/* Khung hình xem trước trên sân khấu lớn: 1 ảnh duy nhất, khoanh được cả vùng logo lẫn vùng phụ đề gốc. */
+.frame-stage { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; background: #000; }
+.frame-fit { position: relative; line-height: 0; user-select: none; touch-action: none; }
+.frame-fit.pickable { cursor: crosshair; }
+.frame-fit img { width: 100%; height: 100%; display: block; pointer-events: none; transition: opacity 0.25s var(--ease); }
+.frame-fit.loading img { opacity: 0.65; }
+.frame-stage .rp-loading { position: static; color: #bbb; }
+.fs-box { pointer-events: none; opacity: 0.75; box-shadow: none; }
+.fs-box.on { opacity: 1; }
+.fs-box.logo { border-color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); }
+.fs-box.sub { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.fs-box span {
+  position: absolute; left: -2px; bottom: 100%; margin-bottom: 3px; padding: 2px 6px; border-radius: 4px;
+  font-size: 11px; line-height: 1.3; font-weight: 600; white-space: nowrap; color: #000;
+}
+.fs-box.logo span { background: var(--amber); }
+.fs-box.sub span { background: var(--accent); color: var(--on-accent); }
+.fs-hud { position: absolute; left: 10px; top: 10px; right: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; pointer-events: none; }
+.fs-hud > * { pointer-events: auto; }
+.fs-target { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); }
+.fs-target button { padding: 4px 10px; font-size: 12px; gap: 6px; color: #ddd; }
+.fs-hint { padding: 5px 10px; border-radius: 999px; font-size: 12px; background: rgba(0, 0, 0, 0.65); color: #fff; backdrop-filter: blur(8px); }
+.fs-hint.quiet { color: #bbb; }
+.fs-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.fs-dot.logo { background: var(--amber); }
+.fs-dot.sub { background: var(--accent); }
+.modal-frame { height: clamp(220px, 38vh, 380px); display: flex; margin: 4px 0 14px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+.region-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 4px 2px; font-size: 12.5px; }
+.region-row .muted { flex: 1; min-width: 0; }
 .back-link { display: inline-block; color: var(--muted); font-size: 13px; font-weight: 550; }
 .back-link:hover { color: var(--text); text-decoration: none; }
 

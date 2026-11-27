@@ -10,12 +10,12 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { ProjectTopbar } from "@/components/ProjectTopbar";
-import { RegionToggle } from "@/components/RegionPicker";
 import { useToast } from "@/components/Toasts";
 import { Options } from "@/components/ui";
 import { DubScript } from "@/components/video/DubScript";
 import { TimelineEditor } from "@/components/video/TimelineEditor";
 import { SubtitleStudio } from "@/components/video/SubtitleStudio";
+import { FrameStage, LogoToggle, RegionTarget, activeTarget, regionInit } from "@/components/video/FrameStage";
 import { Speaker, SubStyle, dubFileUrl, getJSON } from "@/lib/api";
 import { fmtDur, fmtSize, projHref } from "@/lib/format";
 import { useProjectId } from "@/lib/project";
@@ -43,10 +43,13 @@ type Info = {
 };
 
 type Tab = "script" | "voice" | "video";
+/** Sân khấu lớn: phát video, hay khung hình tĩnh để xem trước/khoanh vùng logo & phụ đề. */
+type View = "video" | "frame";
 
 const BG_OPTIONS: [string, string][] = [["0", "Tắt hẳn"], ["0.05", "5% — rất nhỏ"], ["0.12", "12% — rõ tiếng động nền"]];
 const nz = (s?: string) => s || "none";
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
 
 
 function Detail() {
@@ -66,7 +69,9 @@ function Detail() {
   const [edits, setEdits] = useState<Record<string, string>>({}); // {id: lời mới}
   const [spk, setSpk] = useState<Record<string, string>>({}); // {id: nhân vật mới}
   const [structural, setStructural] = useState(false); // đã cắt/ghép/xóa/dời giờ câu, chưa xuất lại
-  const [tab, setTab] = useState<Tab>("script");
+  const [tab, setTabRaw] = useState<Tab>("script");
+  const [view, setView] = useState<View>("video");
+  const [target, setTarget] = useState<RegionTarget | null>(null);
   const [tableKey, setTableKey] = useState(0);
   const [stamp, setStamp] = useState(0); // đổi để tải lại sau khi xuất lại xong / hoàn tác
   const video = useRef<HTMLVideoElement>(null);
@@ -84,6 +89,8 @@ function Detail() {
       setBg(String(r.bg_volume ?? 0.05));
       setSub(r.burn_sub !== false);
       setSubStyle(r.sub_style || null);
+      setDelogo(regionInit(r.delogo));
+      setSubcover(regionInit(r.subcover));
       setSpkVoices({});
       setEdits({});
       setSpk({});
@@ -104,6 +111,18 @@ function Detail() {
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [editCount]);
+
+  // Sang tab "Hình & phụ đề" thì sân khấu lớn chuyển sang khung hình xem trước; rời tab thì về video.
+  const setTab = (t: Tab) => {
+    setTabRaw(t);
+    setView(t === "video" ? "frame" : "video");
+    if (t === "video") video.current?.pause();
+  };
+  const pick = (t: RegionTarget) => {
+    setTarget(t);
+    setView("frame");
+    video.current?.pause();
+  };
 
   if (!jobId) return <main className="content"><p className="muted">Thiếu mã bản lồng tiếng.</p></main>;
   if (!info) return <main className="content"><p className="muted">Đang tải...</p></main>;
@@ -165,6 +184,8 @@ function Detail() {
     setTableKey((k) => k + 1);
   }
 
+  const curTarget = activeTarget(target, delogo, subcover);
+
   const meta = [info.resolution, d?.duration_sec ? fmtDur(d.duration_sec) : "", d?.size_mb ? fmtSize(d.size_mb) : "", info.speed ? `${info.speed}x` : "", `${info.total.toLocaleString("vi")} câu`, d?.agy_model || ""].filter(Boolean);
 
   return (
@@ -175,11 +196,33 @@ function Detail() {
           <div className="stage-bar">
             <Link className="back-link" href={projHref(pid, "videos")}>‹ Video &amp; Lồng tiếng</Link>
             <span className="grow" />
+            <div className="seg stage-mode" role="group" aria-label="Sân khấu">
+              <button type="button" className={view === "video" ? "active" : ""} aria-pressed={view === "video"} title="Phát bản đã xuất" onClick={() => setView("video")}>
+                <Icon name="play" size={13} /> Video
+              </button>
+              <button type="button" className={view === "frame" ? "active" : ""} aria-pressed={view === "frame"}
+                title="Khung hình xem trước: thấy ngay phụ đề/vùng che mới, kéo chuột để khoanh vùng logo hoặc phụ đề gốc"
+                onClick={() => { setView("frame"); video.current?.pause(); }}>
+                <Icon name="image" size={13} /> Khung hình
+              </button>
+            </div>
             {d?.cache_mb ? <span className="stage-chip" title="Cache giúp xuất lại nhanh">Cache {fmtSize(d.cache_mb)}</span> : null}
             {d?.mp4_file && <a className="btn btn-quiet btn-sm" href={dubFileUrl(d.mp4_file)} download><Icon name="download" size={14} /> MP4</a>}
             {d?.srt_file && <a className="btn btn-quiet btn-sm" href={dubFileUrl(d.srt_file)} download><Icon name="cc" size={14} /> SRT</a>}
           </div>
-          <video ref={video} key={stamp} className="stage-video" controls preload="metadata" src={dubFileUrl(`${jobId}.mp4`) + `?v=${stamp}`} />
+          {view === "frame" && (
+            <FrameStage
+              rel={info.input_path || ""}
+              burn={sub}
+              style={sub ? subStyle : null}
+              delogo={delogo}
+              subcover={subcover}
+              target={curTarget}
+              onTarget={setTarget}
+              onRegion={(t, v) => (t === "logo" ? setDelogo(v) : setSubcover(v))}
+            />
+          )}
+          <video ref={video} key={stamp} className="stage-video" hidden={view !== "video"} controls preload="metadata" src={dubFileUrl(`${jobId}.mp4`) + `?v=${stamp}`} />
         </section>
 
         <aside className="studio-panel" aria-label="Chỉnh sửa">
@@ -252,14 +295,13 @@ function Detail() {
           </div>
 
           <div className="panel-pane" hidden={tab !== "video"}>
-            <RegionToggle label="Xóa logo" rel={info.input_path || ""} initial={info.delogo} onChange={setDelogo} />
+            <LogoToggle value={delogo} saved={info.delogo} onChange={setDelogo} onPick={() => pick("logo")} />
             <SubtitleStudio
-              rel={info.input_path || ""}
               burn={sub}
               onBurn={setSub}
               subcover={subcover}
-              initialSubcover={info.subcover}
               onSubcover={setSubcover}
+              onPick={() => pick("sub")}
               style={subStyle}
               onStyle={setSubStyle}
             />

@@ -137,7 +137,7 @@ function SettingsMenu() {
         <div className="sb-menu" role="menu" aria-label="Cài đặt">
           <div className="sb-menu-label">Hệ thống</div>
           <Link role="menuitem" className={`sb-menu-item ${path === "/models" ? "active" : ""}`} href="/models/">
-            <Icon name="brain" size={16} />
+            <Icon name="wave" size={16} />
             <span>Mô hình nhận diện</span>
             <em>{installed}</em>
           </Link>
@@ -244,7 +244,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 }
 
 /** Thanh tiêu đề của mỗi trang: cao cố định 64px. `meta` (thông tin ngắn như "5:26 · 92 câu") nằm cùng hàng với tiêu đề, không thành dòng thứ hai. */
-export function Topbar({ title, meta, actions }: { title: string; meta?: string; actions?: React.ReactNode }) {
+export function Topbar({ title, meta, actions, back }: { title: string; meta?: string; actions?: React.ReactNode; back?: { href: string; label: string } }) {
   const { task } = useStudio();
   const rail = useRail();
   const busy = Boolean(task?.running) || (task?.queue || []).length > 0;
@@ -258,6 +258,11 @@ export function Topbar({ title, meta, actions }: { title: string; meta?: string;
       <button className="icon-btn menu-btn" type="button" aria-label="Mở menu" onClick={() => document.body.classList.add("sb-open")}>
         <Icon name="menu" />
       </button>
+      {back && (
+        <Link className="topbar-back" href={back.href} title={`Về ${back.label}`} aria-label={`Về ${back.label}`}>
+          <Icon name="back" size={16} />
+        </Link>
+      )}
       <div className="topbar-title">
         <h1>{title}</h1>
         {meta && <span className="topbar-meta">{meta}</span>}

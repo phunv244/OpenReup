@@ -37,7 +37,7 @@ export function ScanTab() {
           <div className="card-body">
             <div className="field">
               <label htmlFor="scan-url">Link kênh Douyin</label>
-              <input id="scan-url" className="input" type="url" value={url} onChange={(e) => setUrl(e.target.value)} />
+              <input id="scan-url" className="input" type="url" autoFocus value={url} onChange={(e) => setUrl(e.target.value)} />
             </div>
             <div className="actions">
               <button className="btn btn-primary" type="button" onClick={() => startTask("/api/scan", { url: url.trim(), resume: true }, "Bắt đầu quét nối tiếp")}>

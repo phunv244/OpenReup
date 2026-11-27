@@ -196,8 +196,10 @@ const pos = (r: Rect) => ({ left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: 
 export const regionInit = (v?: string) => (!v || v === "none" ? "none" : isRegionValue(v) ? v : "");
 
 /** Công tắc "Xóa logo" + dòng trạng thái vùng. Việc khoanh vùng diễn ra trên FrameStage. */
-export function LogoToggle({ label = "Xóa logo", value, saved, onChange, onPick }: {
+export function LogoToggle({ label = "Xóa logo", heading, value, saved, onChange, onPick }: {
   label?: string;
+  /** Tiêu đề nhóm (vd "Logo") khi đứng cạnh nhóm "Phụ đề Việt". */
+  heading?: string;
   value: string;
   saved?: string;
   onChange: (v: string) => void;
@@ -207,9 +209,11 @@ export function LogoToggle({ label = "Xóa logo", value, saved, onChange, onPick
   const ok = isRegionValue(value);
   return (
     <div className="field">
-      <label className="check">
+      {heading && <span className="label">{heading}</span>}
+      <label className="check switch">
         <input
           type="checkbox"
+          role="switch"
           checked={on}
           onChange={(e) => {
             onChange(e.target.checked ? (isRegionValue(saved || "") ? String(saved) : "") : "none");

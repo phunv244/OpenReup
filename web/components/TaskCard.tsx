@@ -43,7 +43,7 @@ export function TaskCard({ variant }: { variant: "sidebar" | "rail" }) {
   const { task, stopTask, system } = useStudio();
   const rail = useRail();
   if (!task) return null;
-  // Cảnh báo ổ đầy và "Sẵn sàng" chỉ hiện ở thanh trái — cột phải không lặp lại.
+  // Cảnh báo ổ đầy chỉ hiện ở thanh trái — cột phải không lặp lại.
   const lowDisk = variant === "sidebar" && !task.running && system.total_gb > 0 && system.free_gb < LOW_DISK_GB;
   const wrap = (node: React.ReactNode) => (
     <div className="js-task" data-variant={variant}>
@@ -95,13 +95,6 @@ export function TaskCard({ variant }: { variant: "sidebar" | "rail" }) {
       </div>
     );
   }
-  if (variant !== "sidebar") return null;
-  return wrap(
-    <div className="task-card">
-      <div className="task-head">
-        <span className="dot" />
-        <span>Sẵn sàng</span>
-      </div>
-    </div>
-  );
+  // Rảnh: không hiện thẻ "Sẵn sàng" (không bấm được gì) — chỉ còn cảnh báo ổ đầy nếu có.
+  return lowDisk ? wrap(null) : null;
 }

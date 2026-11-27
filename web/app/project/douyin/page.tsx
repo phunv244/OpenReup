@@ -20,8 +20,10 @@ const TABS = [
 export default function DouyinPage() {
   const pid = useProjectId();
   const params = useSearchParams();
-  const { task, loaded } = useStudio();
-  const tab = TABS.find((t) => t[0] === params.get("tab")) || TABS[0];
+  const { task, loaded, videos } = useStudio();
+  // Kho rỗng thì mở thẳng "Quét kênh" (việc duy nhất làm được); có video rồi mới mặc định "Danh sách video".
+  const want = params.get("tab") || (loaded && !videos.length ? "scan" : "list");
+  const tab = TABS.find((t) => t[0] === want) || TABS[0];
   const busy = task?.running && (task.task_type === "scan_web" || task.task_type === "download");
   return (
     <>

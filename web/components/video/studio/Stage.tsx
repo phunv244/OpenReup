@@ -1,12 +1,10 @@
 "use client";
 /** Sân khấu lớn: phát bản đã xuất, khung hình tĩnh để xem trước/khoanh vùng, hoặc so sánh gốc | đã chỉnh chia đôi. */
-import Link from "next/link";
 import { RefObject, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { CompareAudio, CompareBar } from "@/components/video/CompareBar";
 import { FrameStage, RegionTarget } from "@/components/video/FrameStage";
 import { dubFileUrl, fileUrl } from "@/lib/api";
-import { projHref } from "@/lib/format";
 import type { DubDetail } from "./useDubDetail";
 
 export type StageView = "video" | "frame" | "compare";
@@ -14,7 +12,6 @@ export type StageView = "video" | "frame" | "compare";
 type Props = {
   s: DubDetail;
   jobId: string;
-  pid: string;
   view: StageView;
   setView: (v: StageView | ((v: StageView) => StageView)) => void;
   video: RefObject<HTMLVideoElement | null>;
@@ -22,7 +19,7 @@ type Props = {
   setTarget: (t: RegionTarget | null) => void;
 };
 
-export function Stage({ s, jobId, pid, view, setView, video, target, setTarget }: Props) {
+export function Stage({ s, jobId, view, setView, video, target, setTarget }: Props) {
   const { info, d, sub, subStyle, delogo, subcover, setDelogo, setSubcover, stamp } = s;
   const srcVideo = useRef<HTMLVideoElement>(null);
   const [cmpAudio, setCmpAudio] = useState<CompareAudio>("dub");
@@ -34,10 +31,6 @@ export function Stage({ s, jobId, pid, view, setView, video, target, setTarget }
   return (
     <section className="studio-stage" aria-label="Xem trước">
       <div className="stage-bar">
-        <Link className="back-link" href={projHref(pid, "videos")}>
-          ‹ Video &amp; Lồng tiếng
-        </Link>
-        <span className="grow" />
         <div className="seg stage-mode" role="group" aria-label="Sân khấu">
           <button type="button" className={view !== "frame" ? "active" : ""} aria-pressed={view !== "frame"} title="Phát bản đã xuất" onClick={() => setView("video")}>
             <Icon name="play" size={13} /> Video
@@ -67,6 +60,7 @@ export function Stage({ s, jobId, pid, view, setView, video, target, setTarget }
             <Icon name="compare" size={16} />
           </button>
         )}
+        <span className="grow" />
         {d?.mp4_file && (
           <a className="btn btn-quiet btn-sm" href={dubFileUrl(d.mp4_file)} download>
             <Icon name="download" size={14} /> MP4

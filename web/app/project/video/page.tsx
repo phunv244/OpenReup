@@ -21,7 +21,7 @@ import { Stage, StageView } from "@/components/video/studio/Stage";
 import { useDubDetail } from "@/components/video/studio/useDubDetail";
 import { displayTitle } from "@/components/video/items";
 import { VoicePane } from "@/components/video/studio/VoicePane";
-import { fmtDur, fmtSize, projHref } from "@/lib/format";
+import { fmtDur, projHref } from "@/lib/format";
 import { useProjectId } from "@/lib/project";
 import { useStudio } from "@/lib/studio";
 
@@ -63,14 +63,8 @@ function Detail() {
   if (!info) return <main className="content"><p className="muted">Đang tải...</p></main>;
 
   const proj = projects.find((p) => p.id === (info.project_id || pid));
-  const meta = [
-    info.resolution,
-    d?.duration_sec ? fmtDur(d.duration_sec) : "",
-    d?.size_mb ? fmtSize(d.size_mb) : "",
-    info.speed ? `${info.speed}x` : "",
-    `${info.total.toLocaleString("vi")} câu`,
-    d?.agy_model || "",
-  ].filter(Boolean);
+  // Chỉ thông tin người dùng cần khi chỉnh: thời lượng + số câu (độ phân giải, tốc độ, mô hình là chi tiết kỹ thuật).
+  const meta = [d?.duration_sec ? fmtDur(d.duration_sec) : "", `${info.total.toLocaleString("vi")} câu`].filter(Boolean);
   const tabs = [
     ["script", "edit", "Lời thoại", s.editCount > 0 || s.structural],
     ["voice", "mic", "Giọng đọc", s.settingsAudioDirty],
@@ -79,12 +73,11 @@ function Detail() {
 
   return (
     <>
-      <Topbar title={displayTitle(info.title, bili)} meta={meta.join(" · ")} />
+      <Topbar title={displayTitle(info.title, bili)} meta={meta.join(" · ")} back={{ href: projHref(pid, "videos"), label: "Video & Lồng tiếng" }} />
       <main className="studio">
         <Stage
           s={s}
           jobId={jobId}
-          pid={pid}
           view={view}
           setView={setView}
           video={video}
@@ -122,7 +115,7 @@ function Detail() {
           </div>
 
           <div className="panel-pane" hidden={tab !== "video"}>
-            <LogoToggle value={s.delogo} saved={info.delogo} onChange={s.setDelogo} onPick={() => pick("logo")} />
+            <LogoToggle heading="Logo" value={s.delogo} saved={info.delogo} onChange={s.setDelogo} onPick={() => pick("logo")} />
             <SubtitleStudio
               burn={s.sub}
               onBurn={s.setSub}

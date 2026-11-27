@@ -31,13 +31,12 @@ export function VoicePane({ s, proj }: { s: DubDetail; proj: Project | undefined
         </div>
       ) : (
         <div className="field">
-          <span className="label">Giọng từng nhân vật</span>
           {speakers.map(([k, sp]) => (
             <div className="spk-row" key={k}>
               <span className={`spk-tag spk-${Number(k.replace(/\D/g, "")) || 1}`}>{k}</span>
               <span className="muted spk-meta">
                 <b className="spk-name">{sp.name || "Chưa rõ là ai"}</b>
-                {sp.is_new && <span className="badge amber">Nhân vật mới</span>} · {sp.lines || 0} câu · ~{sp.f0 || "?"} Hz
+                {sp.is_new && <span className="badge amber">Nhân vật mới</span>} · {sp.lines || 0} câu
               </span>
               <select
                 className="select input-sm"

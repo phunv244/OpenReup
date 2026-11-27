@@ -277,6 +277,8 @@ code {
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
 }
+.topbar-back { display: grid; place-items: center; width: 32px; height: 32px; margin-left: -8px; border-radius: 8px; color: var(--muted); flex: none; }
+.topbar-back:hover { background: var(--fill); color: var(--text); text-decoration: none; }
 .topbar-title { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 12px; }
 .topbar h1 { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-title); font-weight: 600; letter-spacing: -0.02em; }
 .topbar-meta { min-width: 0; flex: 0 2 auto; color: var(--muted); font-size: var(--fs-sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
@@ -418,6 +420,18 @@ fieldset.group .check { margin-top: 10px; }
   user-select: none;
 }
 .check input { width: 16px; height: 16px; accent-color: var(--accent); flex: none; }
+/* Công tắc bật/tắt (36×20) — dùng cho các tùy chọn của bản xuất: Xóa logo, In phụ đề, Che phụ đề gốc. */
+.check.switch input {
+  appearance: none; -webkit-appearance: none; width: 36px; height: 20px; margin: 0; border-radius: 999px;
+  background: var(--border-2); position: relative; cursor: pointer; transition: background-color 0.2s var(--ease);
+}
+.check.switch input::before {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 0.2s var(--ease);
+}
+.check.switch input:checked { background: var(--accent); }
+.check.switch input:checked::before { transform: translateX(16px); }
+.check.switch input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .chip {
   border: 0;
@@ -578,10 +592,8 @@ fieldset.group .check { margin-top: 10px; }
 /* Trạng thái rỗng */
 .empty {
   text-align: center;
-  padding: 52px 20px;
+  padding: 48px 20px;
   color: var(--text-2);
-  border: 1px dashed var(--border-2);
-  border-radius: var(--radius);
 }
 .empty-ico {
   width: 54px;
@@ -1199,7 +1211,6 @@ details.faq p { margin-top: 8px; color: var(--text-2); }
 .model-vad { margin-top: 32px; }
 .model-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-top: 16px; }
 .model-card { display: flex; flex-direction: column; gap: 10px; padding: 18px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-.model-card.installed { border-color: color-mix(in srgb, var(--green) 45%, var(--border)); }
 .model-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .model-head h3 { font-size: var(--fs-headline); font-weight: 600; }
 .model-badges { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -1329,7 +1340,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .font-row:first-child { border-top: 0; }
 .font-main { flex: 1; min-width: 0; }
 .font-name { font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.font-sample { font-size: var(--fs-title); color: var(--text); letter-spacing: -0.005em; margin-top: 4px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.font-sample { font-size: 17px; color: var(--text); letter-spacing: -0.005em; margin-top: 4px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .font-sub { font-size: var(--fs-sub); color: var(--muted); margin-top: 2px; }
 .drop-zone {
   display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 22px; margin: 14px 18px; text-align: center;
@@ -1343,7 +1354,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .sys-fonts span { padding: 5px 13px; border-radius: 980px; background: var(--fill); font-size: var(--fs-body); }
 
 /* ===== Phụ đề Việt: một khung hình duy nhất + kiểu chữ gọn ===== */
-.sub-studio { margin-top: 6px; }
+.sub-studio { margin-top: 24px; }
 .sub-toggles { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 4px 0 12px; }
 .sub-spin {
   position: absolute; top: 10px; right: 10px; width: 16px; height: 16px; border-radius: 50%;
@@ -1351,13 +1362,16 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 }
 @keyframes sub-spin { to { transform: rotate(360deg); } }
 .sub-panel { margin-top: 12px; padding: 12px; border-radius: 16px; background: var(--fill); display: flex; flex-direction: column; gap: 10px; }
-.sub-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.sub-presets { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.sub-presets .chip { flex: none; }
 .sub-presets .chip { background: var(--surface); }
 .chip.active { background: var(--accent); color: var(--on-accent); }
 .chip.active:hover { background: var(--accent-hover); color: var(--on-accent); }
 .sub-row { display: flex; gap: 8px; align-items: center; }
 .sub-row .select { flex: 1; min-width: 0; }
-.bold-chip { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; font-weight: 800; font-size: var(--fs-headline); background: var(--surface); flex: none; }
+.bold-chip { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; font-weight: 800; font-size: var(--fs-headline); background: var(--fill); color: var(--text-2); flex: none; }
+/* Nút bật/tắt "B": bật chỉ tô nhạt, không thành nút nổi thứ hai cạnh "Lưu & chạy lại". */
+.bold-chip.active, .bold-chip.active:hover { background: var(--accent-soft); color: var(--accent-text); }
 .sub-more { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sub); white-space: nowrap; flex: none; }
 .sw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 8px; }
 .sw-card { background: var(--surface); border-radius: 12px; padding: 9px 11px; display: flex; flex-direction: column; gap: 7px; min-width: 0; }
@@ -1375,7 +1389,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
    [ timeline cắt/ghép — trải hết chiều ngang                ]
    [ thanh "Lưu & chạy lại"                                  ]
    Cả màn vừa khít cửa sổ: video co giãn theo phần còn lại, panel cuộn bên trong — không có vùng trống chết. */
-.main:has(> .studio) { height: 100dvh; min-height: 620px; }
+.main:has(> .studio) { height: 100dvh; min-height: 620px; overflow: hidden; }
 .studio {
   flex: 1; min-height: 0; display: grid; gap: 12px; padding: 12px 16px;
   grid-template-columns: minmax(0, 1fr) clamp(370px, 31vw, 470px);
@@ -1387,7 +1401,6 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
   background: #000; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
 }
 .stage-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 14px; background: var(--surface); border-bottom: 1px solid var(--border); }
-.stage-bar .back-link { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .stage-video { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #000; display: block; }
 /* Sân khấu video; chế độ so sánh chia đôi: trái video gốc, phải bản đã chỉnh, chung 1 thanh điều khiển. */
 .stage-view { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); background: #000; }
@@ -1489,12 +1502,15 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
   padding: 10px 20px; background: color-mix(in srgb, var(--surface, #fff) 88%, transparent);
   backdrop-filter: blur(14px); border-top: 1px solid var(--border);
 }
+.detail-bar { animation: bar-up 0.2s var(--ease); }
+@keyframes bar-up { from { transform: translateY(100%); opacity: 0; } }
 .detail-bar-text { font-size: var(--fs-body); color: var(--muted); min-width: 0; }
+@media (max-width: 600px) { .detail-bar-text { display: none; } .detail-bar .grow { display: none; } .detail-bar .btn { flex: 1; justify-content: center; } }
 .detail-bar-text b { color: var(--text); }
 
 /* Màn hẹp: xếp dọc — video, timeline, rồi panel chỉnh sửa; trang cuộn bình thường. */
 @media (max-width: 1100px) {
-  .main:has(> .studio) { height: auto; min-height: 100dvh; }
+  .main:has(> .studio) { height: auto; min-height: 100dvh; overflow: visible; }
   .studio { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; grid-template-areas: "stage" "tl" "panel"; }
   .stage-view { flex: none; aspect-ratio: 16 / 9; max-height: 56vh; }
   .stage-view.split { aspect-ratio: 32 / 9; }
@@ -1579,3 +1595,7 @@ body.resizing .sidebar, body.resizing .main { transition: none; }
 }
 .rail-log-foot { margin-top: 6px; font-size: var(--fs-sub); }
 kbd { font: 500 var(--fs-sub)/1 var(--font-mono, ui-monospace, monospace); padding: 2px 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 6px; background: var(--surface-2); color: var(--text); white-space: nowrap; }
+
+/* Ngăn Ngữ cảnh AI: 1 dòng giải thích dưới tiêu đề (thay khung gợi ý); "Xóa dự án" tách khối riêng cuối tab Thông tin. */
+.drawer-note { margin: -4px 20px 12px; color: var(--muted); font-size: var(--fs-sub); }
+.danger-zone { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }

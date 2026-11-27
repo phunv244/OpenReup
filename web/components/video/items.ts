@@ -3,6 +3,8 @@ import { BiliVideo, Dubbed, Job, Source, fileUrl } from "@/lib/api";
 
 export type WorkItem = Source & {
   title: string;
+  /** Mã BV khi video không có tiêu đề gốc (hiện ở dòng phụ để còn phân biệt). */
+  code: string;
   uploader: string;
   delogo: string;
   video_src: string;
@@ -15,7 +17,15 @@ export type WorkItem = Source & {
 
 /** Tên hiển thị của 1 video theo tên file: tiêu đề Bilibili/YouTube nếu có, không thì tên file. Dùng chung cho danh sách và trang chỉnh. */
 export function displayTitle(fileName: string, bili: BiliVideo[]): string {
-  return bili.find((b) => b.local_file === fileName)?.title || fileName;
+  return bili.find((b) => b.local_file === fileName)?.title || fallbackTitle(fileName).title;
+}
+
+/** Tên file thô (vd "BV1wyxS62Etu_p1_sec_000000-000800_1-398.mp4") không phải tên đọc được:
+ *  trả về tiêu đề thay thế + mã BV để đưa xuống dòng phụ. Tên file thường thì giữ nguyên (bỏ đuôi). */
+export function fallbackTitle(fileName: string): { title: string; code: string } {
+  const bv = fileName.match(/^(BV[0-9A-Za-z]{10})(?:_p(\d+))?/);
+  if (bv) return { title: "Video không có tên gốc", code: bv[2] ? `${bv[1]} · phần ${bv[2]}` : bv[1] };
+  return { title: fileName.replace(/\.(mp4|mkv|webm|mov)$/i, ""), code: "" };
 }
 
 /** Video của dự án đang mở + video chưa gán dự án nào (để người dùng chọn đưa vào dự án). */
@@ -33,9 +43,11 @@ export function buildWorkItems(sources: Source[], dubbed: Dubbed[], bili: BiliVi
       const meta = biliByFile.get(s.name) || ({} as BiliVideo);
       const dub = dubByTitle.get(s.name) || null;
       const job = s.job && s.job.status !== "done" ? s.job : null;
+      const fb = meta.title ? { title: meta.title, code: "" } : fallbackTitle(s.name);
       return {
         ...s,
-        title: meta.title || s.name,
+        title: fb.title,
+        code: fb.code,
         uploader: meta.uploader || "",
         delogo: meta.delogo || "none",
         video_src: fileUrl(s.rel_path),
@@ -52,6 +64,7 @@ export function buildWorkItems(sources: Source[], dubbed: Dubbed[], bili: BiliVi
   const sourceNames = new Set(sources.map((s) => s.name));
   for (const d of dubbed) {
     if (d.project_id !== pid || sourceNames.has(d.title)) continue;
+    const fb = fallbackTitle(d.title);
     items.push({
       source: "dubbed",
       rel_path: `downloads/dubbed/${d.mp4_file}`,
@@ -62,7 +75,8 @@ export function buildWorkItems(sources: Source[], dubbed: Dubbed[], bili: BiliVi
       resolution: "",
       project_id: pid,
       job: null,
-      title: d.title,
+      title: fb.title,
+      code: fb.code,
       uploader: "",
       delogo: "none",
       video_src: "",

@@ -99,10 +99,12 @@ export function TimelineEditor({ jobId, video, speakers, edits, setEdits, spk, s
   spaceOffRef.current = spaceOff;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (spaceOffRef.current || e.code !== "Space" || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.code !== "Space" || e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t?.closest("input, textarea, select, button, a, [contenteditable=true], [role=menu], [role=listbox]")) return;
+      // Không cuộn trang kể cả khi phím cách đang tắt (xem Khung hình) hoặc phím đang giữ lặp.
       e.preventDefault();
+      if (spaceOffRef.current || e.repeat) return;
       toggleRef.current();
     };
     window.addEventListener("keydown", onKey);

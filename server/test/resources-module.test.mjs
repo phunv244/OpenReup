@@ -29,8 +29,12 @@ else if (name === "voice_tool.py") {
   { mode: 0o755 }
 );
 
+// agy giả cho list_options (/api/agy-models): không phụ thuộc agy cài trên máy.
+const fakeAgy = path.join(binDir, "agy");
+fs.writeFileSync(fakeAgy, `#!${process.execPath}\nif (process.argv[2] !== "models") process.exit(2);\nprocess.stdout.write("gemini-4-neon-high\\tGemini 4 Neon (High)\\n");\n`, { mode: 0o755 });
+
 // setupApp trước mọi import của server: config.mjs đọc biến môi trường lúc nạp.
-const { app, dir, cleanup } = await setupApp({ REUP_PYTHON: fakePy });
+const { app, dir, cleanup } = await setupApp({ REUP_PYTHON: fakePy, AGY_BIN: fakeAgy });
 after(async () => {
   await cleanup();
   fs.rmSync(binDir, { recursive: true, force: true });

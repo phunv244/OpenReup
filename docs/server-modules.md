@@ -19,7 +19,19 @@ Thêm chức năng = thêm 1 thư mục `server/modules/<tên>/` rồi thêm mod
 | dub | đã tách (`server/modules/dub/`); các route sửa câu thoại vẫn gọi DB trực tiếp trong `routes.mjs` |
 | sources | đã tách (`server/modules/sources/`), `deps: ["dub", "project"]`; job lồng tiếng của video nguồn lấy qua `ctx.get("dub")` (`jobsBySource`, `removeWorkDir`, `removeJob`, `busyError`) |
 | resources | đã tách (`server/modules/resources/`), `deps: ["dub", "project", "sources"]`; font, giọng đọc, mô hình nhận diện, xem trước phụ đề (gộp `routes/voices.mjs` + `routes/resources.mjs` + `lib/voices.mjs`). Giọng của dự án qua `ctx.get("project")` (`addVoice`, `dropVoice`), video nguồn qua `ctx.get("sources").fileOf`, chặn xóa khi đang lồng tiếng qua `ctx.get("dub").busyError`. `lib/fonts.mjs` chỉ còn `checkSubStyle`/`validFontFamily` dùng chung với `dub`. Mọi file ghi ra nằm dưới `REUP_DATA_DIR` (`fonts/`, `fonts.json`, `voices/`, `voices.json`) |
+| ai | đã tách (`server/modules/ai/`, thay `lib/agy.mjs`), không phụ thuộc module nào; `dub` khai `deps: ["ai"]` và kiểm `agy_model` qua `ctx.get("ai").validModel`. Route `/api/agy-models`, `/api/agy-models/refresh`; cache `<REUP_DATA_DIR>/agy_models.json`; lệnh agy lấy từ `AGY_BIN` (test dùng agy giả) |
 | tasks, functions | còn bọc `server/routes/*.mjs` |
+
+### Ranh giới module `ai`
+
+`ai` chỉ giữ phần server tự làm với AI: danh sách model dịch của Antigravity (gọi `agy models`, cache, gom theo mức suy nghĩ) và kiểm tra id model. Những phần dưới đây cố ý không chuyển vào:
+
+- Dịch và nhận diện giọng nói chạy trong `dub_video.py`, do module `dub` khởi chạy; server không gọi model nào trực tiếp. Tách ra thì `ai` chỉ còn bọc lại việc chạy script của `dub`.
+- Mô hình nhận diện (`/api/asr-models*`, hàm `download_asr_model`) là tài nguyên tải về máy giống font và giọng đọc, nên ở lại `resources` (đã duyệt ở `a6b5c40`).
+- `list_options` gom giá trị hợp lệ của nhiều module (giọng, mô hình nhận diện, model dịch, dự án, font) qua HTTP, nên ở lại `server/routes/functions.mjs`. `get_task`, `stop_task`, `get_call`, `list_calls` thuộc tác vụ nền và nhật ký gọi hàm, cũng không phải AI.
+- `ai` chưa có hàm `/api/functions` nào, nên không có `functions.mjs`, `{ slot }` hay `{ ref }`.
+
+Khi `ai` được nạp trước `dub`, cây route mà `printRoutes()` in ra đổi thứ tự hiển thị (`/api/agy-models` và `/api/asr-models` lên đầu nhóm `/api/a…`). Tập route (đường dẫn + method) vẫn giữ nguyên.
 
 ## Checklist bước 6 (module `dub`)
 

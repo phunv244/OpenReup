@@ -3,7 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { DEFAULT_VOICE, DUBBED_DIR, ROOT, VENV_PYTHON } from "../../config.mjs";
 import { db, inTransaction } from "../../lib/db.mjs";
-import { getAgyModels, validAgyModel } from "../../lib/agy.mjs";
 import { checkSubStyle } from "../../lib/fonts.mjs";
 import { dubBusyError, spawnTask, task, taskEvents } from "../../lib/tasks.mjs";
 import { fail, resolveDownload, safeJobId, validDelogo, validModelId, validSubcover, validVoice } from "../../lib/util.mjs";
@@ -29,14 +28,11 @@ taskEvents.on("end", ({ task_id, exit_code }) => {
 });
 
 export default async function dubRoutes(app, ctx, dub) {
+  const ai = ctx.get("ai");
   app.get("/api/dubbed", async () => {
     const videos = dub.list().filter((v) => v.mp4_file && fs.existsSync(path.join(DUBBED_DIR, v.mp4_file)));
     return { total: videos.length, videos };
   });
-
-  // Model dịch của Antigravity: đọc từ cache; POST làm mới (hỏi lại `agy models`).
-  app.get("/api/agy-models", async () => getAgyModels());
-  app.post("/api/agy-models/refresh", async () => getAgyModels({ refresh: true }));
 
   app.post("/api/dub/start", async (req, reply) => {
     const body = req.body || {};
@@ -49,7 +45,7 @@ export default async function dubRoutes(app, ctx, dub) {
     if (body.subcover !== undefined && !validSubcover(body.subcover)) return fail(reply, 400, "Vùng che phụ đề gốc không hợp lệ.");
     if (body.voice && !validVoice(body.voice)) return fail(reply, 400, "Giọng đọc không hợp lệ.");
     if (body.model && !validModelId(body.model)) return fail(reply, 400, "Mô hình nhận diện không hợp lệ.");
-    if (body.agy_model && !validAgyModel(body.agy_model)) return fail(reply, 400, "Model dịch không hợp lệ.");
+    if (body.agy_model && !ai.validModel(body.agy_model)) return fail(reply, 400, "Model dịch không hợp lệ.");
     const subStyle = checkSubStyle(body.sub_style);
     if (subStyle.error) return fail(reply, 400, subStyle.error);
     if (!fs.existsSync(VENV_PYTHON)) return fail(reply, 500, "Chưa cài môi trường Python (.venv). Xem mục Cài đặt trong README.");

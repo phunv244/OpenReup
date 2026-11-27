@@ -17,6 +17,7 @@ import dubModule from "./modules/dub/index.mjs";
 import projectModule from "./modules/project/index.mjs";
 import sourcesModule from "./modules/sources/index.mjs";
 import resourcesModule from "./modules/resources/index.mjs";
+import aiModule from "./modules/ai/index.mjs";
 
 /** Danh sách module của server. Thứ tự nạp do loader sắp theo deps. */
 export const MODULES = [
@@ -25,6 +26,7 @@ export const MODULES = [
   projectModule,
   resourcesModule,
   dubModule,
+  aiModule,
   // Tạm giữ toàn bộ định nghĩa hàm ở đây; mỗi module chuyển sang server/modules/ sẽ mang hàm của nó theo.
   { name: "functions", functions: FUNCTIONS.filter((f) => !f.slot && !f.ref), routes: (app, ctx) => functionRoutes(app, ctx.functions()) },
 ];

@@ -1034,7 +1034,7 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .tl-handle-l { left: 0; border-radius: 9px 0 0 9px; }
 .tl-handle-r { right: 0; border-radius: 0 9px 9px 0; }
 .tl-handle:hover { background: rgba(255, 255, 255, 0.35); }
-.tl-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--red, #e53935); pointer-events: none; z-index: 3; }
+.tl-playhead { position: absolute; top: 0; bottom: 0; left: 0; will-change: transform; width: 2px; background: var(--red, #e53935); pointer-events: none; z-index: 3; }
 .tl-detail { margin-top: 10px; padding: 10px; border-radius: var(--radius-sm); background: var(--surface); display: flex; flex-direction: column; gap: 8px; }
 .tl-detail-head { display: flex; align-items: center; gap: 8px; }
 .tl-detail-head .select { max-width: 220px; }

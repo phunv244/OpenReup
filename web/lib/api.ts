@@ -17,7 +17,8 @@ export async function postJSON<T = ApiResult>(url: string, body: unknown = {}): 
   try {
     data = await res.json();
   } catch {}
-  if (!res.ok && !data.error) data.error = `Lỗi máy chủ (HTTP ${res.status})`;
+  if (res.status === 401) data.error = "Máy chủ đang bật token (REUP_API_TOKEN) — giao diện chưa được cấp quyền ghi. Chạy server ở localhost hoặc mở qua đường có token.";
+  else if (!res.ok && !data.error) data.error = `Lỗi máy chủ (HTTP ${res.status})`;
   return data;
 }
 

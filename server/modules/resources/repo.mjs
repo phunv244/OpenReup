@@ -143,7 +143,9 @@ export const resourceRepo = {
         await execFileP(VENV_PYTHON, [PY_SCRIPTS.subtitles, "preview", ...args, "--out", out], { cwd: ROOT, timeout: 60_000 });
         return fs.readFileSync(out);
       } catch (err) {
-        const msg = lastJson(err.stdout)?.error || "Không vẽ được bản xem trước.";
+        // Script chết trước khi in JSON (vd không mở được file script): kèm dòng stderr cuối để biết nguyên nhân.
+        const tail = String(err.stderr || "").trim().split("\n").pop().slice(0, 200);
+        const msg = lastJson(err.stdout)?.error || `Không vẽ được bản xem trước.${tail ? ` (${tail})` : ""}`;
         throw Object.assign(new Error(msg), { statusCode: 500 });
       } finally {
         fs.rmSync(out, { force: true });

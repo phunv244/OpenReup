@@ -43,6 +43,9 @@ function etaToSec(s) {
   return parts.length ? parts.reduce((a, [, n, u]) => a + Number(n) * { h: 3600, m: 60, s: 1 }[u], 0) : null;
 }
 
+/** Ghi 1 dòng vào nhật ký tác vụ đang chạy (cho module khác báo việc liên quan tới tác vụ). */
+export const taskLog = (line) => appendLog(line);
+
 function appendLog(line) {
   const clean = String(line || "").replace(/\r/g, "").trimEnd();
   if (!clean) return;

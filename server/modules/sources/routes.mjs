@@ -30,6 +30,6 @@ export default async function sourceRoutes(app, ctx, sources) {
     return reply.type("image/jpeg").header("Cache-Control", "no-store").send(img);
   });
 
-  app.post("/api/source/assign", async (req) => sources.assign(req.body?.rel_path, req.body?.project_id));
+  app.post("/api/source/assign", async (req) => sources.assign(req.body?.rel_path, req.body?.project_id, req.body?.move === true));
   app.post("/api/source/delete", async (req) => sources.remove(req.body || {}));
 }

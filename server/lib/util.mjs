@@ -24,8 +24,8 @@ export function writeJson(file, data, indent = 2) {
   fs.renameSync(tmp, file);
 }
 
-/** Lỗi do input cho service: error handler của app trả {ok:false, error} với mã statusCode. */
-export const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
+/** Lỗi do input cho service: error handler của app trả {ok:false, error, ...details} với mã statusCode. */
+export const httpError = (statusCode, message, details) => Object.assign(new Error(message), { statusCode, details });
 /** Route trả thẳng lỗi dạng {ok:false, error} mà giao diện đang đọc. */
 export const fail = (reply, code, error) => reply.code(code).send({ ok: false, error });
 

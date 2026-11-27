@@ -1,6 +1,6 @@
 /**
  * Đọc/ghi dữ liệu của module project: data/projects/<id>.json và data/video_projects.json (video nguồn → dự án).
- * Module này là chủ duy nhất của video_projects.json; module khác đọc/ghi qua service (videoOwners, setVideoOwner).
+ * Module này là chủ duy nhất của video_projects.json; module khác đọc/ghi qua service (videoOwners, assignVideo, unassignVideo).
  * Bản lồng tiếng gán dự án: module dub.
  */
 import fs from "node:fs";

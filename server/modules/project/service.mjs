@@ -42,8 +42,23 @@ export function createProjectService(repo, dub) {
 
     /** Video nguồn (rel "downloads/...") → project_id. */
     videoOwners: () => repo.owners(),
-    /** Gán 1 video nguồn vào dự án ("" = bỏ gán). Gọi sau khi đã kiểm rel là video nguồn và dự án tồn tại. */
-    setVideoOwner: (rel, projectId) => repo.setOwner(rel, projectId),
+    /** Bỏ gán 1 video nguồn (video đã bị xóa). */
+    unassignVideo: (rel) => repo.setOwner(rel, ""),
+    /**
+     * Gán 1 video nguồn vào dự án ("" = bỏ gán). Gọi sau khi đã kiểm rel là video nguồn và dự án tồn tại.
+     * Video đang thuộc dự án khác: 409 kèm {owner_project_id, owner_project_name}, không ghi đè — chỉ chuyển khi move = true.
+     */
+    assignVideo(rel, projectId, { move = false } = {}) {
+      const owner = repo.owners()[rel] || "";
+      if (projectId && owner && owner !== projectId && !move) {
+        const name = repo.get(owner)?.name || owner;
+        throw httpError(409, `Video này đang thuộc dự án "${name}". Hãy dùng "Chuyển sang dự án khác" nếu muốn chuyển.`, {
+          owner_project_id: owner,
+          owner_project_name: name,
+        });
+      }
+      repo.setOwner(rel, projectId);
+    },
 
     create(body) {
       const name = String(body.name || "").trim();

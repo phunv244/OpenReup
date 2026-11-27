@@ -122,13 +122,14 @@ export function createSourceService(repo, { dub, project, tasks }) {
       if (!img) throw httpError(500, "Không trích được khung hình");
       return img;
     },
-    assign(rel, projectId) {
+    /** Gán video nguồn vào dự án ("" = bỏ gán). Đang thuộc dự án khác thì 409, trừ khi move = true (chuyển có chủ đích). */
+    assign(rel, projectId, move = false) {
       const hit = lookupDownload(rel);
       const full = hit?.kind === "source" ? hit.abs : "";
       const pid = String(projectId || "");
       if (!full || !repo.isFile(full)) throw httpError(400, "Video không hợp lệ.");
       if (pid && !project.exists(pid)) throw httpError(404, "Không tìm thấy dự án.");
-      project.setVideoOwner(relOf(full), pid);
+      project.assignVideo(relOf(full), pid, { move });
       return { ok: true };
     },
     /** Xóa 1 video nguồn (+ job lồng tiếng đang dở của nó; delete_dubbed: cả bản lồng tiếng job_id). */
@@ -150,7 +151,7 @@ export function createSourceService(repo, { dub, project, tasks }) {
 
       repo.removeVideo(resolved);
       repo.removeFromBiliIndex(path.basename(resolved));
-      project.setVideoOwner(relOf(resolved), "");
+      project.unassignVideo(relOf(resolved));
       if (body.delete_dubbed) dub.removeJob(safeJobId(body.job_id));
       return { ok: true };
     },

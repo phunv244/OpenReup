@@ -65,7 +65,7 @@ export async function buildApp({ logger = false } = {}) {
   app.setErrorHandler((err, req, reply) => {
     const code = err.statusCode >= 400 ? err.statusCode : 500;
     if (code >= 500) req.log.error(err);
-    reply.code(code).send({ ok: false, error: err.message });
+    reply.code(code).send({ ok: false, error: err.message, ...(code < 500 && err.details) });
   });
 
   // Giao diện (Next.js, bản build tĩnh trong web/out) ở "/". Bản đăng ký đầu tiên tạo reply.sendFile dùng cho các route khác.

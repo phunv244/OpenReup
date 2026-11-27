@@ -229,7 +229,31 @@ export type AsrModel = {
   desc: string;
 };
 export type VadModel = { id: string; name: string; installed: boolean; desc: string; extra?: string };
-export type AsrInfo = { gpu: { cuda?: boolean; name?: string; vram_gb?: number }; models: AsrModel[]; vads: VadModel[]; vad: string };
+export type GpuTier = {
+  gpu: boolean;
+  backend: string;
+  detail: string;
+  reason?: string;
+};
+export type GpuInfo = {
+  cuda?: boolean;
+  name?: string;
+  vram_gb?: number;
+  active_tiers?: number;
+  total_tiers?: number;
+  tiers?: {
+    stt: GpuTier;
+    tts: GpuTier;
+    nvenc: GpuTier;
+  };
+};
+export type AsrInfo = {
+  gpu: GpuInfo;
+  models: AsrModel[];
+  vads: VadModel[];
+  vad: string;
+  error?: string;
+};
 
 export type AgyGroup = { base: string; name: string; efforts: { effort: string; id: string }[] };
 export type AgyModels = {

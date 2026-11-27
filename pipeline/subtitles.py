@@ -16,7 +16,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 if __package__ in (None, ""):  # chạy bằng đường dẫn file (server: python pipeline/<script>.py) → import gói từ gốc repo
     sys.path[0] = str(Path(__file__).resolve().parent.parent)
 
-from pipeline.paths import DATA_DIR  # noqa: E402
+from pipeline.paths import DATA_DIR, FFMPEG_BIN, FFPROBE_BIN  # noqa: E402
 
 FONTS_DIR = DATA_DIR / "fonts"
 DEFAULT_FONT = "DejaVu Sans"
@@ -183,7 +183,7 @@ def subtitles_filter(ass_path: Path) -> str:
 # ----------------------------------------------------------------------------
 def probe_size(video: Path) -> Tuple[int, int]:
     out = subprocess.check_output(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", str(video)],
+        [FFPROBE_BIN, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", str(video)],
         text=True,
     )
     w, h = out.strip().split("x")[:2]
@@ -199,7 +199,7 @@ def render_preview(video: Path, out: Path, subcover: str, style: Optional[Dict],
         if not filters:
             filters = ["null"]
         subprocess.run(
-            ["ffmpeg", "-v", "error", "-y", "-ss", f"{at:.2f}", "-i", str(video), "-vf", ",".join(filters), "-frames:v", "1", "-q:v", "3", str(out)],
+            [FFMPEG_BIN, "-v", "error", "-y", "-ss", f"{at:.2f}", "-i", str(video), "-vf", ",".join(filters), "-frames:v", "1", "-q:v", "3", str(out)],
             check=True, capture_output=True, timeout=60,
         )
 

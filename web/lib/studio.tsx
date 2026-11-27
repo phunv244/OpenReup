@@ -32,6 +32,8 @@ type Studio = Data & {
   loaded: boolean;
   task: TaskState | null;
   reload: () => Promise<void>;
+  /** Chỉ làm mới trạng thái GPU + danh sách mô hình nhận diện (?refresh=1), không gọi lại các API khác. */
+  refreshAsr: () => Promise<boolean>;
   /** Cập nhật 1 dự án tại chỗ (sau khi lưu) mà không phải tải lại tất cả. */
   patchProject: (p: Project) => void;
   /** Gọi API bắt đầu tác vụ; tự báo "đã xếp hàng" nếu server đang bận. */
@@ -81,7 +83,7 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
           getJSON<{ projects?: Project[] }>("/api/projects"),
           getJSON<System>("/api/system"),
           getJSON<{ clones?: Voice[]; presets?: Voice[] }>("/api/voices"),
-          getJSON<Partial<AsrInfo>>("/api/asr-models").catch(() => ({}) as Partial<AsrInfo>),
+          getJSON<Partial<AsrInfo>>("/api/asr-models").catch(() => ({ error: "Không kết nối được tới /api/asr-models" }) as Partial<AsrInfo>),
           getJSON<{ fonts?: FontInfo[]; system?: string[] }>("/api/fonts").catch(() => ({}) as { fonts?: FontInfo[]; system?: string[] }),
         ]);
         setData({
@@ -94,7 +96,13 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
           projects: projects.projects || [],
           system,
           voices: { clones: voices.clones || [], presets: voices.presets || [] },
-          asr: { gpu: asr.gpu || {}, models: asr.models || [], vads: asr.vads || [], vad: asr.vad || "" },
+          asr: {
+            gpu: asr.gpu || {},
+            models: asr.models || [],
+            vads: asr.vads || [],
+            vad: asr.vad || "",
+            error: asr.error || "",
+          },
           fonts: fonts.fonts || [],
           systemFonts: fonts.system || [],
         });
@@ -182,13 +190,40 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
     [pollTask]
   );
 
+  const refreshAsr = useCallback(async () => {
+    try {
+      const d = await getJSON<Partial<AsrInfo>>("/api/asr-models?refresh=1");
+      if (d.error) {
+        toast(d.error, "error");
+        setData((prev) => ({ ...prev, asr: { ...prev.asr, error: d.error } }));
+        return false;
+      }
+      setData((prev) => ({
+        ...prev,
+        asr: {
+          gpu: d.gpu || {},
+          models: d.models || [],
+          vads: d.vads || [],
+          vad: d.vad || "",
+          error: "",
+        },
+      }));
+      return true;
+    } catch {
+      const msg = "Không kiểm tra được trạng thái GPU từ máy chủ";
+      toast(msg, "error");
+      setData((prev) => ({ ...prev, asr: { ...prev.asr, error: msg } }));
+      return false;
+    }
+  }, [toast]);
+
   const patchProject = useCallback(
     (p: Project) => setData((d) => ({ ...d, projects: d.projects.map((x) => (x.id === p.id ? { ...x, ...p } : x)) })),
     []
   );
 
   return (
-    <StudioContext.Provider value={{ ...data, loaded, task, reload, patchProject, startTask, stopTask, unqueue }}>
+    <StudioContext.Provider value={{ ...data, loaded, task, reload, refreshAsr, patchProject, startTask, stopTask, unqueue }}>
       {children}
     </StudioContext.Provider>
   );

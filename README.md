@@ -24,6 +24,9 @@ Toàn bộ pipeline được thiết kế để chạy nhiều ngày liên tục
 | Xuất video | Tự dùng **GPU NVIDIA NVENC (`h264_nvenc`)** khi khả dụng (tự lùi về `libx264` nếu không có); mã hóa từng phần 10 phút, cache theo nội dung phụ đề; trộn tiếng chạy song song | `parts/` |
 
 - **Luân chuyển GPU tuần tự cho card 4 GB VRAM (như GTX 1650):** Các bước dùng GPU chạy nối tiếp nhau và tự xả sạch VRAM (`unload` + `cuda.empty_cache`) sau mỗi bước: **Nhận diện (Whisper CUDA)** → **Dịch (Cloud `agy`, 0 VRAM)** → **Giọng đọc (VieNeu CUDA theo lô)** → **Xuất video (`h264_nvenc`)**, không bao giờ nạp chồng 2 mô hình lên VRAM cùng lúc.
+- **Kiểm tra sức khỏe GPU 3 tầng & biến môi trường:** Trang **Mô hình nhận diện** (`/models`) và API `GET /api/asr-models` (hỗ trợ `?refresh=1` để đo lại ngay) hiển thị trạng thái thực tế của cả 3 tầng (**STT · Whisper**, **TTS · VieNeu**, **Render · NVENC**). Có thể tinh chỉnh bằng biến môi trường:
+  - `REUP_FFMPEG` / `REUP_FFPROBE`: ghi đè đường dẫn binary `ffmpeg`/`ffprobe` (mặc định ưu tiên `.local/bin/` cô lập trong repo trước `PATH` hệ thống).
+  - `REUP_FORCE_CPU=1`: ép toàn bộ 3 tầng (Whisper, VieNeu-TTS, FFmpeg NVENC) chạy trên CPU để kiểm thử hoặc xử lý khi GPU bận.
 
 - **Dừng / mất điện / mất mạng:** bấm **Tiếp tục** ở video đó, mọi công đoạn chạy tiếp từ chỗ đang dở.
 - **Sửa 1 câu rồi xuất lại:** chỉ tạo lại giọng của câu đó và mã hóa lại đúng phần 10 phút chứa nó.

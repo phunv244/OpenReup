@@ -201,7 +201,7 @@ test("/api/functions: hàm của resources gọi đúng route qua registry", asy
   assert.ok(opts.result.voices.some((v) => v.id === "vieneu-clone:giong-thu-2"));
 });
 
-test("danh sách mô hình nhận diện: cache (1 lần asr.py cho nhiều request), bỏ cache khi đổi VAD / tải mô hình xong, lỗi không cache", async () => {
+test("danh sách mô hình nhận diện: cache (1 lần asr.py cho nhiều request), ?refresh=1 bỏ qua cache, bỏ cache khi đổi VAD / tải mô hình xong, lỗi không cache", async () => {
   let runs = 0;
   let fail = false;
   let onEnd;
@@ -210,15 +210,22 @@ test("danh sách mô hình nhận diện: cache (1 lần asr.py cho nhiều requ
   const [a, b] = await Promise.all([svc.asrModels(), svc.asrModels()]);
   assert.deepEqual([a, b, runs], [{ n: 1 }, { n: 1 }, 1]);
   assert.deepEqual(await svc.asrModels(), { n: 1 });
-  await svc.setVad("silero"); // runs=2 (set-vad)
-  assert.deepEqual(await svc.asrModels(), { n: 3 });
-  onEnd({ type: "dub_video" });
-  assert.deepEqual(await svc.asrModels(), { n: 3 });
-  onEnd({ type: "asr_download" });
+  assert.deepEqual(await svc.asrModels({ refresh: true }), { n: 2 });
+  assert.deepEqual(await svc.asrModels(), { n: 2 });
+  await svc.setVad("silero"); // runs=3 (set-vad)
   assert.deepEqual(await svc.asrModels(), { n: 4 });
+  onEnd({ type: "dub_video" });
+  assert.deepEqual(await svc.asrModels(), { n: 4 });
+  onEnd({ type: "asr_download" });
+  assert.deepEqual(await svc.asrModels(), { n: 5 });
   onEnd({ type: "asr_download" });
   fail = true;
   await assert.rejects(svc.asrModels(), (e) => e.statusCode === 500 && /hỏng/.test(e.message));
   fail = false;
-  assert.deepEqual(await svc.asrModels(), { n: 6 });
+  assert.deepEqual(await svc.asrModels(), { n: 7 });
+
+  // Route HTTP hỗ trợ ?refresh=1
+  const rFresh = await get("/api/asr-models?refresh=1");
+  assert.equal(rFresh.statusCode, 200);
+  assert.equal(rFresh.json().models[0].id, "m1");
 });

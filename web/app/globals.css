@@ -1204,6 +1204,149 @@ details.faq p { margin-top: 8px; color: var(--text-2); }
 @media (max-width: 760px) { .voice-row { flex-wrap: wrap; } .voice-actions { width: 100%; justify-content: flex-start; } }
 
 /* ================= TRANG MÔ HÌNH NHẬN DIỆN ================= */
+.gpu-health {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 22px;
+}
+.gpu-health.is-error {
+  border-color: color-mix(in srgb, var(--amber) 45%, var(--border));
+}
+.gpu-health-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.gpu-health-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 240px;
+}
+.gpu-health-ico {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--surface-3);
+  color: var(--muted);
+}
+.gpu-health-ico.tone-green { background: var(--green-soft); color: var(--green); }
+.gpu-health-ico.tone-amber { background: var(--amber-soft); color: var(--amber); }
+.gpu-health-ico.tone-muted { background: var(--surface-3); color: var(--muted); }
+.gpu-health-meta { min-width: 0; }
+.gpu-health-heading { font-size: var(--fs-headline); font-weight: 600; line-height: 1.3; }
+.gpu-health-hw {
+  font-size: var(--fs-sub);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gpu-health-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.gpu-refresh-btn { width: 32px; height: 32px; }
+.gpu-refresh-btn.is-spinning .ic { animation: sub-spin 0.8s linear infinite; }
+.gpu-health-note {
+  margin-top: 10px;
+  font-size: var(--fs-sub);
+  color: var(--text-2);
+}
+.gpu-tier-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.gpu-tier {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  min-width: 0;
+}
+.gpu-tier.is-warn {
+  border-color: color-mix(in srgb, var(--amber) 45%, var(--border));
+  background: color-mix(in srgb, var(--amber-soft) 35%, var(--surface-2));
+}
+.gpu-tier-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.gpu-tier-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+}
+.gpu-tier-name .ic { color: var(--text-2); }
+.gpu-tier-sub {
+  font-size: var(--fs-sub);
+  font-weight: 500;
+  color: var(--muted);
+}
+.gpu-tier-detail {
+  font-size: var(--fs-sub);
+  color: var(--text-2);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.gpu-skel {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--surface-3);
+}
+.gpu-skel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 55%, transparent), transparent);
+  transform: translateX(-100%);
+  animation: gpu-shimmer 1.3s var(--ease) infinite;
+}
+@keyframes gpu-shimmer {
+  to { transform: translateX(100%); }
+}
+.gpu-skel-ico { width: 34px; height: 34px; border-radius: 10px; flex: none; }
+.gpu-skel-h { width: 120px; height: 18px; }
+.gpu-skel-sub { width: 210px; height: 14px; margin-top: 4px; }
+.gpu-skel-badge { width: 92px; height: 22px; border-radius: 999px; }
+.gpu-skel-btn { width: 32px; height: 32px; border-radius: 50%; }
+.gpu-skel-tier-t { width: 110px; height: 18px; }
+.gpu-skel-tier-b { width: 84px; height: 20px; border-radius: 999px; }
+.gpu-skel-tier-d { width: 100%; height: 16px; margin-top: 2px; }
+@media (max-width: 900px) {
+  .gpu-tier-grid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gpu-skel::after, .gpu-refresh-btn.is-spinning .ic { animation: none; }
+}
+
 .model-group + .model-group { margin-top: 32px; }
 .model-group-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
 .model-group-head h2 { font-size: var(--fs-headline); font-weight: 600; }

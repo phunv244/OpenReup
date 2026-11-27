@@ -2,7 +2,7 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional
 
-from pipeline.common import NARRATOR_ZH, fmt_clock, log, read_json, run_cmd, write_json_atomic
+from pipeline.common import FFMPEG_BIN, NARRATOR_ZH, fmt_clock, log, read_json, run_cmd, write_json_atomic
 from pipeline.store import STORY_PROJECTS_DIR, story_project_path
 from pipeline.tts import VOICES_DIR, VieNeuEngine
 
@@ -57,7 +57,8 @@ def diarize(input_mp4: Path, segments: List[Dict], prog: "Progress") -> int:
     """Ghi s["speaker"] = "NV1".."NVk" cho từng câu và s["_f0"] (cao độ trung vị, Hz). Trả số nhân vật."""
     import numpy as np
 
-    enc = VieNeuEngine.model().engine._ensure_speaker_encoder()
+    eng = VieNeuEngine.model().engine
+    enc = getattr(eng, "speaker_encoder", None) or eng._ensure_speaker_encoder()
     sr = 16000
     emb = np.zeros((len(segments), 0), dtype=np.float32)
     rows, f0s = [], []
@@ -71,7 +72,7 @@ def diarize(input_mp4: Path, segments: List[Dict], prog: "Progress") -> int:
             j += 1
         j = max(j, i + 1)
         w1 = segments[j - 1]["end"]
-        raw = run_cmd(["ffmpeg", "-v", "error", "-ss", f"{w0:.3f}", "-to", f"{w1 + 0.05:.3f}", "-i", str(input_mp4),
+        raw = run_cmd([FFMPEG_BIN, "-v", "error", "-ss", f"{w0:.3f}", "-to", f"{w1 + 0.05:.3f}", "-i", str(input_mp4),
                        "-vn", "-ac", "1", "-ar", str(sr), "-f", "f32le", "-"])
         y = np.frombuffer(raw, dtype=np.float32)
         for s in segments[i:j]:

@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional
 
-from pipeline.common import SAMPLE_RATE, build_atempo_chain, run_cmd, run_ffmpeg
+from pipeline.common import FFMPEG_BIN, FFPROBE_BIN, SAMPLE_RATE, build_atempo_chain, run_cmd, run_ffmpeg
 from pipeline.job import Job, Progress
 
 if TYPE_CHECKING:
@@ -33,7 +33,7 @@ def mp3_duration(path: Path) -> float:
             if kbps:
                 return path.stat().st_size * 8 / (kbps * 1000)
         out = subprocess.check_output(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)], text=True
+            [FFPROBE_BIN, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)], text=True
         )
         return float(out.strip() or 0)
     except (OSError, subprocess.CalledProcessError, ValueError):
@@ -129,7 +129,7 @@ def build_audio_parts(job: "Job", segments: List[Dict], tts: "TTS", duration: fl
             script = adir / f"a{k:05d}.filter.txt"
             script.write_text(graph, encoding="utf-8")
             tmp = part.with_suffix(".tmp.flac")
-            cmd = ["ffmpeg", "-y", "-v", "error"]
+            cmd = [FFMPEG_BIN, "-y", "-v", "error"]
             for f in inputs:
                 cmd += ["-i", f]
             run_cmd(cmd + ["-filter_complex_script", str(script), "-map", "[out]", "-c:a", "flac", "-f", "flac", str(tmp)])

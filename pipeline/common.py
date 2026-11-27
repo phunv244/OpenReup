@@ -1,5 +1,7 @@
 """Tiện ích dùng chung của pipeline: log, chạy lệnh/ffmpeg, đọc ghi JSON, đường dẫn tương đối, dọn VRAM."""
+import ctypes
 import gc
+import glob
 import json
 import os
 import shutil
@@ -7,20 +9,92 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
-from pipeline.paths import BASE_DIR
+from pipeline.paths import BASE_DIR, FFMPEG_BIN, FFPROBE_BIN, LOCAL_BIN, resolve_bin  # noqa: F401
 
 VENV_BIN = BASE_DIR / ".venv" / "bin"
 
-if VENV_BIN.is_dir() and str(VENV_BIN) not in os.environ.get("PATH", "").split(os.pathsep):
-    os.environ["PATH"] = f"{VENV_BIN}{os.pathsep}{os.environ.get('PATH', '')}"
+if VENV_BIN.is_dir():
+    _parts = [p for p in os.environ.get("PATH", "").split(os.pathsep) if p]
+    _venv = str(VENV_BIN)
+    if _venv not in _parts:
+        if LOCAL_BIN.is_dir() and _parts and _parts[0] == str(LOCAL_BIN):
+            _parts.insert(1, _venv)
+        else:
+            _parts.insert(0, _venv)
+        os.environ["PATH"] = os.pathsep.join(_parts)
 
 SAMPLE_RATE = 24000  # track lồng tiếng: PCM 16-bit mono
 
 NARRATOR_ZH = "旁白"  # nhãn AI dùng cho lời dẫn truyện ở trường "who"
 
 CHILDREN: set = set()  # các tiến trình ffmpeg chạy lâu, cần dừng khi người dùng bấm Dừng
+
+_NVIDIA_PRELOAD_RESULT: Optional[Tuple[bool, str]] = None
+
+
+def cpu_forced() -> bool:
+    """True khi người dùng/test ép chạy CPU qua REUP_FORCE_CPU=1 hoặc CUDA_VISIBLE_DEVICES=''."""
+    val = os.environ.get("REUP_FORCE_CPU", "").strip().lower()
+    if val in ("1", "true", "yes", "on"):
+        return True
+    cvd = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if cvd is not None and cvd.strip() in ("", "-1"):
+        return True
+    return False
+
+
+def nvidia_lib_dirs() -> List[Path]:
+    """Danh sách thư mục nvidia/*/lib trong .venv (hoặc sys.prefix) chứa libcublas/libcudnn."""
+    roots = {BASE_DIR / ".venv", Path(sys.prefix)}
+    found: List[Path] = []
+    seen = set()
+    for root in roots:
+        pattern = str(root / "lib" / "python*" / "site-packages" / "nvidia" / "*" / "lib")
+        for match in sorted(glob.glob(pattern)):
+            p = Path(match)
+            if p.is_dir() and str(p) not in seen:
+                seen.add(str(p))
+                found.append(p)
+    return found
+
+
+def preload_nvidia_libs(force_check: bool = False) -> Tuple[bool, str]:
+    """Nạp trước libcublas.so.12 (+ libcublasLt/libcudnn nếu có) bằng RTLD_GLOBAL (0 MB VRAM)
+    để ctranslate2 tìm thấy thư viện CUDA mà không phụ thuộc LD_LIBRARY_PATH."""
+    global _NVIDIA_PRELOAD_RESULT
+    if _NVIDIA_PRELOAD_RESULT is not None and not force_check:
+        return _NVIDIA_PRELOAD_RESULT
+
+    dirs = nvidia_lib_dirs()
+    rtld_global = getattr(ctypes, "RTLD_GLOBAL", 0)
+
+    def _try_load(lib_name: str) -> Tuple[bool, str]:
+        last_err = ""
+        for d in dirs:
+            candidate = d / lib_name
+            if candidate.is_file():
+                try:
+                    ctypes.CDLL(str(candidate), mode=rtld_global)
+                    return True, ""
+                except OSError as e:
+                    last_err = str(e)
+        try:
+            ctypes.CDLL(lib_name, mode=rtld_global)
+            return True, ""
+        except OSError as e:
+            return False, last_err or str(e)
+
+    # Nạp thư viện phụ trợ trước nếu có (không bắt buộc nếu hệ thống tự resolve)
+    _try_load("libcublasLt.so.12")
+    ok, err = _try_load("libcublas.so.12")
+    if ok:
+        _try_load("libcudnn.so.9")
+        _NVIDIA_PRELOAD_RESULT = (True, "")
+    else:
+        _NVIDIA_PRELOAD_RESULT = (False, err or "Không tìm thấy libcublas.so.12")
+    return _NVIDIA_PRELOAD_RESULT
 
 
 # ----------------------------------------------------------------------------
@@ -44,6 +118,7 @@ def free_gpu_memory(stage: str = "") -> None:
                     torch_mod.cuda.ipc_collect()
         except Exception:
             pass
+    gc.collect()
     if stage:
         log(f"[GPU] Đã giải phóng VRAM sau công đoạn {stage}.")
 
@@ -79,7 +154,7 @@ def run_cmd(cmd: List[str], input_bytes: Optional[bytes] = None) -> bytes:
 def probe_media(path: Path) -> Dict:
     out = subprocess.check_output(
         [
-            "ffprobe",
+            FFPROBE_BIN,
             "-v",
             "error",
             "-show_entries",
@@ -132,7 +207,7 @@ def from_base(p: str) -> Path:
 
 def run_ffmpeg(cmd: List[str], total_sec: float, on_frac, err_path: Path) -> None:
     """Chạy ffmpeg có báo tiến độ thật (-progress)."""
-    full = ["ffmpeg", "-y", "-loglevel", "error", "-nostats", "-progress", "pipe:1"] + cmd
+    full = [FFMPEG_BIN, "-y", "-loglevel", "error", "-nostats", "-progress", "pipe:1"] + cmd
     with err_path.open("wb") as ef:
         proc = subprocess.Popen(full, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=ef)
     CHILDREN.add(proc)

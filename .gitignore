@@ -1,6 +1,7 @@
 # Dependencies & environments
 node_modules/
 .venv/
+.local/
 __pycache__/
 *.pyc
 

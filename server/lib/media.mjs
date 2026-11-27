@@ -6,7 +6,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { MEDIA_CACHE_JSON, THUMBS_DIR } from "../config.mjs";
+import { FFMPEG_BIN, FFPROBE_BIN, MEDIA_CACHE_JSON, THUMBS_DIR } from "../config.mjs";
 import { execFileP, readJson, writeJson } from "./util.mjs";
 
 let mediaCache = null;
@@ -20,7 +20,7 @@ export async function probeMedia(rel, fullPath, st) {
   if (mediaCache[key]) return mediaCache[key];
   let info = { duration_sec: 0, resolution: "" };
   try {
-    const { stdout } = await execFileP("ffprobe", [
+    const { stdout } = await execFileP(FFPROBE_BIN, [
       "-v", "error", "-select_streams", "v:0",
       "-show_entries", "stream=width,height:format=duration", "-of", "json", fullPath,
     ]);
@@ -56,7 +56,7 @@ export function ensureThumb(rel, fullPath, st) {
     const tmp = `${out}.tmp.jpg`;
     for (const ss of ["8", "0"]) {
       try {
-        await execFileP("ffmpeg", ["-v", "error", "-y", "-ss", ss, "-i", fullPath, "-frames:v", "1", "-vf", "scale=480:-2", "-q:v", "4", tmp]);
+        await execFileP(FFMPEG_BIN, ["-v", "error", "-y", "-ss", ss, "-i", fullPath, "-frames:v", "1", "-vf", "scale=480:-2", "-q:v", "4", tmp]);
         if (fs.existsSync(tmp)) {
           fs.renameSync(tmp, out);
           return out;
@@ -74,7 +74,7 @@ export async function extractFrame(full) {
   for (const ss of ["1", "0"]) {
     try {
       const { stdout } = await execFileP(
-        "ffmpeg",
+        FFMPEG_BIN,
         ["-v", "error", "-ss", ss, "-i", full, "-frames:v", "1", "-q:v", "2", "-f", "image2pipe", "-c:v", "mjpeg", "-"],
         { encoding: "buffer", maxBuffer: 32 * 1024 * 1024, timeout: 30000 }
       );

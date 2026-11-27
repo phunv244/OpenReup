@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from pipeline.common import fmt_clock, log, run_ffmpeg
+from pipeline.common import FFMPEG_BIN, cpu_forced, fmt_clock, log, run_ffmpeg
 from pipeline.subtitles import build_ass, sub_events, subtitles_filter
 from pipeline.job import Job, Progress
 
@@ -21,23 +21,50 @@ NVENC_ENCODE_ARGS = ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq",
 
 
 _nvenc_ok: Optional[bool] = None
+_nvenc_reason: str = ""
+
+
+def probe_nvenc(force: bool = False) -> Tuple[bool, str]:
+    """Thử mã hóa thật 0.2s bằng h264_nvenc. Trả (ok, reason tiếng Việt ngắn gọn kèm hướng khắc phục)."""
+    global _nvenc_ok, _nvenc_reason
+    if cpu_forced():
+        return False, "Đang ép chạy CPU (REUP_FORCE_CPU=1). Bỏ biến môi trường này để bật lại NVENC."
+    if _nvenc_ok is not None and not force:
+        return _nvenc_ok, _nvenc_reason
+    try:
+        proc = subprocess.run(
+            [FFMPEG_BIN, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=duration=0.2:size=640x360:rate=10",
+             "-pix_fmt", "yuv420p", "-c:v", "h264_nvenc", "-f", "null", "-"],
+            capture_output=True, text=True, timeout=8,
+        )
+        if proc.returncode == 0:
+            _nvenc_ok, _nvenc_reason = True, ""
+        else:
+            err = (proc.stderr or "").strip()
+            err_l = err.lower()
+            if "minimum required nvidia driver" in err_l or "api version" in err_l or "does not support the required nvenc" in err_l:
+                reason = "FFmpeg lệch phiên bản NVENC API với driver NVIDIA. Cập nhật FFmpeg trong .local/bin/ hoặc đặt REUP_FFMPEG."
+            elif "unknown encoder" in err_l or "encoder 'h264_nvenc'" in err_l:
+                reason = "Bản FFmpeg hiện tại không hỗ trợ h264_nvenc. Cài bản FFmpeg có NVENC vào .local/bin/."
+            elif "cannot load libcuda" in err_l or "no nvenc capable" in err_l or "no capable devices" in err_l:
+                reason = "Không tìm thấy GPU NVIDIA hỗ trợ NVENC."
+            else:
+                snippet = err.splitlines()[-1][:120] if err else f"mã lỗi {proc.returncode}"
+                reason = f"NVENC thử mã hóa thất bại ({snippet}). Đang dùng CPU libx264."
+            _nvenc_ok, _nvenc_reason = False, reason
+    except FileNotFoundError:
+        _nvenc_ok, _nvenc_reason = False, f"Không tìm thấy binary FFmpeg ({FFMPEG_BIN})."
+    except subprocess.TimeoutExpired:
+        _nvenc_ok, _nvenc_reason = False, "Kiểm tra NVENC quá thời gian chờ (8s). Đang dùng CPU libx264."
+    except Exception as e:
+        _nvenc_ok, _nvenc_reason = False, f"Không kiểm tra được NVENC ({e})."
+    return _nvenc_ok, _nvenc_reason
 
 
 def has_working_nvenc() -> bool:
     """Thử mã hóa thật 0.2s bằng h264_nvenc (tránh lỗi ffmpeg có tên encoder nhưng lệch phiên bản driver)."""
-    global _nvenc_ok
-    if _nvenc_ok is not None:
-        return _nvenc_ok
-    try:
-        proc = subprocess.run(
-            ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=duration=0.2:size=640x360:rate=10",
-             "-pix_fmt", "yuv420p", "-c:v", "h264_nvenc", "-f", "null", "-"],
-            capture_output=True, timeout=8,
-        )
-        _nvenc_ok = proc.returncode == 0
-    except Exception:
-        _nvenc_ok = False
-    return _nvenc_ok
+    ok, _ = probe_nvenc()
+    return ok
 
 
 def video_encode_args(cap: int, encoder: str = "auto") -> Tuple[List[str], bool]:

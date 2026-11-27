@@ -7,13 +7,21 @@ const slugOf = (name) =>
   name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d").toLowerCase()
     .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 36) || `du-an-${Date.now()}`;
 
-/** repo: projectRepo (repo.mjs) hoặc bản giả trong test. */
-export function createProjectService(repo) {
+/** repo: projectRepo (repo.mjs), dub: service của module dub (ctx.get("dub")) — hoặc bản giả trong test. */
+export function createProjectService(repo, dub) {
+  /** Ảnh chụp dữ liệu video dùng để đếm: đọc 1 lần cho cả danh sách dự án. */
+  const videoSnapshot = () => ({
+    dubbed: dub.list(), // bản lồng tiếng (có project_id)
+    dubSources: dub.sources(), // job_id -> video nguồn (rel)
+    owners: repo.owners(), // video nguồn (rel) -> project_id
+    sourceExists: repo.sourceExists,
+  });
+
   /**
    * Đếm video của 1 dự án. 1 video = 1 video nguồn, dù lồng tiếng bao nhiêu lần; bản lồng tiếng mất meta thì tự nó là 1 video.
    * Video nguồn gán dự án nhưng file đã mất thì không đếm. snap: truyền vào khi đếm nhiều dự án để chỉ đọc dữ liệu 1 lần.
    */
-  function stats(projectId, snap = repo.videoSnapshot()) {
+  function stats(projectId, snap = videoSnapshot()) {
     const videos = snap.dubbed.filter((v) => v.project_id === projectId);
     const dubbedKeys = new Set(videos.map((v) => snap.dubSources.get(v.job_id) || `job:${v.job_id}`));
     const all = new Set(dubbedKeys);
@@ -25,7 +33,7 @@ export function createProjectService(repo) {
     stats,
 
     list() {
-      const snap = repo.videoSnapshot();
+      const snap = videoSnapshot();
       const projects = repo.list().map((p) => ({ ...p, ...stats(p.id, snap) }));
       projects.sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
       return projects;
@@ -82,8 +90,12 @@ export function createProjectService(repo) {
       return updated;
     },
 
+    /** Xóa dự án; bản lồng tiếng của nó về "chưa gán". Đang lồng tiếng video của dự án thì từ chối (Python sẽ ghi lại project_id cũ). */
     remove(id) {
-      if (id) repo.remove(id);
+      if (!id) return;
+      if (dub.isProjectBusy(id)) throw httpError(409, "Dự án đang có video lồng tiếng chạy hoặc chờ trong hàng đợi. Hãy chờ xong hoặc dừng tác vụ trước khi xóa dự án.");
+      repo.remove(id);
+      dub.unassignProject(id);
     },
   };
 }

@@ -11,6 +11,7 @@ export const task = {
   proc: null,
   type: "",
   target: "",
+  args: [],
   progress: { pct: 0, label: "", eta: null, stage: 0 },
   logs: [],
   startedAt: 0,
@@ -100,6 +101,7 @@ function runTask({ taskId = 0, type, cmd, args, target = "", projectId = "" }) {
   Object.assign(task, {
     type,
     target,
+    args,
     logs: [],
     progress: { pct: 0, label: "Đang khởi chạy...", eta: null, stage: 0 },
     startedAt: Date.now(),

@@ -2,8 +2,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  BILIBILI_JSON, DATA_JSON, DEFAULT_CHANNEL_URL, DOWNLOADS_DIR, DUBBED_DIR, DUBBED_JSON, DUB_PROJECTS_DIR,
-  DUB_WORK_DIR, VIDEO_PROJECTS_JSON,
+  BILIBILI_JSON, DATA_DIR, DATA_JSON, DEFAULT_CHANNEL_URL, DOWNLOADS_DIR, DUBBED_DIR, DUBBED_JSON, DUB_PROJECTS_DIR,
+  DUB_WORK_DIR, ROOT, VIDEO_PROJECTS_JSON,
 } from "../config.mjs";
 import { db } from "./db.mjs";
 import { task } from "./tasks.mjs";
@@ -21,23 +21,28 @@ export function setVideoProject(rel, projectId) {
   writeJson(VIDEO_PROJECTS_JSON, map);
 }
 
-/** Gỡ mọi video nguồn và bản lồng tiếng khỏi dự án (dự án bị xóa). File media không bị xóa. */
-export function unassignProject(projectId) {
+/** Gỡ mọi video nguồn khỏi dự án (dự án bị xóa). File media không bị xóa. Bản lồng tiếng: module dub (unassignProject). */
+export function unassignVideoProjects(projectId) {
   const map = readVideoProjects();
   for (const rel of Object.keys(map)) if (map[rel] === projectId) delete map[rel];
   writeJson(VIDEO_PROJECTS_JSON, map);
-  updateDubbed((vids) => vids.forEach((v) => v.project_id === projectId && (v.project_id = "")));
 }
 
-/** job_id → video nguồn (đường dẫn tương đối) của bản lồng tiếng, đọc từ meta.json của job. */
-export function readDubSources() {
+/**
+ * job_id → thư mục làm việc tuyệt đối: data/dub_work/<job>, rồi ghi đè bằng work_dir Python lưu trong dubbed.json
+ * (tương đối với ROOT hoặc tuyệt đối) — thư mục job có thể đã được đổi tên / chuyển chỗ.
+ */
+export function dubWorkDirs() {
   const out = new Map();
-  if (!fs.existsSync(DUB_WORK_DIR)) return out;
-  for (const dir of fs.readdirSync(DUB_WORK_DIR)) {
-    const meta = readJson(path.join(DUB_WORK_DIR, dir, "meta.json"), null);
-    if (meta?.input_path) out.set(meta.job_id || dir, relOf(meta.input_path));
-  }
+  if (fs.existsSync(DUB_WORK_DIR)) for (const dir of fs.readdirSync(DUB_WORK_DIR)) out.set(dir, path.join(DUB_WORK_DIR, dir));
+  for (const v of readDubbed()) if (v.job_id && v.work_dir) out.set(v.job_id, path.resolve(ROOT, String(v.work_dir)));
   return out;
+}
+
+/** Thư mục làm việc của 1 job. Chỉ nhận đường dẫn nằm trong DATA_DIR (không bao giờ xóa nhầm ngoài data/). */
+export function dubWorkDir(jobId) {
+  const dir = dubWorkDirs().get(jobId) || path.join(DUB_WORK_DIR, jobId);
+  return dir.startsWith(DATA_DIR + path.sep) ? dir : path.join(DUB_WORK_DIR, jobId);
 }
 
 /* ---------- Douyin ---------- */
@@ -108,7 +113,7 @@ export function removeDubJob(jobId) {
   ]) {
     fs.rmSync(p, { force: true });
   }
-  fs.rmSync(path.join(DUB_WORK_DIR, jobId), { recursive: true, force: true });
+  fs.rmSync(dubWorkDir(jobId), { recursive: true, force: true });
   db.prepare("DELETE FROM segments WHERE job_id = ?").run(jobId);
   db.prepare("DELETE FROM timeline_dirty WHERE job_id = ?").run(jobId);
   updateDubbed((vids) => vids.filter((v) => v.job_id !== jobId));
@@ -117,9 +122,8 @@ export function removeDubJob(jobId) {
 /** Trạng thái các job lồng tiếng theo file nguồn (để hiện "đang dở 43% — Tiếp tục"). */
 export function readDubJobs() {
   const byInput = new Map();
-  if (!fs.existsSync(DUB_WORK_DIR)) return byInput;
-  for (const dir of fs.readdirSync(DUB_WORK_DIR)) {
-    const meta = readJson(path.join(DUB_WORK_DIR, dir, "meta.json"), null);
+  for (const [dir, workDir] of dubWorkDirs()) {
+    const meta = readJson(path.join(workDir, "meta.json"), null);
     if (!meta?.input_path || !meta.status) continue;
     let status = meta.status;
     // Ghi "running" nhưng không có tiến trình nào => lần trước bị tắt đột ngột, coi như đang dở.

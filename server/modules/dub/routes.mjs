@@ -1,13 +1,15 @@
-/** Lồng tiếng: bắt đầu, câu thoại, xuất lại, gán dự án, dọn cache, xóa. */
+/** HTTP của module dub (đường dẫn API giữ như cũ): bắt đầu, câu thoại, xuất lại, gán dự án, dọn cache, xóa. */
 import fs from "node:fs";
 import path from "node:path";
-import { DEFAULT_VOICE, DUBBED_DIR, DUB_WORK_DIR, ROOT, VENV_PYTHON } from "../config.mjs";
-import { db, inTransaction } from "../lib/db.mjs";
-import { getAgyModels, validAgyModel } from "../lib/agy.mjs";
-import { checkSubStyle } from "../lib/fonts.mjs";
-import { loadDubProject, readDubbed, removeDubJob, saveDubProject, updateDubbed } from "../lib/store.mjs";
-import { dubBusyError, spawnTask, task, taskEvents } from "../lib/tasks.mjs";
-import { fail, resolveDownload, safeJobId, validDelogo, validModelId, validSubcover, validVoice } from "../lib/util.mjs";
+import { DEFAULT_VOICE, DUBBED_DIR, ROOT, VENV_PYTHON } from "../../config.mjs";
+import { db, inTransaction } from "../../lib/db.mjs";
+import { getAgyModels, validAgyModel } from "../../lib/agy.mjs";
+import { checkSubStyle } from "../../lib/fonts.mjs";
+import { dubBusyError, spawnTask, task, taskEvents } from "../../lib/tasks.mjs";
+import { fail, resolveDownload, safeJobId, validDelogo, validModelId, validSubcover, validVoice } from "../../lib/util.mjs";
+import { dubRepo } from "./repo.mjs";
+
+const { dubWorkDir, loadDubProject, removeDubJob, saveDubProject, updateDubbed } = dubRepo;
 
 const dubPy = path.join(ROOT, "dub_video.py");
 const send = (reply, result) => reply.code(result.ok ? 200 : 409).send(result);
@@ -26,9 +28,9 @@ taskEvents.on("end", ({ task_id, exit_code }) => {
   if (exit_code === 0) db.prepare("DELETE FROM timeline_dirty WHERE job_id = ? AND rev <= ?").run(p.jobId, p.rev);
 });
 
-export default async function dubRoutes(app) {
+export default async function dubRoutes(app, ctx, dub) {
   app.get("/api/dubbed", async () => {
-    const videos = readDubbed().filter((v) => v.mp4_file && fs.existsSync(path.join(DUBBED_DIR, v.mp4_file)));
+    const videos = dub.list().filter((v) => v.mp4_file && fs.existsSync(path.join(DUBBED_DIR, v.mp4_file)));
     return { total: videos.length, videos };
   });
 
@@ -51,10 +53,11 @@ export default async function dubRoutes(app) {
     const subStyle = checkSubStyle(body.sub_style);
     if (subStyle.error) return fail(reply, 400, subStyle.error);
     if (!fs.existsSync(VENV_PYTHON)) return fail(reply, 500, "Chưa cài môi trường Python (.venv). Xem mục Cài đặt trong README.");
+    const speed = Number(body.speed) || 0.5;
     const args = [
       "-u", dubPy,
       "--input", resolved,
-      "--speed", String(Number(body.speed) || 0.5),
+      "--speed", String(speed),
       "--voice", String(body.voice || DEFAULT_VOICE),
       "--model", String(body.model || "sensevoice-small"),
       "--bg-volume", String(Number(body.bg_volume ?? 0.05) || 0),
@@ -67,6 +70,7 @@ export default async function dubRoutes(app) {
     if (body.multi_voice) args.push("--multi-voice");
     if (body.project_id) args.push("--story-project", String(body.project_id));
     if (body.fresh) args.push("--fresh");
+    args.push(...dub.pathArgs(dub.jobIdFor(resolved, speed)));
     return send(reply, spawnTask("dub_video", VENV_PYTHON, args, rel));
   });
 
@@ -146,7 +150,7 @@ export default async function dubRoutes(app) {
     if (body.subcover !== undefined) proj.subcover = String(body.subcover);
     if (body.sub_style !== undefined) proj.sub_style = subStyle.style; // null = quay về kiểu mặc định
     saveDubProject(jobId, proj);
-    const started = spawnTask("dub_rerender", VENV_PYTHON, ["-u", dubPy, "--project", jobId, ...(only ? ["--only", only] : [])], jobId);
+    const started = spawnTask("dub_rerender", VENV_PYTHON, ["-u", dubPy, "--project", jobId, ...dub.pathArgs(jobId), ...(only ? ["--only", only] : [])], jobId);
     if (started.ok && dirtyRev) pendingFullRender.set(started.task_id, { jobId, rev: dirtyRev });
     return send(reply, started);
   });
@@ -274,7 +278,7 @@ export default async function dubRoutes(app) {
   app.post("/api/dub/clean", async (req, reply) => {
     const jobId = safeJobId(req.body?.job_id);
     if (dubBusyError()) return fail(reply, 409, dubBusyError());
-    if (jobId) fs.rmSync(path.join(DUB_WORK_DIR, jobId), { recursive: true, force: true });
+    if (jobId) fs.rmSync(dubWorkDir(jobId), { recursive: true, force: true });
     updateDubbed((vids) => vids.forEach((v) => v.job_id === jobId && (v.cache_mb = 0)));
     return { ok: true };
   });

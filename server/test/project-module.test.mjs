@@ -38,7 +38,10 @@ const snap = {
   ]),
   sourceExists: (rel) => !rel.endsWith("da-xoa.mp4"),
 };
-const svc = createProjectService({ videoSnapshot: () => snap });
+// Repo + service dub giả: project chỉ thấy bản lồng tiếng qua service của module dub (ctx.get("dub")).
+const fakeRepo = { owners: () => snap.owners, sourceExists: snap.sourceExists };
+const fakeDub = (dubSources = snap.dubSources) => ({ list: () => snap.dubbed, sources: () => dubSources });
+const svc = createProjectService(fakeRepo, fakeDub());
 const counts = (id) => {
   const s = svc.stats(id);
   return [s.video_count, s.dubbed_count, s.pending_count];
@@ -56,7 +59,7 @@ test("cau-ca-van-can: 3/3/0 (bản lồng tiếng có nguồn chưa gán vẫn t
 test("bản lồng tiếng mất meta (không biết nguồn) tự tính là 1 video", () => {
   const dubSources = new Map(snap.dubSources);
   dubSources.delete("dub_BVtest2_0p5x"); // BVtest2 thành "chưa lồng tiếng", bản lồng tiếng của nó thành 1 video riêng
-  const s = createProjectService({ videoSnapshot: () => ({ ...snap, dubSources }) }).stats("so-tan-cau-ca");
+  const s = createProjectService(fakeRepo, fakeDub(dubSources)).stats("so-tan-cau-ca");
   assert.deepEqual([s.video_count, s.dubbed_count, s.pending_count], [4, 2, 2]);
 });
 

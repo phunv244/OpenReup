@@ -15,11 +15,15 @@ Thêm chức năng = thêm 1 thư mục `server/modules/<tên>/` rồi thêm mod
 
 | Module | Trạng thái |
 | --- | --- |
-| project | đã tách (`server/modules/project/`) |
-| tasks, source, voices, resources, dub, functions | còn bọc `server/routes/*.mjs` |
+| project | đã tách (`server/modules/project/`), `deps: ["dub"]` |
+| dub | đã tách (`server/modules/dub/`); các route sửa câu thoại vẫn gọi DB trực tiếp trong `routes.mjs` |
+| tasks, source, voices, resources, functions | còn bọc `server/routes/*.mjs` |
 
 ## Checklist bước 6 (module `dub`)
 
-- [ ] `readDubSources` đọc `meta.json` theo `work_dir` ghi trong `dubbed.json` (không quét cứng `data/dub_work/`).
-- [ ] Module `dub` luôn truyền `--work-dir` cho `dub_video.py`, kể cả khi chạy tiếp (resume).
-- [ ] Chặn xóa dự án khi đang có task chạy của dự án đó.
+- [x] `readDubSources` / `readDubJobs` đọc `meta.json` theo `work_dir` ghi trong `dubbed.json` (`dubWorkDirs()` trong `lib/store.mjs`).
+- [x] Module `dub` luôn truyền `--work-dir --out-dir --project-file --index-file --story-dir` (`service.pathArgs`), kể cả khi chạy tiếp; dùng lại `work_dir`/`out_dir` đã lưu trong file project của job.
+- [x] Chặn xóa dự án khi có job lồng tiếng của dự án đang chạy hoặc chờ (409).
+- [x] `project` lấy bản lồng tiếng qua `ctx.get("dub")`, không import thẳng `lib/store` phần lồng tiếng.
+- [ ] Bước 6: sau khi `rename` thư mục video, cập nhật `work_dir`/`out_dir` trong file project của job và trong `dubbed.json`.
+- [ ] `dub_video.py` vẫn mở SQLite theo đường dẫn cố định (`data/openreup.db`), chưa theo `REUP_DATA_DIR`.

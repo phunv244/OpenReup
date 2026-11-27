@@ -1,13 +1,13 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Modal } from "@/components/Modal";
 import { Topbar, useOpenDrawer } from "@/components/Shell";
-import { Metric } from "@/components/ui";
+import { Seg } from "@/components/ui";
 import { useToast } from "@/components/Toasts";
 import { Project, postJSON } from "@/lib/api";
-import { fmtHours, projHref } from "@/lib/format";
+import { projHref } from "@/lib/format";
 import { useStudio } from "@/lib/studio";
 
 const TYPES = ["Truyện / Hoạt hình", "Phim bộ", "Phim lẻ", "Review / Tài liệu"];
@@ -84,33 +84,58 @@ function NewProjectModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function ProjectCard({ p }: { p: Project }) {
-  const openDrawer = useOpenDrawer();
+type View = "grid" | "list";
+type Filter = "all" | "dubbed" | "pending" | "empty";
+type Sort = "updated" | "name" | "videos";
+const PREF_KEY = "reup.projects.view";
+
+function projIcon(p: Project) {
+  return p.type?.includes("Phim") ? "film" : p.type?.includes("Review") ? "book" : "sparkles";
+}
+
+/** Bấm vào là mở dự án; nút bánh răng mở Ngữ cảnh AI mà không mở dự án. */
+function useOpen(p: Project) {
   const router = useRouter();
   const open = () => router.push(projHref(p.id, "videos"));
-  const ico = p.type?.includes("Phim") ? "film" : p.type?.includes("Review") ? "book" : "sparkles";
+  return {
+    role: "link" as const,
+    tabIndex: 0,
+    "aria-label": `Mở dự án ${p.name}`,
+    onClick: open,
+    onKeyDown: (e: React.KeyboardEvent) => e.key === "Enter" && e.target === e.currentTarget && open(),
+  };
+}
+
+function SettingsBtn({ p, className }: { p: Project; className: string }) {
+  const openDrawer = useOpenDrawer();
   return (
-    <article className="pcard" role="link" tabIndex={0} aria-label={`Mở dự án ${p.name}`} onClick={open} onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && open()}>
+    <button
+      className={`icon-btn ${className}`}
+      type="button"
+      title="Ngữ cảnh AI & cài đặt dự án"
+      aria-label={`Ngữ cảnh AI & cài đặt dự án ${p.name}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        openDrawer(p.id);
+      }}
+    >
+      <Icon name="sliders" size={17} />
+    </button>
+  );
+}
+
+function ProjectCard({ p }: { p: Project }) {
+  return (
+    <article className="pcard" {...useOpen(p)}>
       <div className="pcard-top">
         <div className="pcard-ico">
-          <Icon name={ico} size={20} />
+          <Icon name={projIcon(p)} size={20} />
         </div>
         <div className="pcard-head">
           <div className="pcard-title" title={p.name}>{p.name}</div>
           <span className="pcard-type">{p.type || "Truyện / Hoạt hình"}</span>
         </div>
-        <button
-          className="icon-btn pcard-set"
-          type="button"
-          title="Ngữ cảnh AI & cài đặt dự án"
-          aria-label={`Ngữ cảnh AI & cài đặt dự án ${p.name}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            openDrawer(p.id);
-          }}
-        >
-          <Icon name="sliders" size={17} />
-        </button>
+        <SettingsBtn p={p} className="pcard-set" />
       </div>
       <p className={`pcard-syn ${p.synopsis ? "" : "pcard-syn-empty"}`}>{p.synopsis || "Chưa có mô tả cốt truyện — thêm bối cảnh để AI dịch đúng mạch truyện hơn."}</p>
       <div className="pcard-stats">
@@ -119,12 +144,12 @@ function ProjectCard({ p }: { p: Project }) {
           <span>video</span>
         </div>
         <div>
-          <b>{(p.characters || []).length}</b>
-          <span>nhân vật</span>
+          <b className="ok">{p.dubbed_count || 0}</b>
+          <span>đã lồng tiếng</span>
         </div>
         <div>
-          <b>{(p.glossary || []).length}</b>
-          <span>thuật ngữ</span>
+          <b className={p.pending_count ? "warn" : ""}>{p.pending_count || 0}</b>
+          <span>chưa lồng</span>
         </div>
         <span className="pcard-go" aria-hidden="true">
           <Icon name="chevron" size={16} />
@@ -134,8 +159,46 @@ function ProjectCard({ p }: { p: Project }) {
   );
 }
 
+function ProjectRow({ p }: { p: Project }) {
+  return (
+    <div className="prow" {...useOpen(p)}>
+      <div className="pcard-ico prow-ico">
+        <Icon name={projIcon(p)} size={16} />
+      </div>
+      <div className="prow-name">
+        <b title={p.name}>{p.name}</b>
+        <span>{p.type || "Truyện / Hoạt hình"}</span>
+      </div>
+      <span className="prow-num" title="Video">{p.video_count || 0}</span>
+      <span className="prow-num ok" title="Đã lồng tiếng">{p.dubbed_count || 0}</span>
+      <span className={`prow-num ${p.pending_count ? "warn" : ""}`} title="Chưa lồng tiếng">{p.pending_count || 0}</span>
+      <span className="prow-date">{p.updated_at ? new Date(p.updated_at).toLocaleDateString("vi-VN") : "—"}</span>
+      <SettingsBtn p={p} className="prow-set" />
+    </div>
+  );
+}
+
+function usePrefs() {
+  const [prefs, setPrefs] = useState<{ view: View; filter: Filter; sort: Sort }>({ view: "grid", filter: "all", sort: "updated" });
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PREF_KEY) || "{}");
+      setPrefs((p) => ({ ...p, ...saved }));
+    } catch {}
+  }, []);
+  const update = (patch: Partial<typeof prefs>) =>
+    setPrefs((p) => {
+      const next = { ...p, ...patch };
+      localStorage.setItem(PREF_KEY, JSON.stringify(next));
+      return next;
+    });
+  return [prefs, update] as const;
+}
+
+const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/gi, "d").toLowerCase();
+
 export default function ProjectsPage() {
-  const { projects, dubbed, system } = useStudio();
+  const { projects } = useStudio();
   const [creating, setCreating] = useState(false);
   const router = useRouter();
   // Link kiểu giao diện cũ (#/project/<id>/<trang>) vẫn mở đúng trang mới.
@@ -144,8 +207,34 @@ export default function ProjectsPage() {
     if (m) router.replace(projHref(decodeURIComponent(m[1]), ["douyin", "logs"].includes(m[2]) ? m[2] : "videos"));
     else if (/^#\/(models|logs|help)/.test(location.hash)) router.replace(`/${location.hash.slice(2).split("/")[0]}/`);
   }, [router]);
-  const totalSec = dubbed.reduce((a, v) => a + Number(v.duration_sec || 0), 0);
-  const totalMem = projects.reduce((a, p) => a + (p.characters || []).length + (p.glossary || []).length, 0);
+  const [prefs, setPrefs] = usePrefs();
+  const [q, setQ] = useState("");
+
+  const counts = useMemo(
+    () => ({
+      all: projects.length,
+      dubbed: projects.filter((p) => (p.dubbed_count || 0) > 0).length,
+      pending: projects.filter((p) => (p.pending_count || 0) > 0).length,
+      empty: projects.filter((p) => !p.video_count).length,
+    }),
+    [projects],
+  );
+
+  const shown = useMemo(() => {
+    const needle = norm(q.trim());
+    const list = projects.filter((p) => {
+      if (prefs.filter === "dubbed" && !p.dubbed_count) return false;
+      if (prefs.filter === "pending" && !p.pending_count) return false;
+      if (prefs.filter === "empty" && p.video_count) return false;
+      return !needle || norm(`${p.name} ${p.type || ""}`).includes(needle);
+    });
+    const by: Record<Sort, (a: Project, b: Project) => number> = {
+      updated: (a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")),
+      name: (a, b) => a.name.localeCompare(b.name, "vi"),
+      videos: (a, b) => (b.video_count || 0) - (a.video_count || 0),
+    };
+    return list.sort(by[prefs.sort]);
+  }, [projects, prefs.filter, prefs.sort, q]);
 
   return (
     <>
@@ -159,24 +248,85 @@ export default function ProjectsPage() {
         }
       />
       <main className="content">
-        <div className="metrics">
-          <Metric icon="folder" label="Dự án" value={projects.length} tone="violet" />
-          <Metric icon="mic" label="Video đã lồng tiếng" value={dubbed.length} sub={totalSec ? `Tổng ${fmtHours(totalSec)}` : ""} tone="green" />
-          <Metric icon="brain" label="AI đã ghi nhớ" value={totalMem} sub="nhân vật & thuật ngữ" tone="pink" />
-          <Metric icon="disk" label="Ổ cứng còn trống" value={`${system.free_gb || 0} GB`} sub={`trên ${system.total_gb || 0} GB`} tone="blue" />
+        <div className="pbar">
+          <label className="pbar-search">
+            <Icon name="search" size={15} />
+            <input
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Tìm dự án…"
+              aria-label="Tìm dự án theo tên"
+            />
+          </label>
+          <Seg<Filter>
+            label="Lọc dự án"
+            value={prefs.filter}
+            onChange={(filter) => setPrefs({ filter })}
+            items={[
+              { v: "all", label: "Tất cả", count: counts.all },
+              { v: "dubbed", label: "Đã lồng tiếng", count: counts.dubbed, title: "Dự án có video đã lồng tiếng" },
+              { v: "pending", label: "Chưa lồng", count: counts.pending, title: "Dự án còn video chưa lồng tiếng" },
+              { v: "empty", label: "Trống", count: counts.empty, title: "Dự án chưa có video" },
+            ]}
+          />
+          <div className="pbar-right">
+            <select className="select pbar-sort" aria-label="Sắp xếp" value={prefs.sort} onChange={(e) => setPrefs({ sort: e.target.value as Sort })}>
+              <option value="updated">Mới cập nhật</option>
+              <option value="name">Tên A→Z</option>
+              <option value="videos">Nhiều video</option>
+            </select>
+            <Seg<View>
+              label="Kiểu hiển thị"
+              value={prefs.view}
+              onChange={(view) => setPrefs({ view })}
+              items={[
+                { v: "grid", label: <Icon name="grid" size={15} />, title: "Dạng lưới" },
+                { v: "list", label: <Icon name="list" size={15} />, title: "Dạng danh sách" },
+              ]}
+            />
+          </div>
         </div>
-        <div className="proj-grid">
-          {projects.map((p) => (
-            <ProjectCard key={p.id} p={p} />
-          ))}
-          <button className="pcard pcard-new" type="button" onClick={() => setCreating(true)}>
-            <span className="plus">
-              <Icon name="plus" size={20} />
-            </span>
-            <b>Tạo dự án mới</b>
-            <span>Mỗi bộ truyện / phim một dự án để AI nhớ nhân vật, xưng hô và mạch truyện</span>
-          </button>
-        </div>
+
+        {shown.length === 0 && projects.length > 0 ? (
+          <div className="pbar-empty">
+            Không có dự án nào khớp.{" "}
+            <button className="link-btn" type="button" onClick={() => { setQ(""); setPrefs({ filter: "all" }); }}>
+              Xóa bộ lọc
+            </button>
+          </div>
+        ) : prefs.view === "list" ? (
+          <div className="plist" role="list">
+            <div className="prow prow-head" aria-hidden="true">
+              <span />
+              <span>Dự án</span>
+              <span className="prow-num">Video</span>
+              <span className="prow-num">Đã lồng</span>
+              <span className="prow-num">Chưa lồng</span>
+              <span className="prow-date">Cập nhật</span>
+              <span />
+            </div>
+            {shown.map((p) => (
+              <ProjectRow key={p.id} p={p} />
+            ))}
+            <button className="prow prow-new" type="button" onClick={() => setCreating(true)}>
+              <Icon name="plus" size={16} /> Tạo dự án mới
+            </button>
+          </div>
+        ) : (
+          <div className="proj-grid">
+            {shown.map((p) => (
+              <ProjectCard key={p.id} p={p} />
+            ))}
+            <button className="pcard pcard-new" type="button" onClick={() => setCreating(true)}>
+              <span className="plus">
+                <Icon name="plus" size={20} />
+              </span>
+              <b>Tạo dự án mới</b>
+              <span>Mỗi bộ truyện / phim một dự án để AI nhớ nhân vật, xưng hô và mạch truyện</span>
+            </button>
+          </div>
+        )}
       </main>
       {creating && <NewProjectModal onClose={() => setCreating(false)} />}
     </>

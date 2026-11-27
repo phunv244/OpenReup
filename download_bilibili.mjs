@@ -21,8 +21,11 @@ const VENV_BIN = path.join(__dirname, ".venv", "bin");
 if (fs.existsSync(VENV_BIN) && !(process.env.PATH || "").split(path.delimiter).includes(VENV_BIN)) {
   process.env.PATH = `${VENV_BIN}${path.delimiter}${process.env.PATH || ""}`;
 }
-const OUT_DIR = path.join(__dirname, "downloads", "bilibili");
-const META_JSON = path.join(__dirname, "data", "bilibili.json");
+// REUP_MEDIA_ROOT / REUP_DATA_DIR: server truyền xuống khi chạy test (thư mục tạm), mặc định là repo.
+const MEDIA_ROOT = process.env.REUP_MEDIA_ROOT ? path.resolve(process.env.REUP_MEDIA_ROOT) : __dirname;
+const DATA_ROOT = process.env.REUP_DATA_DIR ? path.resolve(process.env.REUP_DATA_DIR) : path.join(__dirname, "data");
+const OUT_DIR = path.join(MEDIA_ROOT, "downloads", "bilibili");
+const META_JSON = path.join(DATA_ROOT, "bilibili.json");
 const MIN_FREE_GB = 5;
 
 function normalizeVideoUrl(rawUrl) {

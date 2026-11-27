@@ -17,7 +17,8 @@ Thêm chức năng = thêm 1 thư mục `server/modules/<tên>/` rồi thêm mod
 | --- | --- |
 | project | đã tách (`server/modules/project/`), `deps: ["dub"]` |
 | dub | đã tách (`server/modules/dub/`); các route sửa câu thoại vẫn gọi DB trực tiếp trong `routes.mjs` |
-| tasks, source, voices, resources, functions | còn bọc `server/routes/*.mjs` |
+| sources | đã tách (`server/modules/sources/`), `deps: ["dub", "project"]`; job lồng tiếng của video nguồn lấy qua `ctx.get("dub")` (`jobsBySource`, `removeWorkDir`, `removeJob`, `busyError`) |
+| tasks, voices, resources, functions | còn bọc `server/routes/*.mjs` |
 
 ## Checklist bước 6 (module `dub`)
 
@@ -39,4 +40,4 @@ Thêm chức năng = thêm 1 thư mục `server/modules/<tên>/` rồi thêm mod
 
 `server/test/helpers.mjs` (`setupApp`) đặt `REUP_DATA_DIR` và `REUP_MEDIA_ROOT` cùng trỏ vào một thư mục tạm trong `/tmp`. Hàm này phải chạy trước mọi import của server, vì `config.mjs` đọc các biến môi trường ngay lúc nạp. Server thật không đặt 2 biến này.
 
-**Chưa cách ly khi test:** script tải `download_videos.mjs` (Douyin), `download_bilibili.mjs` (Bilibili/YouTube) và `list_channel_web.mjs` chạy như tiến trình con, tự ghi vào `downloads/` và `data/` của repo, không đọc `REUP_MEDIA_ROOT`/`REUP_DATA_DIR`. `lib/tasks.mjs` tính đường dẫn `SAVED_FILE:::` từ `ROOT` rồi so với `DOWNLOADS_DIR`, nên khi đặt `REUP_MEDIA_ROOT` file tải về không được gán vào dự án. Test tải video vì vậy chưa được cách ly: đừng gọi `/api/download`, `/api/scan`, `/api/bilibili/*` trên server test nếu không muốn ghi vào thư mục thật.
+Script tải `download_videos.mjs` (Douyin), `download_bilibili.mjs` (Bilibili/YouTube) và `list_channel_web.mjs` chạy như tiến trình con, kế thừa env của server nên cũng ghi theo `REUP_MEDIA_ROOT` (`downloads/`) và `REUP_DATA_DIR` (`videos.json`, `bilibili.json`). `lib/tasks.mjs` tính đường dẫn `SAVED_FILE:::` từ `MEDIA_ROOT`. Còn dùng thư mục repo: `chrome_profile/` (đăng nhập Douyin) và `cookies.txt`.

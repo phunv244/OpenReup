@@ -1,9 +1,8 @@
-/** Dữ liệu Douyin / Bilibili / bản lồng tiếng / video theo dự án (file JSON trong data/). */
+/** Dữ liệu dùng chung: bản lồng tiếng, video nguồn theo dự án (file JSON trong data/). Douyin / Bilibili: server/modules/sources/repo.mjs. */
 import fs from "node:fs";
 import path from "node:path";
 import {
-  BILIBILI_JSON, DATA_JSON, DEFAULT_CHANNEL_URL, DOWNLOADS_DIR, DUBBED_DIR, DUBBED_JSON, DUB_PROJECTS_DIR,
-  DUB_WORK_DIR, ROOT, VIDEO_PROJECTS_JSON,
+  DUBBED_DIR, DUBBED_JSON, DUB_PROJECTS_DIR, DUB_WORK_DIR, ROOT, VIDEO_PROJECTS_JSON,
 } from "../config.mjs";
 import { db } from "./db.mjs";
 import { task } from "./tasks.mjs";
@@ -62,32 +61,6 @@ export function removeDubWorkDir(jobId) {
   if (dir) fs.rmSync(dir, { recursive: true, force: true });
 }
 
-/* ---------- Douyin ---------- */
-export function readVideosData() {
-  if (!fs.existsSync(DATA_JSON)) {
-    return {
-      source: "none",
-      updated_at: "",
-      channel_meta: {
-        channel_name: "楚新钓",
-        douyin_id: "76602931608",
-        channel_url: DEFAULT_CHANNEL_URL,
-        total_works: "580",
-      },
-      total_collected: 0,
-      videos: [],
-    };
-  }
-  const data = JSON.parse(fs.readFileSync(DATA_JSON, "utf8"));
-  const downloadedFiles = fs.existsSync(DOWNLOADS_DIR)
-    ? fs.readdirSync(DOWNLOADS_DIR).filter((f) => f.endsWith(".mp4"))
-    : [];
-  for (const v of data.videos || []) {
-    v.local_file = (v.aweme_id && downloadedFiles.find((f) => f.includes(String(v.aweme_id)))) || "";
-  }
-  return data;
-}
-
 /* ---------- Bản lồng tiếng ---------- */
 export function readDubbed() {
   return readJson(DUBBED_JSON, {}).videos || [];
@@ -99,15 +72,6 @@ export function updateDubbed(mutate) {
   d.videos = mutate(d.videos || []) || d.videos;
   d.total = d.videos.length;
   writeJson(DUBBED_JSON, d);
-}
-
-export function removeFromBiliIndex(fname) {
-  if (!fs.existsSync(BILIBILI_JSON)) return;
-  const d = readJson(BILIBILI_JSON, { videos: [] });
-  d.videos = (d.videos || []).filter((v) => v.local_file !== fname);
-  d.total = d.videos.length;
-  d.updated_at = new Date().toISOString().slice(0, 19);
-  writeJson(BILIBILI_JSON, d);
 }
 
 export function loadDubProject(jobId) {

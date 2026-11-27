@@ -1,6 +1,7 @@
 /**
  * Module dub: lồng tiếng (bắt đầu, câu thoại, xuất lại, gán dự án, dọn cache, xóa).
- * Service cho module khác (ctx.get("dub")): list(), sources(), unassignProject(id), isProjectBusy(id), pathArgs(jobId), jobIdFor(input, speed).
+ * Service cho module khác (ctx.get("dub")): list(), sources(), unassignProject(id), isProjectBusy(id), pathArgs(jobId), jobIdFor(input, speed),
+ *   jobsBySource(), removeWorkDir(jobId), removeJob(jobId), busyError().
  */
 import { DUB_FUNCTIONS } from "./functions.mjs";
 import { dubRepo } from "./repo.mjs";

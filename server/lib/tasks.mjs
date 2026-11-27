@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { DATA_DIR, DOWNLOADS_DIR, ROOT, TASK_LOG } from "../config.mjs";
+import { DATA_DIR, DOWNLOADS_DIR, MEDIA_ROOT, ROOT, TASK_LOG } from "../config.mjs";
 import { relOf } from "./util.mjs";
 import { setVideoProject } from "./store.mjs";
 
@@ -133,7 +133,8 @@ function runTask({ taskId = 0, type, cmd, args, target = "", projectId = "" }) {
       // Script tải in "SAVED_FILE:::<đường dẫn>" cho mỗi file xong: gán luôn vào dự án đang mở lúc bấm tải.
       for (const line of parts) {
         if (!line.startsWith("SAVED_FILE:::")) continue;
-        const full = path.resolve(ROOT, line.slice("SAVED_FILE:::".length).trim());
+        // Script ghi theo REUP_MEDIA_ROOT (kế thừa env của server); đường dẫn tương đối tính từ MEDIA_ROOT.
+        const full = path.resolve(MEDIA_ROOT, line.slice("SAVED_FILE:::".length).trim());
         if (!full.startsWith(DOWNLOADS_DIR + path.sep)) continue;
         if (!savedFiles.includes(full)) savedFiles.push(full);
         if (projectId) setVideoProject(relOf(full), projectId);

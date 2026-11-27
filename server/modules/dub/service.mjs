@@ -44,6 +44,14 @@ export function createDubService(repo) {
     sources: () => repo.readDubSources(),
     /** Dự án bị xóa: bản lồng tiếng của nó về "chưa gán dự án". */
     unassignProject: (projectId) => repo.updateDubbed((vids) => vids.forEach((v) => v.project_id === projectId && (v.project_id = ""))),
+    /** Video nguồn (đường dẫn tuyệt đối) → job lồng tiếng của nó (meta.json: job_id, status, ...). */
+    jobsBySource: () => repo.readDubJobs(),
+    /** Xóa thư mục làm việc của 1 job (chỉ thư mục đúng tên job trong data/dub_work). */
+    removeWorkDir: (jobId) => repo.removeDubWorkDir(jobId),
+    /** Xóa hẳn 1 bản lồng tiếng (file xuất, file project, câu thoại, thư mục làm việc). */
+    removeJob: (jobId) => repo.removeDubJob(jobId),
+    /** Câu lỗi khi đang lồng tiếng / xuất lại (không được xóa thứ tiến trình đang ghi), "" nếu rảnh. */
+    busyError: () => repo.busyError(),
     /** Dự án đang có video lồng tiếng / xuất lại chạy hoặc chờ trong hàng đợi. */
     isProjectBusy: (projectId) => Boolean(projectId) && repo.dubTasks().some((t) => taskProject(t, repo.loadDubProject) === projectId),
 

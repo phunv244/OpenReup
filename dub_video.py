@@ -714,7 +714,7 @@ def _extract_json_object(text: str) -> Dict:
         parsed = json.loads(raw[start : end + 1])
         if isinstance(parsed, dict):
             return parsed
-    raise RuntimeError(f"Không đọc được JSON từ phản hồi AGY Proxy: {raw[:200]}")
+    raise RuntimeError(f"Không đọc được JSON từ phản hồi model dịch: {raw[:200]}")
 
 
 # ----------------------------------------------------------------------------

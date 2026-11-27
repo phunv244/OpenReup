@@ -1,9 +1,9 @@
 "use client";
-import Link from "next/link";
 import { TaskState } from "@/lib/api";
 import { DUB_STAGES, exitTone, fmtEta, taskName } from "@/lib/format";
 import { useStudio } from "@/lib/studio";
 import { Icon } from "./Icon";
+import { useRail } from "./Shell";
 
 export function ProgressBar({ task, steps = true }: { task: TaskState; steps?: boolean }) {
   const p = task.progress || { pct: 0, label: "", eta: null, stage: 0 };
@@ -35,14 +35,15 @@ export function ProgressBar({ task, steps = true }: { task: TaskState; steps?: b
   );
 }
 
-/** Thẻ tiến trình: ở chân sidebar (gọn), cột phải và đầu trang Nhật ký (đủ các bước). */
+/** Thẻ tiến trình: ở chân thanh trái (gọn) và cột phải (đủ các bước). */
 /** Dưới ngưỡng này mới cảnh báo ổ đầy; còn dư thì không hiện số dung lượng. */
 const LOW_DISK_GB = 10;
 
-export function TaskCard({ variant }: { variant: "sidebar" | "rail" | "page" }) {
+export function TaskCard({ variant }: { variant: "sidebar" | "rail" }) {
   const { task, stopTask, system } = useStudio();
+  const rail = useRail();
   if (!task) return null;
-  // Cảnh báo ổ đầy và "Sẵn sàng" chỉ hiện ở thanh trái — trang Nhật ký/cột phải không lặp lại.
+  // Cảnh báo ổ đầy và "Sẵn sàng" chỉ hiện ở thanh trái — cột phải không lặp lại.
   const lowDisk = variant === "sidebar" && !task.running && system.total_gb > 0 && system.free_gb < LOW_DISK_GB;
   const wrap = (node: React.ReactNode) => (
     <div className="js-task" data-variant={variant}>
@@ -69,9 +70,9 @@ export function TaskCard({ variant }: { variant: "sidebar" | "rail" | "page" }) 
         <ProgressBar task={task} steps={variant !== "sidebar"} />
         <div className="task-actions">
           {variant === "sidebar" && (
-            <Link className="btn btn-quiet btn-sm" href="/logs/">
+            <button className="btn btn-quiet btn-sm" type="button" onClick={() => rail.toggle(true)}>
               Nhật ký
-            </Link>
+            </button>
           )}
           <button className="btn btn-danger btn-sm" type="button" onClick={stopTask}>
             <Icon name="stop" size={14} /> Dừng
@@ -89,7 +90,7 @@ export function TaskCard({ variant }: { variant: "sidebar" | "rail" | "page" }) 
           <b>{taskName(task.last_type)}</b>
         </div>
         <div className="task-result">
-          {tone === "ok" ? "Đã hoàn tất" : tone === "stopped" ? "Đã dừng — tiến độ được lưu" : <>Gặp lỗi — <Link href="/logs/">xem nhật ký</Link></>}
+          {tone === "ok" ? "Đã hoàn tất" : tone === "stopped" ? "Đã dừng — tiến độ được lưu" : <>Gặp lỗi — <button className="link-btn" type="button" onClick={() => rail.toggle(true)}>xem nhật ký</button></>}
         </div>
       </div>
     );

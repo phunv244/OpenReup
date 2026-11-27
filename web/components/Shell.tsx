@@ -87,7 +87,6 @@ function Nav() {
           <Icon name="brain" />
           <span>Ngữ cảnh AI</span>
         </button>
-        <NavLink href={projHref(pid, "logs")} icon="terminal" label="Nhật ký" active={sub === "logs"} />
       </nav>
     );
   }
@@ -111,14 +110,14 @@ function useTheme() {
   return { theme, flip };
 }
 
-/** Menu "Cài đặt" ở chân thanh trái: Mô hình nhận diện, Nhật ký hệ thống, Hướng dẫn, đổi giao diện. */
+/** Menu "Cài đặt" ở chân thanh trái: Mô hình nhận diện, Hướng dẫn, đổi giao diện. */
 function SettingsMenu() {
   const { asr } = useStudio();
   const path = clean(usePathname());
   const { theme, flip } = useTheme();
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
-  const here = ["/models", "/logs", "/help"].includes(path);
+  const here = ["/models", "/help"].includes(path);
   useEffect(() => setOpen(false), [path]);
   useEffect(() => {
     if (!open) return;
@@ -141,10 +140,6 @@ function SettingsMenu() {
             <Icon name="brain" size={16} />
             <span>Mô hình nhận diện</span>
             <em>{installed}</em>
-          </Link>
-          <Link role="menuitem" className={`sb-menu-item ${path === "/logs" ? "active" : ""}`} href="/logs/">
-            <Icon name="terminal" size={16} />
-            <span>Nhật ký hệ thống</span>
           </Link>
           <Link role="menuitem" className={`sb-menu-item ${path === "/help" ? "active" : ""}`} href="/help/">
             <Icon name="help" size={16} />

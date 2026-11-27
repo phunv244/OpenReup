@@ -1,10 +1,6 @@
 "use client";
 import { useLayoutEffect, useRef } from "react";
 import { useStudio } from "@/lib/studio";
-import { Icon } from "./Icon";
-import { TaskCard } from "./TaskCard";
-import { useToast } from "./Toasts";
-import { copyText } from "./ui";
 
 /** Nhật ký của tác vụ gần nhất; tự cuộn xuống cuối nếu người dùng đang ở cuối. */
 export function LogConsole({ className = "" }: { className?: string }) {
@@ -30,28 +26,5 @@ export function LogConsole({ className = "" }: { className?: string }) {
     >
       {text}
     </pre>
-  );
-}
-
-/** Nội dung trang Nhật ký (dùng ở cả trang chung và trang trong dự án). */
-export function LogsBody() {
-  const { task } = useStudio();
-  const toast = useToast();
-  return (
-    <main className="content">
-      <TaskCard variant="page" />
-      <section className="card">
-        <header className="card-head">
-          <h3>Nhật ký chi tiết</h3>
-          <button className="btn btn-light btn-sm" type="button" onClick={() => copyText((task?.logs || []).join("\n"), toast)}>
-            <Icon name="copy" size={14} /> Sao chép
-          </button>
-        </header>
-        <LogConsole />
-        <div className="card-foot muted">
-          Hiện 500 dòng gần nhất. Toàn bộ nhật ký của lần chạy gần nhất nằm ở <code>data/last_task.log</code>.
-        </div>
-      </section>
-    </main>
   );
 }

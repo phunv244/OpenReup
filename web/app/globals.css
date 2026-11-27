@@ -673,9 +673,6 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .task-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 10px; }
 @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(1.35); } }
 /* Bản to trên trang Nhật ký */
-.js-task[data-variant="page"] .task-card { background: var(--surface); padding: 16px 18px; margin-bottom: 18px; box-shadow: var(--shadow); }
-.js-task[data-variant="page"] .prog-meta { flex-direction: row; }
-.js-task[data-variant="page"] .stages { margin-top: 12px; }
 .inline-task { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 14px 16px; margin-bottom: 14px; }
 .inline-task b { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 
@@ -1242,7 +1239,7 @@ details.faq p { margin-top: 8px; color: var(--text-2); }
 .rail-toggle-dot { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 2px var(--surface); }
 button.task-chip { border: 0; cursor: pointer; font-family: inherit; }
 .rail-sec h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: var(--fs-sub); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
-.rail-more { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.rail-more { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 500; gap: 4px; }
 .rail-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .rail-item { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; background: var(--surface-2); font-size: var(--fs-sub); }
 .rail-item.ok .dot { background: var(--green); }
@@ -1582,3 +1579,4 @@ body.resizing .sidebar, body.resizing .main { transition: none; }
   .voice-actions .btn { padding-left: 10px; padding-right: 10px; }
   .voice-actions .icon-btn.danger { margin-left: auto; }
 }
+.rail-log-foot { margin-top: 6px; font-size: var(--fs-sub); }

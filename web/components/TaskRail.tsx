@@ -1,15 +1,18 @@
 "use client";
-import Link from "next/link";
 import { baseName, exitTone, fmtClock, taskName } from "@/lib/format";
 import { useStudio } from "@/lib/studio";
 import { Icon } from "./Icon";
 import { LogConsole } from "./LogConsole";
 import { Resizer } from "./Resizer";
 import { TaskCard } from "./TaskCard";
+import { useToast } from "./Toasts";
+import { copyText } from "./ui";
 
-/** Cột phải (bật/tắt từ nút trên thanh tiêu đề): tác vụ đang chạy, hàng đợi, vừa xong; nhật ký thu gọn sẵn. */
+/** Cột phải (bật/tắt từ nút trên thanh tiêu đề): tác vụ đang chạy, hàng đợi, vừa xong; nhật ký thu gọn sẵn (có nút Sao chép). */
 export function TaskRail({ onClose }: { onClose: () => void }) {
   const { task, unqueue } = useStudio();
+  const toast = useToast();
+  const logs = task?.logs || [];
   const queue = task?.queue || [];
   const history = task?.history || [];
   return (
@@ -72,13 +75,24 @@ export function TaskRail({ onClose }: { onClose: () => void }) {
       <details className="rail-sec rail-log">
         <summary>
           <h4>
-            <Icon name="chevron" size={13} /> Nhật ký{" "}
-            <Link className="rail-more" href="/logs/">
-              Xem đầy đủ
-            </Link>
+            <Icon name="chevron" size={13} /> Nhật ký
+            {logs.length > 0 && (
+              <button
+                className="btn btn-quiet btn-sm rail-more"
+                type="button"
+                title="Sao chép toàn bộ nhật ký đang hiện"
+                onClick={(e) => {
+                  e.preventDefault(); // không thu/mở mục nhật ký khi bấm Sao chép
+                  copyText(logs.join("\n"), toast);
+                }}
+              >
+                <Icon name="copy" size={13} /> Sao chép
+              </button>
+            )}
           </h4>
         </summary>
         <LogConsole />
+        {logs.length > 0 && <div className="rail-log-foot muted">500 dòng gần nhất · đầy đủ ở data/last_task.log</div>}
       </details>
     </aside>
   );

@@ -62,6 +62,12 @@ export function useDubDetail(jobId: string) {
   const d = dubbed.find((x) => x.job_id === jobId);
   const running = Boolean(task?.running && task.target === jobId);
 
+  // Đổi video: bỏ số liệu/lỗi của video trước ngay (không reset khi chỉ tải lại cùng video sau xuất lại).
+  useEffect(() => {
+    setInfo(null);
+    setLoadError("");
+  }, [jobId]);
+
   useEffect(() => {
     if (!jobId) return;
     let stale = false; // đổi job/tải lại nhanh: bỏ kết quả của lần tải cũ về sau, không cho đè dữ liệu mới

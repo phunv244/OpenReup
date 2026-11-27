@@ -8,7 +8,8 @@ import { setupApp } from "./helpers.mjs";
 const { app, dir, cleanup } = await setupApp();
 after(cleanup);
 const { VIDEOS_DIR, DATA_DIR } = await import("../config.mjs");
-const { lookupDownload, relOfPath, jobPaths, reloadVideoIndex } = await import("../lib/videos.mjs");
+const await_import = await import("../lib/videos.mjs");
+const { lookupDownload, jobPaths, reloadVideoIndex } = await_import;
 const { resolveDownload, relOf } = await import("../lib/util.mjs");
 
 const put = (file, body = "x") => {
@@ -124,4 +125,52 @@ test("hai video.json cùng nhận một rel_path / job: giữ bản theo thứ t
   } finally {
     console.warn = warn;
   }
+});
+
+test("symlink trỏ ra ngoài source/ hoặc downloads/ bị từ chối (realpath), symlink vào downloads/dubbed tính là bản xuất", () => {
+  const { writeVideoJson } = await_import;
+  const outside = path.join(dir, "ngoai.txt");
+  put(outside, "bi mat");
+  const v = path.join(VIDEOS_DIR, "local-symlink");
+  writeVideoJson("local-symlink", { key: "local-symlink", files: { "downloads/sl.mp4": "source/sl.mp4", "downloads/sl2.mp4": "source/sl2.mp4" }, jobs: ["dub_sl_0p5x"] });
+  fs.mkdirSync(path.join(v, "source"), { recursive: true });
+  fs.symlinkSync(outside, path.join(v, "source", "sl.mp4"));
+  fs.symlinkSync("/etc", path.join(v, "source", "sl2.mp4"));
+  assert.equal(resolveDownload("downloads/sl.mp4"), "");
+  assert.equal(lookupDownload("downloads/sl2.mp4"), null);
+  // Thư mục out/ của job là symlink ra ngoài: bản xuất cũng bị từ chối.
+  fs.mkdirSync(path.join(v, "jobs", "dub_sl_0p5x"), { recursive: true });
+  fs.symlinkSync(dir, path.join(v, "jobs", "dub_sl_0p5x", "out"));
+  assert.equal(lookupDownload("downloads/dubbed/dub_sl_0p5x.mp4"), null);
+  // Bố cục cũ: symlink trong downloads/ trỏ ra ngoài.
+  fs.symlinkSync(outside, path.join(dir, "downloads", "bilibili", "link_ra_ngoai.mp4"));
+  assert.equal(resolveDownload("downloads/bilibili/link_ra_ngoai.mp4"), "");
+  // Symlink trong downloads/ trỏ vào bản xuất: vẫn nhận nhưng loại là output (không lồng tiếng lại được).
+  put(OLD_OUT);
+  fs.symlinkSync(OLD_OUT, path.join(dir, "downloads", "bilibili", "link_ban_xuat.mp4"));
+  assert.equal(lookupDownload("downloads/bilibili/link_ban_xuat.mp4").kind, "output");
+  // Symlink nằm gọn trong source/: vẫn dùng được; file chưa có trên đĩa vẫn trả đường dẫn (nơi gọi tự kiểm tồn tại).
+  put(path.join(v, "source", "that.mp4"));
+  writeVideoJson("local-symlink", { key: "local-symlink", files: { "downloads/that.mp4": "source/that.mp4", "downloads/chua-co.mp4": "source/chua-co.mp4" }, jobs: [] });
+  assert.equal(resolveDownload("downloads/that.mp4"), path.join(v, "source", "that.mp4"));
+  assert.equal(resolveDownload("downloads/chua-co.mp4"), path.join(v, "source", "chua-co.mp4"));
+});
+
+test("chỉ mục không bị cũ: mkdir thư mục video trước rồi mới ghi video.json (kể cả ghi tại chỗ, không rename) vẫn thấy ngay", () => {
+  const v = path.join(VIDEOS_DIR, "douyin-999");
+  fs.mkdirSync(v, { recursive: true });
+  assert.equal(resolveDownload("downloads/999.mp4"), path.join(dir, "downloads", "999.mp4")); // chỉ mục đã dựng, chưa có video.json
+  fs.writeFileSync(path.join(v, "video.json"), JSON.stringify({ key: "douyin-999", files: { "downloads/999.mp4": "source/999.mp4" }, jobs: [] }));
+  assert.equal(resolveDownload("downloads/999.mp4"), path.join(v, "source", "999.mp4"));
+  // Sửa video.json đã có bằng writeVideoJson: thêm job, thấy ngay.
+  const { writeVideoJson } = await_import;
+  writeVideoJson("douyin-999", { key: "douyin-999", files: { "downloads/999.mp4": "source/999.mp4" }, jobs: ["dub_999_0p5x"] });
+  assert.equal(jobPaths("dub_999_0p5x").key, "douyin-999");
+  // Job mồ côi mới thêm cũng thấy ngay.
+  fs.mkdirSync(path.join(VIDEOS_DIR, "_orphan", "jobs", "dub_moi_0p5x"), { recursive: true });
+  assert.equal(jobPaths("dub_moi_0p5x").key, "_orphan");
+  // Không có thư mục tạm/file .tmp sót lại; key sai thì từ chối ghi.
+  assert.deepEqual(fs.readdirSync(v), ["video.json"]);
+  assert.throws(() => writeVideoJson("../x", { key: "../x" }), /video_key không hợp lệ/);
+  assert.throws(() => writeVideoJson("_orphan", { key: "_orphan" }), /video_key không hợp lệ/);
 });

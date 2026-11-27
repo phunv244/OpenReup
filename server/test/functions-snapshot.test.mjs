@@ -29,14 +29,15 @@ test("POST /api/functions/call gọi được hàm qua registry của loader", a
   assert.match(bad.json().error, /Không có hàm "khong_co"\. Các hàm: download_video/);
 });
 
-test("hàm lồng tiếng do module dub khai; chỗ giữ của hàm không có trong registry bị bỏ qua", async () => {
+test("routes/functions.mjs chỉ còn chỗ giữ; chỗ giữ của module chưa nạp bị bỏ qua và báo lúc khởi động", async () => {
   const Fastify = (await import("fastify")).default;
   const { DUB_FUNCTIONS } = await import("../modules/dub/functions.mjs");
+  const { RESOURCE_FUNCTIONS } = await import("../modules/resources/functions.mjs");
   const { default: functionRoutes, FUNCTIONS } = await import("../routes/functions.mjs");
   assert.equal(DUB_FUNCTIONS.length, 11);
-  assert.ok(FUNCTIONS.some((f) => f.ref === "dub_video") && !FUNCTIONS.some((f) => f.name === "dub_video"));
-  // Registry thiếu toàn bộ hàm của module dub (module chưa nạp): /api/functions vẫn trả các hàm còn lại.
-  const own = FUNCTIONS.filter((f) => f.name);
+  assert.ok(FUNCTIONS.every((f) => (f.slot || f.ref) && !f.name), "FUNCTIONS chỉ chứa { slot } / { ref }, định nghĩa hàm nằm ở module");
+  // Registry chỉ có hàm của resources (các module khác chưa nạp): /api/functions vẫn trả các hàm này.
+  const own = RESOURCE_FUNCTIONS.map((f) => ({ ...f, module: "resources" }));
   const lone = Fastify();
   const warned = [];
   const warn = console.warn;
@@ -46,9 +47,9 @@ test("hàm lồng tiếng do module dub khai; chỗ giữ của hàm không có 
   } finally {
     console.warn = warn;
   }
-  // Chỗ giữ không có hàm (vd gõ sai tên trong { ref }) được báo lúc khởi động, không im lặng.
   assert.equal(warned.length, 1);
   assert.match(warned[0], /"dub_video"/);
+  assert.match(warned[0], /slot "tasks"/);
   const res = await lone.inject({ method: "GET", url: "/api/functions" });
   assert.equal(res.statusCode, 200, res.body);
   assert.deepEqual(res.json().functions.map((f) => f.function.name), own.map((f) => f.name));

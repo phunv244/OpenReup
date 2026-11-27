@@ -1,8 +1,7 @@
 /**
  * Dựng app Fastify (chưa listen): server/index.mjs chạy thật, test gọi qua app.inject.
  * Server ghép từ các module (server/core/loader.mjs): thêm chức năng = thêm 1 module vào MODULES.
- * Module đã tách: server/modules/<tên>/ (index, routes, service, repo, functions). Các module còn lại bọc file route cũ
- * ở server/routes/ (đường dẫn API giữ nguyên) và sẽ chuyển dần sang server/modules/.
+ * Mỗi module: server/modules/<tên>/ (index, routes, service, repo, functions). server/routes/functions.mjs chỉ dựng /api/functions từ hàm các module khai.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -12,8 +11,8 @@ import { API_TOKEN, WEB_OUT_DIR } from "./config.mjs";
 import { loadModules } from "./core/loader.mjs";
 import downloadsRoute from "./lib/downloads-route.mjs";
 import { runMigrations } from "./lib/migrate.mjs";
-import taskRoutes from "./routes/tasks.mjs";
-import functionRoutes, { FUNCTIONS } from "./routes/functions.mjs";
+import functionRoutes from "./routes/functions.mjs";
+import tasksModule from "./modules/tasks/index.mjs";
 import dubModule from "./modules/dub/index.mjs";
 import projectModule from "./modules/project/index.mjs";
 import sourcesModule from "./modules/sources/index.mjs";
@@ -22,21 +21,14 @@ import aiModule from "./modules/ai/index.mjs";
 
 /** Danh sách module của server. Thứ tự nạp do loader sắp theo deps. */
 export const MODULES = [
-  { name: "tasks", routes: taskRoutes },
+  tasksModule,
   sourcesModule,
   projectModule,
   resourcesModule,
   dubModule,
   aiModule,
-  // Tạm giữ toàn bộ định nghĩa hàm ở đây; mỗi module chuyển sang server/modules/ sẽ mang hàm của nó theo.
-  // deps: các module có route mà hàm riêng của module này gọi qua app.inject (list_options: /api/agy-models, /api/projects,
-  // /api/voices, /api/asr-models, /api/fonts; get_task/stop_task: /api/task*) -> thiếu module thì lỗi ngay lúc khởi động, không im lặng trả rỗng.
-  {
-    name: "functions",
-    deps: ["tasks", "ai", "project", "resources"],
-    functions: FUNCTIONS.filter((f) => !f.slot && !f.ref),
-    routes: (app, ctx) => functionRoutes(app, ctx.functions()),
-  },
+  // /api/functions: dựng từ hàm do mọi module khai (ctx.functions()), thứ tự theo FUNCTIONS trong routes/functions.mjs.
+  { name: "functions", routes: (app, ctx) => functionRoutes(app, ctx.functions()) },
 ];
 
 export async function buildApp({ logger = false } = {}) {

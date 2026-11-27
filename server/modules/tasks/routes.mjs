@@ -1,7 +1,7 @@
-/** Tiến trình nền, hàng đợi, thông tin máy. */
+/** HTTP của module tasks (đường dẫn API giữ như cũ): tiến trình nền, hàng đợi, thông tin máy. */
 import fs from "node:fs";
-import { ROOT } from "../config.mjs";
-import { removeQueued, stopTask, taskSnapshot } from "../lib/tasks.mjs";
+import { ROOT } from "../../config.mjs";
+import { removeQueued, stopTask, taskSnapshot } from "../../lib/tasks.mjs";
 
 export default async function taskRoutes(app) {
   app.get("/api/task", async () => taskSnapshot());

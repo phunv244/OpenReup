@@ -1,6 +1,29 @@
 /** Hàm /api/functions của module resources: giọng clone, mô hình nhận diện, font phụ đề. */
 import { P_PROJECT, num, str } from "../../core/schema.mjs";
 
+/**
+ * list_options gom giá trị hợp lệ của nhiều module qua HTTP (get = GET nội bộ app.inject), không import module khác.
+ * Vì đọc /api/agy-models (ai) và /api/projects (project), resources khai deps "ai", "project": thiếu thì lỗi lúc khởi động.
+ */
+const LIST_OPTIONS = {
+  name: "list_options",
+  description: "Các giá trị hợp lệ cho tham số: giọng đọc, mô hình nhận diện, model dịch, dự án, font phụ đề.",
+  parameters: {},
+  run: async (a, get) => {
+    const [voices, asr, agy, projects, fonts] = await Promise.all(["/api/voices", "/api/asr-models", "/api/agy-models", "/api/projects", "/api/fonts"].map(get));
+    return {
+      voices: [...(voices.presets || []), ...(voices.clones || [])].map((v) => ({ id: v.id, name: v.name, gender: v.gender, kind: v.kind || "vieneu" })),
+      asr_models: (asr.models || []).map((m) => ({ id: m.id, name: m.name, installed: m.installed, hw: m.hw })),
+      agy_models: (agy.models || []).map((m) => ({ id: m.id, name: m.name })),
+      projects: (projects.projects || []).map((p) => ({ id: p.id, name: p.name, video_count: p.video_count, dubbed_count: p.dubbed_count, pending_count: p.pending_count })),
+      fonts: (fonts.fonts || []).map((f) => ({ family: f.family, vi: f.vi })),
+      delogo: ["none", "top-right", "top-left", "both-top", "x,y,w,h"],
+      quality: ["720p", "best"],
+      perf: ["eco", "balanced", "fast"],
+    };
+  },
+};
+
 export const RESOURCE_FUNCTIONS = [
   {
     name: "create_voice",
@@ -29,4 +52,5 @@ export const RESOURCE_FUNCTIONS = [
     required: ["id"],
   },
   { name: "delete_font", description: "Xóa 1 font chữ phụ đề đã tải lên Tài nguyên (video đang dùng font này quay về font mặc định ở lần xuất lại sau).", route: ["POST", "/api/fonts/delete"], parameters: { id: str("Mã font.") }, required: ["id"] },
+  LIST_OPTIONS,
 ];

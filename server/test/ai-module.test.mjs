@@ -80,5 +80,7 @@ test("POST /api/dub/start từ chối agy_model sai dạng (kiểm qua service c
 test("module dub khai phụ thuộc ai: bỏ module ai khỏi danh sách thì báo lỗi lúc khởi động", async () => {
   const { MODULES } = await import("../app.mjs");
   const { orderModules } = await import("../core/loader.mjs");
-  assert.throws(() => orderModules(MODULES.filter((m) => m.name !== "ai")), /Module "dub" cần "ai"/);
+  // resources cũng cần ai (list_options): gỡ deps "ai" của module khác để chắc lỗi đến từ khai báo của dub.
+  const noAi = MODULES.filter((m) => m.name !== "ai").map((m) => (m.name === "dub" ? m : { ...m, deps: (m.deps || []).filter((d) => d !== "ai") }));
+  assert.throws(() => orderModules(noAi), /Module "dub" cần "ai"/);
 });

@@ -1,7 +1,7 @@
 "use client";
 /**
- * Lời thoại của một bản lồng tiếng, nhúng thẳng trong trang chi tiết (không còn popup riêng):
- * timeline cắt/ghép/xóa + bảng tìm kiếm phân trang phía server (video >100k câu vẫn mở tức thì).
+ * Danh sách lời thoại của một bản lồng tiếng — nằm trong panel bên phải của studio (timeline ở dải dưới).
+ * Tìm kiếm + phân trang phía server (video >100k câu vẫn mở tức thì).
  * Bản sửa lời/nhân vật (`edits`/`spk`) do trang cha giữ để gộp chung 1 lần "Lưu & chạy lại".
  */
 import { useEffect, useRef, useState } from "react";
@@ -10,7 +10,6 @@ import { setMap } from "@/lib/editMap";
 import { fmtDur } from "@/lib/format";
 import { useToast } from "../Toasts";
 import { Options } from "../ui";
-import { TimelineEditor } from "./TimelineEditor";
 
 type Segment = { id: number; start: number; end: number; zh: string; vi: string; speaker: string };
 type Page = { error?: string; total: number; empty: number; matched: number; offset: number; items: Segment[] };
@@ -26,14 +25,13 @@ type Props = {
   setEdits: (m: Record<string, string>) => void;
   spk: Record<string, string>;
   setSpk: (m: Record<string, string>) => void;
-  onStructuralChange: (removedIds: number[], patch?: Record<string, string>) => void;
   /** Đổi để nạp lại bảng (sau cắt/ghép/xóa). */
   reloadKey: number;
-  /** Đổi để dựng lại cả timeline (sau khi xuất lại xong / hoàn tác). */
+  /** Đổi để nạp lại sau khi xuất lại xong / hoàn tác. */
   resetKey: number;
 };
 
-export function DubScript({ jobId, video, speakers, edits, setEdits, spk, setSpk, onStructuralChange, reloadKey, resetKey }: Props) {
+export function DubScript({ jobId, video, speakers, edits, setEdits, spk, setSpk, reloadKey, resetKey }: Props) {
   const toast = useToast();
   const [page, setPage] = useState<Page | null>(null);
   const [q, setQ] = useState({ offset: 0, text: "", only: "" });
@@ -67,93 +65,63 @@ export function DubScript({ jobId, video, speakers, edits, setEdits, spk, setSpk
 
   return (
     <div className="script">
-      <TimelineEditor
-        key={resetKey}
-        jobId={jobId}
-        video={video}
-        speakers={speakers}
-        edits={edits}
-        setEdits={setEdits}
-        spk={spk}
-        setSpk={setSpk}
-        onStructuralChange={onStructuralChange}
-      />
-      <div className="toolbar">
+      <div className="script-tools">
         <input
-          className="input"
+          className="input input-sm"
           type="search"
-          placeholder="Tìm trong lời Việt hoặc tiếng Trung..."
+          placeholder="Tìm lời Việt hoặc tiếng Trung..."
           aria-label="Tìm câu thoại"
           onChange={(e) => setQ({ ...q, text: e.target.value, offset: 0 })}
         />
-        <label className="check">
-          <input type="checkbox" onChange={(e) => setQ({ ...q, only: e.target.checked ? "empty" : "", offset: 0 })} /> Chỉ câu chưa dịch{" "}
+        <label className="check" title="Chỉ hiện câu chưa có lời Việt">
+          <input type="checkbox" onChange={(e) => setQ({ ...q, only: e.target.checked ? "empty" : "", offset: 0 })} /> Chưa dịch{" "}
           <span className="cnt">{page?.empty ?? 0}</span>
         </label>
       </div>
-      <div className="table-wrap bordered editor-table" ref={table}>
-        <table className="tbl compact">
-          <thead>
-            <tr>
-              <th>Mốc giờ</th>
-              {spkKeys.length > 0 && <th className="spk-col">Nhân vật</th>}
-              <th>Tiếng Trung gốc</th>
-              <th>Lời Việt (sửa trực tiếp)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {!page ? (
-              <tr>
-                <td colSpan={4} className="muted">Đang tải...</td>
-              </tr>
-            ) : page.items.length ? (
-              page.items.map((s) => {
-                const id = String(s.id);
-                const who = spk[id] || s.speaker || "NV1";
-                return (
-                  <tr key={id} className={id in edits || id in spk ? "edited" : ""}>
-                    <td>
-                      <button className="time-btn" type="button" title="Phát từ mốc này" onClick={() => seek(s.start)}>
-                        {fmtDur(s.start) || "0:00"}
-                      </button>
-                    </td>
-                    {spkKeys.length > 0 && (
-                      <td>
-                        <select
-                          className={`select input-sm seg-spk spk-${spkIndex(who)}`}
-                          aria-label={`Nhân vật câu ${id}`}
-                          value={who}
-                          onChange={(e) => setMap(spk, setSpk, id, e.target.value, s.speaker || "NV1")}
-                        >
-                          <Options list={speakers.map(([k, sp]) => [k, sp.name ? `${k} · ${sp.name}${sp.is_new ? " (mới)" : ""}` : k])} />
-                        </select>
-                      </td>
-                    )}
-                    <td className="zh">{s.zh}</td>
-                    <td>
-                      <input
-                        className="input input-sm seg-vi"
-                        type="text"
-                        aria-label={`Lời Việt câu ${id}`}
-                        value={id in edits ? edits[id] : s.vi}
-                        onChange={(e) => {
-                          const next = { ...edits };
-                          if (e.target.value.trim() !== s.vi) next[id] = e.target.value;
-                          else delete next[id];
-                          setEdits(next);
-                        }}
-                      />
-                    </td>
-                  </tr>
-                );
-              })
-            ) : (
-              <tr>
-                <td colSpan={4} className="muted">Không có câu nào khớp.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <div className="line-list" ref={table} role="list" aria-label="Danh sách câu thoại">
+        {!page ? (
+          <p className="muted line-empty">Đang tải...</p>
+        ) : page.items.length ? (
+          page.items.map((s) => {
+            const id = String(s.id);
+            const who = spk[id] || s.speaker || "NV1";
+            return (
+              <div role="listitem" key={id} className={`line ${id in edits || id in spk ? "edited" : ""}`}>
+                <div className="line-head">
+                  <button className="time-btn" type="button" title="Phát từ mốc này" onClick={() => seek(s.start)}>
+                    {fmtDur(s.start) || "0:00"}
+                  </button>
+                  <span className="line-zh" title={s.zh}>{s.zh}</span>
+                  {spkKeys.length > 0 && (
+                    <select
+                      className={`select input-sm seg-spk spk-${spkIndex(who)}`}
+                      aria-label={`Nhân vật câu ${id}`}
+                      value={who}
+                      onChange={(e) => setMap(spk, setSpk, id, e.target.value, s.speaker || "NV1")}
+                    >
+                      <Options list={speakers.map(([k, sp]) => [k, sp.name ? `${k} · ${sp.name}${sp.is_new ? " (mới)" : ""}` : k])} />
+                    </select>
+                  )}
+                </div>
+                <input
+                  className="input input-sm seg-vi"
+                  type="text"
+                  aria-label={`Lời Việt câu ${id}`}
+                  placeholder="(chưa có lời Việt)"
+                  value={id in edits ? edits[id] : s.vi}
+                  onChange={(e) => {
+                    const next = { ...edits };
+                    if (e.target.value.trim() !== s.vi) next[id] = e.target.value;
+                    else delete next[id];
+                    setEdits(next);
+                  }}
+                />
+              </div>
+            );
+          })
+        ) : (
+          <p className="muted line-empty">Không có câu nào khớp.</p>
+        )}
       </div>
       <div className="editor-pager">
         <button className="btn btn-light btn-sm" type="button" disabled={!page || page.offset <= 0}

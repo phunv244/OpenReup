@@ -4,6 +4,7 @@
  * (cần "Lưu & xuất lại" để thấy trên video), sửa lời/người nói dùng chung `edits`/`spk` với bảng tìm kiếm bên dưới.
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Speaker, getJSON, postJSON } from "@/lib/api";
 import { setMap } from "@/lib/editMap";
 import { fmtDur } from "@/lib/format";
@@ -84,9 +85,13 @@ type Props = {
   setSpk: (m: Record<string, string>) => void;
   /** Báo bảng "Lời thoại" tải lại sau khi cắt/ghép/xóa; `patch` ghi đè bản sửa chưa lưu của các câu còn lại. */
   onStructuralChange: (removedIds: number[], patch?: Record<string, string>) => void;
+  /** Nơi hiện ô sửa "câu đang chọn" (vd. panel bên phải của studio); không có thì hiện ngay dưới timeline. */
+  detailHost?: HTMLElement | null;
+  /** Gọi khi chọn 1 khối — trang cha dùng để mở đúng tab lời thoại. */
+  onSelect?: () => void;
 };
 
-export function TimelineEditor({ jobId, video, speakers, edits, setEdits, spk, setSpk, onStructuralChange }: Props) {
+export function TimelineEditor({ jobId, video, speakers, edits, setEdits, spk, setSpk, onStructuralChange, detailHost, onSelect }: Props) {
   const toast = useToast();
   const [outline, setOutline] = useState<Outline | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
@@ -313,14 +318,53 @@ export function TimelineEditor({ jobId, video, speakers, edits, setEdits, spk, s
   const dragIdx = drag ? items.findIndex((s) => s.id === drag.id) : -1;
   const vFrom = dragIdx >= 0 ? Math.min(from, dragIdx) : from;
   const vTo = dragIdx >= 0 ? Math.max(to, dragIdx + 1) : to;
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
   const pick = useCallback((s: Seg) => {
     setSelected(s.id);
+    onSelectRef.current?.();
     const el = video.current;
     if (el) {
       el.currentTime = s.start;
       setCur(s.start);
     }
   }, [video]);
+
+  const detail = sel ? (
+        <div className="tl-detail">
+          <div className="tl-detail-head">
+            <span className="muted">
+              {fmtDur(sel.start)} – {fmtDur(sel.end)}
+            </span>
+            {spkKeys.length > 0 && (
+              <select
+                className="select input-sm"
+                aria-label="Người nói"
+                value={spk[String(sel.id)] || sel.speaker || "NV1"}
+                onChange={(e) => setMap(spk, setSpk, String(sel.id), e.target.value, sel.speaker || "NV1")}
+              >
+                <Options list={speakers.map(([k, s]) => [k, s.name ? `${k} · ${s.name}` : k])} />
+              </select>
+            )}
+            <button className="btn btn-quiet btn-sm" type="button" onClick={() => setSelected(null)}>
+              <Icon name="x" size={14} />
+            </button>
+          </div>
+          <div className="tl-detail-zh muted">{sel.zh || "(không có lời gốc)"}</div>
+          <textarea
+            className="input tl-detail-vi"
+            rows={2}
+            aria-label="Lời Việt"
+            value={String(sel.id) in edits ? edits[String(sel.id)] : sel.vi}
+            onChange={(e) => {
+              const next = { ...edits };
+              if (e.target.value.trim() !== sel.vi) next[String(sel.id)] = e.target.value;
+              else delete next[String(sel.id)];
+              setEdits(next);
+            }}
+          />
+        </div>
+  ) : null;
 
   return (
     <div className="tl-wrap">
@@ -387,44 +431,10 @@ export function TimelineEditor({ jobId, video, speakers, edits, setEdits, spk, s
         </div>
       </div>
       {outline?.truncated && (
-        <div className="help">Video này có hơn {outline.total.toLocaleString("vi")} câu — timeline chỉ vẽ 4000 câu đầu, dùng bảng tìm kiếm bên dưới cho các câu còn lại.</div>
+        <div className="help">Video này có hơn {outline.total.toLocaleString("vi")} câu — timeline chỉ vẽ 4000 câu đầu, dùng ô tìm kiếm trong danh sách lời thoại cho các câu còn lại.</div>
       )}
 
-      {sel && (
-        <div className="tl-detail">
-          <div className="tl-detail-head">
-            <span className="muted">
-              {fmtDur(sel.start)} – {fmtDur(sel.end)}
-            </span>
-            {spkKeys.length > 0 && (
-              <select
-                className="select input-sm"
-                aria-label="Người nói"
-                value={spk[String(sel.id)] || sel.speaker || "NV1"}
-                onChange={(e) => setMap(spk, setSpk, String(sel.id), e.target.value, sel.speaker || "NV1")}
-              >
-                <Options list={speakers.map(([k, s]) => [k, s.name ? `${k} · ${s.name}` : k])} />
-              </select>
-            )}
-            <button className="btn btn-quiet btn-sm" type="button" onClick={() => setSelected(null)}>
-              <Icon name="x" size={14} />
-            </button>
-          </div>
-          <div className="tl-detail-zh muted">{sel.zh || "(không có lời gốc)"}</div>
-          <textarea
-            className="input tl-detail-vi"
-            rows={2}
-            aria-label="Lời Việt"
-            value={String(sel.id) in edits ? edits[String(sel.id)] : sel.vi}
-            onChange={(e) => {
-              const next = { ...edits };
-              if (e.target.value.trim() !== sel.vi) next[String(sel.id)] = e.target.value;
-              else delete next[String(sel.id)];
-              setEdits(next);
-            }}
-          />
-        </div>
-      )}
+      {sel && (detailHost ? createPortal(detail, detailHost) : detail)}
     </div>
   );
 }

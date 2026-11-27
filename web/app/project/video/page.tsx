@@ -1,7 +1,8 @@
 "use client";
 /**
- * Chi tiết một bản lồng tiếng — một màn duy nhất để sửa mọi thứ: lời thoại + timeline, giọng đọc, hình & phụ đề
- * (3 tab), video xem trước cố định bên phải, một nút "Lưu & chạy lại" chung cho tất cả.
+ * Chi tiết một bản lồng tiếng — bố cục studio (kiểu CapCut): video lớn ở giữa, panel chỉnh sửa bên phải
+ * (3 tab: lời thoại, giọng đọc, hình & phụ đề), timeline cắt/ghép trải hết chiều ngang ở dưới,
+ * một nút "Lưu & chạy lại" chung cho tất cả. Cả màn vừa khít chiều cao cửa sổ, không có khoảng trống thừa.
  * Server tự chọn mức làm lại nhỏ nhất (chỉ hình / chỉ tiếng) theo những gì thực sự đổi.
  */
 import Link from "next/link";
@@ -13,6 +14,7 @@ import { RegionToggle } from "@/components/RegionPicker";
 import { useToast } from "@/components/Toasts";
 import { Options } from "@/components/ui";
 import { DubScript } from "@/components/video/DubScript";
+import { TimelineEditor } from "@/components/video/TimelineEditor";
 import { SubtitleStudio } from "@/components/video/SubtitleStudio";
 import { Speaker, SubStyle, dubFileUrl, getJSON } from "@/lib/api";
 import { fmtDur, fmtSize, projHref } from "@/lib/format";
@@ -68,6 +70,7 @@ function Detail() {
   const [tableKey, setTableKey] = useState(0);
   const [stamp, setStamp] = useState(0); // đổi để tải lại sau khi xuất lại xong / hoàn tác
   const video = useRef<HTMLVideoElement>(null);
+  const [detailHost, setDetailHost] = useState<HTMLDivElement | null>(null);
 
   const d = dubbed.find((x) => x.job_id === jobId);
   const running = Boolean(task?.running && task.target === jobId);
@@ -162,120 +165,122 @@ function Detail() {
     setTableKey((k) => k + 1);
   }
 
-  const meta = [info.resolution, d?.duration_sec ? fmtDur(d.duration_sec) : "", d?.size_mb ? fmtSize(d.size_mb) : "", info.speed ? `${info.speed}x` : "", `${info.total.toLocaleString("vi")} câu`].filter(Boolean);
+  const meta = [info.resolution, d?.duration_sec ? fmtDur(d.duration_sec) : "", d?.size_mb ? fmtSize(d.size_mb) : "", info.speed ? `${info.speed}x` : "", `${info.total.toLocaleString("vi")} câu`, d?.agy_model || ""].filter(Boolean);
 
   return (
     <>
-      <ProjectTopbar title={info.title} sub="Chi tiết bản lồng tiếng — chỉnh từng phần rồi chạy lại đúng phần đó" />
-      <main className="content dub-detail">
-        <Link className="back-link" href={projHref(pid, "videos")}>
-          ‹ Video &amp; Lồng tiếng
-        </Link>
-        <div className="detail-grid">
-          <div className="detail-main">
-            <div className="seg detail-tabs" role="tablist" aria-label="Phần cần sửa">
-              {([
-                ["script", "edit", "Lời thoại", editCount || structural],
-                ["voice", "mic", "Giọng đọc", settingsAudioDirty],
-                ["video", "cc", "Hình & phụ đề", settingsVideoDirty],
-              ] as const).map(([k, icon, label, dirty]) => (
-                <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? "active" : ""} onClick={() => setTab(k)}>
-                  <Icon name={icon} size={15} /> {label}
-                  {dirty ? <span className="tab-dot" title="Có thay đổi chưa lưu" /> : null}
-                </button>
-              ))}
-            </div>
+      <ProjectTopbar title={info.title} sub={meta.join(" · ")} />
+      <main className="studio">
+        <section className="studio-stage" aria-label="Xem trước">
+          <div className="stage-bar">
+            <Link className="back-link" href={projHref(pid, "videos")}>‹ Video &amp; Lồng tiếng</Link>
+            <span className="grow" />
+            {d?.cache_mb ? <span className="stage-chip" title="Cache giúp xuất lại nhanh">Cache {fmtSize(d.cache_mb)}</span> : null}
+            {d?.mp4_file && <a className="btn btn-quiet btn-sm" href={dubFileUrl(d.mp4_file)} download><Icon name="download" size={14} /> MP4</a>}
+            {d?.srt_file && <a className="btn btn-quiet btn-sm" href={dubFileUrl(d.srt_file)} download><Icon name="cc" size={14} /> SRT</a>}
+          </div>
+          <video ref={video} key={stamp} className="stage-video" controls preload="metadata" src={dubFileUrl(`${jobId}.mp4`) + `?v=${stamp}`} />
+        </section>
 
-            <section className="card" hidden={tab !== "script"}>
-              <div className="card-body">
-                <DubScript
-                  jobId={jobId}
-                  video={video}
-                  speakers={speakers}
-                  edits={edits}
-                  setEdits={setEdits}
-                  spk={spk}
-                  setSpk={setSpk}
-                  onStructuralChange={onStructuralChange}
-                  reloadKey={tableKey}
-                  resetKey={stamp}
-                />
-              </div>
-            </section>
-
-            <section className="card" hidden={tab !== "voice"}>
-              <div className="card-body">
-                {!speakers.length ? (
-                  <div className="field">
-                    <label htmlFor="dt-voice">Giọng đọc</label>
-                    <select id="dt-voice" className="select" value={voice} onChange={(e) => setVoice(e.target.value)}>
-                      <Options list={voiceOptions(allVoices, proj, info.voice)} />
-                    </select>
-                  </div>
-                ) : (
-                  <div className="field">
-                    <span className="label">Giọng từng nhân vật</span>
-                    {speakers.map(([k, s]) => (
-                      <div className="spk-row" key={k}>
-                        <span className={`spk-tag spk-${Number(k.replace(/\D/g, "")) || 1}`}>{k}</span>
-                        <span className="muted spk-meta">
-                          <b className="spk-name">{s.name || "Chưa rõ là ai"}</b>
-                          {s.is_new && <span className="badge amber">Nhân vật mới</span>} · {s.lines || 0} câu · ~{s.f0 || "?"} Hz
-                        </span>
-                        <select className="select input-sm" aria-label={`Giọng của ${k}`} value={spkVoices[k] || s.voice}
-                          onChange={(e) => setSpkVoices({ ...spkVoices, [k]: e.target.value })}>
-                          <Options list={voiceOptions(allVoices, proj, s.voice)} />
-                        </select>
-                      </div>
-                    ))}
-                    {ctxVoices && (
-                      <button className="btn btn-light btn-sm" type="button" onClick={() => setSpkVoices({ ...spkVoices, ...ctxVoices })}>
-                        <Icon name="brain" size={14} /> Lấy giọng theo Ngữ cảnh AI
-                      </button>
-                    )}
-                    <div className="help">Giọng đổi ở đây chỉ áp dụng cho video này. Giọng chung của dự án đặt trong Ngữ cảnh AI → Thông tin.</div>
-                  </div>
-                )}
-                <div className="field">
-                  <label htmlFor="dt-bg">Âm thanh gốc làm nền</label>
-                  <select id="dt-bg" className="select" value={bg} onChange={(e) => setBg(e.target.value)}>
-                    <Options list={BG_OPTIONS.some(([v]) => Number(v) === Number(bg)) ? BG_OPTIONS : [...BG_OPTIONS, [bg, `${Math.round(Number(bg) * 100)}%`]]} />
-                  </select>
-                </div>
-              </div>
-            </section>
-
-            <section className="card" hidden={tab !== "video"}>
-              <div className="card-body">
-                <RegionToggle label="Xóa logo" rel={info.input_path || ""} initial={info.delogo} onChange={setDelogo} />
-                <SubtitleStudio
-                  rel={info.input_path || ""}
-                  burn={sub}
-                  onBurn={setSub}
-                  subcover={subcover}
-                  initialSubcover={info.subcover}
-                  onSubcover={setSubcover}
-                  style={subStyle}
-                  onStyle={setSubStyle}
-                />
-              </div>
-            </section>
+        <aside className="studio-panel" aria-label="Chỉnh sửa">
+          <div className="seg studio-tabs" role="tablist" aria-label="Phần cần sửa">
+            {([
+              ["script", "edit", "Lời thoại", editCount || structural],
+              ["voice", "mic", "Giọng đọc", settingsAudioDirty],
+              ["video", "cc", "Hình & phụ đề", settingsVideoDirty],
+            ] as const).map(([k, icon, label, dirty]) => (
+              <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? "active" : ""} onClick={() => setTab(k)}>
+                <Icon name={icon} size={15} /> {label}
+                {dirty ? <span className="tab-dot" title="Có thay đổi chưa lưu" /> : null}
+              </button>
+            ))}
           </div>
 
-          <aside className="detail-side">
-            <video ref={video} key={stamp} className="editor-video" controls preload="metadata" src={dubFileUrl(`${jobId}.mp4`) + `?v=${stamp}`} />
-            <div className="detail-meta">{meta.join(" · ")}</div>
-            <dl className="detail-facts">
-              {d?.agy_model ? (<><dt>Model dịch</dt><dd>{d.agy_model}</dd></>) : null}
-              {d?.cache_mb ? (<><dt>Cache</dt><dd>{fmtSize(d.cache_mb)} — giúp xuất lại nhanh</dd></>) : null}
-            </dl>
-            <div className="detail-links">
-              {d?.mp4_file && <a className="btn btn-light btn-sm" href={dubFileUrl(d.mp4_file)} download><Icon name="download" size={14} /> MP4</a>}
-              {d?.srt_file && <a className="btn btn-light btn-sm" href={dubFileUrl(d.srt_file)} download><Icon name="cc" size={14} /> SRT</a>}
+          <div className="panel-pane script-pane" hidden={tab !== "script"}>
+            <div className="sel-host" ref={setDetailHost} />
+            <DubScript
+              jobId={jobId}
+              video={video}
+              speakers={speakers}
+              edits={edits}
+              setEdits={setEdits}
+              spk={spk}
+              setSpk={setSpk}
+              reloadKey={tableKey}
+              resetKey={stamp}
+            />
+          </div>
+
+          <div className="panel-pane" hidden={tab !== "voice"}>
+            {!speakers.length ? (
+              <div className="field">
+                <label htmlFor="dt-voice">Giọng đọc</label>
+                <select id="dt-voice" className="select" value={voice} onChange={(e) => setVoice(e.target.value)}>
+                  <Options list={voiceOptions(allVoices, proj, info.voice)} />
+                </select>
+              </div>
+            ) : (
+              <div className="field">
+                <span className="label">Giọng từng nhân vật</span>
+                {speakers.map(([k, s]) => (
+                  <div className="spk-row" key={k}>
+                    <span className={`spk-tag spk-${Number(k.replace(/\D/g, "")) || 1}`}>{k}</span>
+                    <span className="muted spk-meta">
+                      <b className="spk-name">{s.name || "Chưa rõ là ai"}</b>
+                      {s.is_new && <span className="badge amber">Nhân vật mới</span>} · {s.lines || 0} câu · ~{s.f0 || "?"} Hz
+                    </span>
+                    <select className="select input-sm" aria-label={`Giọng của ${k}`} value={spkVoices[k] || s.voice}
+                      onChange={(e) => setSpkVoices({ ...spkVoices, [k]: e.target.value })}>
+                      <Options list={voiceOptions(allVoices, proj, s.voice)} />
+                    </select>
+                  </div>
+                ))}
+                {ctxVoices && (
+                  <button className="btn btn-light btn-sm" type="button" onClick={() => setSpkVoices({ ...spkVoices, ...ctxVoices })}>
+                    <Icon name="brain" size={14} /> Lấy giọng theo Ngữ cảnh AI
+                  </button>
+                )}
+                <div className="help">Giọng đổi ở đây chỉ áp dụng cho video này. Giọng chung của dự án đặt trong Ngữ cảnh AI → Thông tin.</div>
+              </div>
+            )}
+            <div className="field">
+              <label htmlFor="dt-bg">Âm thanh gốc làm nền</label>
+              <select id="dt-bg" className="select" value={bg} onChange={(e) => setBg(e.target.value)}>
+                <Options list={BG_OPTIONS.some(([v]) => Number(v) === Number(bg)) ? BG_OPTIONS : [...BG_OPTIONS, [bg, `${Math.round(Number(bg) * 100)}%`]]} />
+              </select>
             </div>
-            <p className="help detail-tip">Bấm mốc giờ của câu hoặc khối trên timeline để nghe lại đúng đoạn đó.</p>
-          </aside>
-        </div>
+          </div>
+
+          <div className="panel-pane" hidden={tab !== "video"}>
+            <RegionToggle label="Xóa logo" rel={info.input_path || ""} initial={info.delogo} onChange={setDelogo} />
+            <SubtitleStudio
+              rel={info.input_path || ""}
+              burn={sub}
+              onBurn={setSub}
+              subcover={subcover}
+              initialSubcover={info.subcover}
+              onSubcover={setSubcover}
+              style={subStyle}
+              onStyle={setSubStyle}
+            />
+          </div>
+        </aside>
+
+        <section className="studio-timeline" aria-label="Timeline">
+          <TimelineEditor
+            key={stamp}
+            jobId={jobId}
+            video={video}
+            speakers={speakers}
+            edits={edits}
+            setEdits={setEdits}
+            spk={spk}
+            setSpk={setSpk}
+            onStructuralChange={onStructuralChange}
+            detailHost={detailHost}
+            onSelect={() => setTab("script")}
+          />
+        </section>
       </main>
 
       <div className="detail-bar">

@@ -1,9 +1,10 @@
 /** Hàm /api/functions của module dub (MausBot gọi qua đây; định dạng như server/routes/functions.mjs). */
 import fs from "node:fs";
 import path from "node:path";
-import { DUBBED_DIR, DUB_PROJECTS_DIR } from "../../config.mjs";
+import { DUB_PROJECTS_DIR } from "../../config.mjs";
 import { P_DELOGO, P_PROJECT, P_SUBCOVER, P_SUB_STYLE, P_VOICE, bool, num, str } from "../../core/schema.mjs";
-import { fileInfo, resolveDownload } from "../../lib/util.mjs";
+import { fileInfo, relOf, resolveDownload } from "../../lib/util.mjs";
+import { jobPaths, lookupDownload } from "../../lib/videos.mjs";
 import { dubRepo } from "./repo.mjs";
 
 const { readDubJobs, readDubbed } = dubRepo;
@@ -12,15 +13,19 @@ const { readDubJobs, readDubbed } = dubRepo;
 function dubResult(job) {
   if (!job) return {};
   const done = readDubbed().find((v) => v.job_id === job.job_id) || {};
-  const out = { job_id: job.job_id, project_file: path.join(DUB_PROJECTS_DIR, `${job.job_id}.json`) };
+  const out = { job_id: job.job_id, project_file: jobPaths(job.job_id)?.project || path.join(DUB_PROJECTS_DIR, `${job.job_id}.json`) };
   for (const [k, f] of [["video", done.mp4_file || `${job.job_id}.mp4`], ["subtitle", done.srt_file || `${job.job_id}.srt`]]) {
-    const abs = path.join(DUBBED_DIR, f);
-    if (fs.existsSync(abs)) out[k] = fileInfo(abs);
+    const abs = lookupDownload(`downloads/dubbed/${f}`)?.abs;
+    if (abs && fs.existsSync(abs)) out[k] = fileInfo(abs);
   }
   for (const k of ["title", "duration_sec", "segment_count", "untranslated", "size_mb"]) if (done[k] !== undefined) out[k] = done[k];
   return out;
 }
-const dubJobOf = (relPath) => readDubJobs().get(resolveDownload(relPath)) || null;
+/** Job lồng tiếng của 1 video nguồn, so theo rel_path logic (đã chuẩn hóa), không theo đường dẫn tuyệt đối. */
+const dubJobOf = (relPath) => {
+  const abs = resolveDownload(relPath);
+  return (abs && readDubJobs().get(relOf(abs))) || null;
+};
 
 export const DUB_FUNCTIONS = [
   {

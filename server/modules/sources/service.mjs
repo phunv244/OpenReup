@@ -1,8 +1,9 @@
 /** Nghiệp vụ video nguồn: quét/tải Douyin, tải Bilibili/YouTube, xóa logo, danh sách video đã tải, gán dự án, xóa. Lỗi do input: ném Error có statusCode. */
 import path from "node:path";
-import { BILIBILI_DIR, DEFAULT_CHANNEL_URL, DOWNLOADS_DIR, DUBBED_DIR, ROOT } from "../../config.mjs";
+import { BILIBILI_DIR, DEFAULT_CHANNEL_URL, DOWNLOADS_DIR, ROOT } from "../../config.mjs";
 import { flushMediaCache, mediaKey, probeMedia } from "../../lib/media.mjs";
 import { projectIdOf, relOf, resolveDownload, safeJobId, validDelogo } from "../../lib/util.mjs";
+import { lookupDownload } from "../../lib/videos.mjs";
 
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 const NODE = process.execPath;
@@ -94,7 +95,7 @@ export function createSourceService(repo, { dub, project, tasks }) {
             mtime: Math.round(st.mtimeMs),
             ...info,
             project_id: owners[rel] || "",
-            job: jobs.get(full) || null,
+            job: jobs.get(rel) || null,
           });
         }
       }
@@ -108,17 +109,19 @@ export function createSourceService(repo, { dub, project, tasks }) {
       return full && repo.isFile(full) ? full : "";
     },
     assign(rel, projectId) {
-      const full = resolveDownload(rel);
+      const hit = lookupDownload(rel);
+      const full = hit?.kind === "source" ? hit.abs : "";
       const pid = String(projectId || "");
-      if (!full || full.startsWith(DUBBED_DIR + path.sep) || !repo.isFile(full)) throw httpError(400, "Video không hợp lệ.");
+      if (!full || !repo.isFile(full)) throw httpError(400, "Video không hợp lệ.");
       if (pid && !project.exists(pid)) throw httpError(404, "Không tìm thấy dự án.");
       repo.setOwner(relOf(full), pid);
       return { ok: true };
     },
     /** Xóa 1 video nguồn (+ job lồng tiếng đang dở của nó; delete_dubbed: cả bản lồng tiếng job_id). */
     remove(body) {
-      const resolved = resolveDownload(body.rel_path);
-      if (!resolved || resolved.startsWith(DUBBED_DIR + path.sep)) throw httpError(400, "Đường dẫn file không hợp lệ.");
+      const hit = lookupDownload(body.rel_path);
+      const resolved = hit?.kind === "source" ? hit.abs : "";
+      if (!resolved) throw httpError(400, "Đường dẫn file không hợp lệ.");
       // Thư mục (vd downloads/bilibili) không phải video: chặn ở đây, không để rmSync ném EISDIR → 500.
       // File không còn trên đĩa vẫn cho xóa để dọn mục gán dự án/bilibili.json còn sót.
       if (repo.exists(resolved) && !repo.isFile(resolved)) throw httpError(400, "Đường dẫn không phải file video.");
@@ -128,7 +131,7 @@ export function createSourceService(repo, { dub, project, tasks }) {
       }
       if (body.delete_dubbed && dub.busyError()) throw httpError(409, dub.busyError());
       // Job lồng tiếng đang dở của file này cũng vô dụng khi file nguồn mất.
-      const pending = dub.jobsBySource().get(resolved);
+      const pending = dub.jobsBySource().get(relOf(resolved));
       if (pending && pending.status !== "done") dub.removeWorkDir(safeJobId(pending.job_id));
 
       repo.removeVideo(resolved);

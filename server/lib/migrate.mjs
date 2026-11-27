@@ -6,6 +6,7 @@ import {
 } from "../config.mjs";
 import { db, inTransaction } from "./db.mjs";
 import { readJson, safeJobId, writeJson } from "./util.mjs";
+import { videoJobs } from "./videos.mjs";
 
 /** File project đời cũ (chứa mảng "segments") sang SQLite, 1 lần. Bản JSON gốc được giữ trong _backup_json. */
 function migrateDubProjects() {
@@ -70,6 +71,9 @@ function migrateEdgeVoices() {
     if (fs.existsSync(dir)) files.push(...fs.readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => path.join(dir, f)));
   }
   if (fs.existsSync(DUB_WORK_DIR)) files.push(...fs.readdirSync(DUB_WORK_DIR).map((d) => path.join(DUB_WORK_DIR, d, "meta.json")));
+  // Bố cục mới: data/videos/<key>/jobs/<job>/{project.json, work/meta.json}.
+  const compact = new Set(videoJobs().map((j) => j.project));
+  for (const j of videoJobs()) files.push(j.project, path.join(j.work, "meta.json"));
   for (const file of files) {
     if (!fs.existsSync(file)) continue;
     const raw = fs.readFileSync(file, "utf8");
@@ -80,7 +84,7 @@ function migrateEdgeVoices() {
       if (obj && typeof obj === "object") delete obj.tts_rate; // tham số riêng của Edge
     }
     if (Array.isArray(data.voices)) data.voices = [...new Set(data.voices.map(fix))];
-    writeJson(file, data, file.startsWith(DUB_PROJECTS_DIR) ? 0 : 2);
+    writeJson(file, data, file.startsWith(DUB_PROJECTS_DIR) || compact.has(file) ? 0 : 2);
     console.log(`[Giọng đọc] Đã đổi giọng Edge sang VieNeu trong ${path.relative(ROOT, file)}`);
   }
 }

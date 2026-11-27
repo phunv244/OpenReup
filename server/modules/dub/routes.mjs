@@ -1,11 +1,12 @@
 /** HTTP của module dub (đường dẫn API giữ như cũ): bắt đầu, câu thoại, xuất lại, gán dự án, dọn cache, xóa. */
 import fs from "node:fs";
 import path from "node:path";
-import { DEFAULT_VOICE, DUBBED_DIR, ROOT, VENV_PYTHON } from "../../config.mjs";
+import { DEFAULT_VOICE, ROOT, VENV_PYTHON } from "../../config.mjs";
 import { db, inTransaction } from "../../lib/db.mjs";
 import { checkSubStyle } from "../../lib/fonts.mjs";
 import { dubBusyError, spawnTask, task, taskEvents } from "../../lib/tasks.mjs";
 import { fail, resolveDownload, safeJobId, validDelogo, validModelId, validSubcover, validVoice } from "../../lib/util.mjs";
+import { lookupDownload } from "../../lib/videos.mjs";
 import { dubRepo } from "./repo.mjs";
 
 const { removeDubWorkDir, loadDubProject, removeDubJob, saveDubProject, updateDubbed } = dubRepo;
@@ -30,15 +31,20 @@ taskEvents.on("end", ({ task_id, exit_code }) => {
 export default async function dubRoutes(app, ctx, dub) {
   const ai = ctx.get("ai");
   app.get("/api/dubbed", async () => {
-    const videos = dub.list().filter((v) => v.mp4_file && fs.existsSync(path.join(DUBBED_DIR, v.mp4_file)));
+    const videos = dub.list().filter((v) => {
+      const abs = v.mp4_file && lookupDownload(`downloads/dubbed/${v.mp4_file}`)?.abs;
+      return abs && fs.existsSync(abs);
+    });
     return { total: videos.length, videos };
   });
 
   app.post("/api/dub/start", async (req, reply) => {
     const body = req.body || {};
     const rel = String(body.rel_path || "");
-    const resolved = resolveDownload(rel);
-    if (!resolved || resolved.startsWith(DUBBED_DIR + path.sep) || !fs.existsSync(resolved)) {
+    // Chỉ lồng tiếng video nguồn: bản xuất (downloads/dubbed hay jobs/*/out ở bố cục mới) bị chặn theo loại file.
+    const hit = lookupDownload(rel);
+    const resolved = hit?.kind === "source" ? hit.abs : "";
+    if (!resolved || !fs.existsSync(resolved)) {
       return fail(reply, 400, "File video nguồn không hợp lệ.");
     }
     if (body.delogo !== undefined && !validDelogo(body.delogo)) return fail(reply, 400, "Vùng xóa logo không hợp lệ.");

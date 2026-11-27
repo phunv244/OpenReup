@@ -2,10 +2,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  DEFAULT_VOICE, DOWNLOADS_DIR, DUBBED_JSON, DUB_PROJECTS_DIR, DUB_WORK_DIR, ROOT, STORY_PROJECTS_DIR, VIDEO_PROJECTS_JSON,
+  DEFAULT_VOICE, DOWNLOADS_DIR, DUBBED_JSON, DUB_PROJECTS_DIR, DUB_WORK_DIR, MEDIA_ROOT, ROOT, STORY_PROJECTS_DIR, VIDEO_PROJECTS_JSON,
 } from "../config.mjs";
 import { db, inTransaction } from "./db.mjs";
 import { readJson, safeJobId, writeJson } from "./util.mjs";
+import { videoJobs } from "./videos.mjs";
 
 /** File project đời cũ (chứa mảng "segments") sang SQLite, 1 lần. Bản JSON gốc được giữ trong _backup_json. */
 function migrateDubProjects() {
@@ -45,10 +46,20 @@ function migrateVideoProjects() {
   for (const d of readJson(DUBBED_JSON, { videos: [] }).videos || []) {
     if (!d.project_id || !d.title) continue;
     for (const rel of [`downloads/bilibili/${d.title}`, `downloads/${d.title}`]) {
-      if (fs.existsSync(path.join(ROOT, rel))) map[rel] = d.project_id;
+      if (fs.existsSync(path.join(MEDIA_ROOT, rel))) map[rel] = d.project_id;
     }
   }
   writeJson(VIDEO_PROJECTS_JSON, map);
+}
+
+/** Bản lồng tiếng trỏ tới dự án đã bị xóa (trước khi xóa dự án biết gỡ bản lồng tiếng) thành "chưa gán dự án". */
+function dropOrphanDubProjects() {
+  const d = readJson(DUBBED_JSON, null);
+  const orphans = (d?.videos || []).filter((v) => v.project_id && !fs.existsSync(path.join(STORY_PROJECTS_DIR, `${v.project_id}.json`)));
+  if (!orphans.length) return;
+  for (const v of orphans) v.project_id = "";
+  writeJson(DUBBED_JSON, d);
+  console.log(`[DATA] Gỡ ${orphans.length} bản lồng tiếng khỏi dự án đã xóa: ${orphans.map((v) => v.job_id).join(", ")}`);
 }
 
 /** Bỏ Edge-TTS: đổi giọng Edge đã lưu (dự án, bản lồng tiếng, job dở) sang giọng VieNeu gần nhất. */
@@ -60,6 +71,9 @@ function migrateEdgeVoices() {
     if (fs.existsSync(dir)) files.push(...fs.readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => path.join(dir, f)));
   }
   if (fs.existsSync(DUB_WORK_DIR)) files.push(...fs.readdirSync(DUB_WORK_DIR).map((d) => path.join(DUB_WORK_DIR, d, "meta.json")));
+  // Bố cục mới: data/videos/<key>/jobs/<job>/{project.json, work/meta.json}.
+  const compact = new Set(videoJobs().map((j) => j.project));
+  for (const j of videoJobs()) files.push(j.project, path.join(j.work, "meta.json"));
   for (const file of files) {
     if (!fs.existsSync(file)) continue;
     const raw = fs.readFileSync(file, "utf8");
@@ -70,7 +84,7 @@ function migrateEdgeVoices() {
       if (obj && typeof obj === "object") delete obj.tts_rate; // tham số riêng của Edge
     }
     if (Array.isArray(data.voices)) data.voices = [...new Set(data.voices.map(fix))];
-    writeJson(file, data, file.startsWith(DUB_PROJECTS_DIR) ? 0 : 2);
+    writeJson(file, data, file.startsWith(DUB_PROJECTS_DIR) || compact.has(file) ? 0 : 2);
     console.log(`[Giọng đọc] Đã đổi giọng Edge sang VieNeu trong ${path.relative(ROOT, file)}`);
   }
 }
@@ -80,4 +94,5 @@ export function runMigrations() {
   migrateDubProjects();
   migrateVideoProjects();
   migrateEdgeVoices();
+  dropOrphanDubProjects();
 }

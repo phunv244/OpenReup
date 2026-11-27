@@ -3,6 +3,7 @@ import { Shell } from "@/components/Shell";
 import { ToastProvider } from "@/components/Toasts";
 import { StudioProvider } from "@/lib/studio";
 import "./globals.css";
+import "./notifications.css";
 
 export const metadata: Metadata = {
   title: "OpenReup Studio",
@@ -13,6 +14,8 @@ export const metadata: Metadata = {
 const BOOT = `(() => {
   const d = document.documentElement;
   d.dataset.theme = localStorage.getItem("theme") || "dark";
+  d.dataset.rail = localStorage.getItem("rail") === "open" ? "open" : "closed";
+  d.dataset.sb = localStorage.getItem("sb") === "mini" ? "mini" : "full";
   for (const k of ["sb-w", "rail-w"]) {
     const w = Number(localStorage.getItem(k));
     if (w) d.style.setProperty("--" + k, w + "px");

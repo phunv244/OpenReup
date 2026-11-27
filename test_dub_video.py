@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 """Tự kiểm tra phần lõi không cần mạng/whisper: .venv/bin/python test_dub_video.py"""
+import atexit
+import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
-import dub_video as d
+# Mọi test ghi vào thư mục tạm (DB, dub_work/...), không đụng data/ và downloads/ thật. Phải đặt trước import dub_video.
+_TEST_ROOT = tempfile.mkdtemp(prefix="reup_pytest_")
+atexit.register(shutil.rmtree, _TEST_ROOT, ignore_errors=True)
+os.environ["REUP_DATA_DIR"] = os.path.join(_TEST_ROOT, "data")
+os.environ["REUP_MEDIA_ROOT"] = os.path.join(_TEST_ROOT, "media")
+
+import dub_video as d  # noqa: E402
 
 SR = d.SAMPLE_RATE
 
@@ -320,9 +329,128 @@ def test_video_encode_args_and_render_parts():
         assert part_mp4.exists() and part_mp4.stat().st_size > 1000
 
 
-if __name__ == "__main__":
+
+def test_paths_from_args():
+    with tempfile.TemporaryDirectory() as tmp:
+        old = d.STORY_PROJECTS_DIR
+        try:
+            d.STORY_PROJECTS_DIR = Path(tmp)
+            assert d.story_project_path("a") == Path(tmp) / "a.json"  # dạng cũ
+            (Path(tmp) / "a").mkdir()
+            (Path(tmp) / "a" / "project.json").write_text("{}")
+            assert d.story_project_path("a") == Path(tmp) / "a" / "project.json"  # dạng thư mục
+            assert d.story_project_path("../a") == Path(tmp) / "a" / "project.json"  # không thoát ra ngoài
+        finally:
+            d.STORY_PROJECTS_DIR = old
+        assert d.rel_to_base(d.BASE_DIR / "downloads" / "dubbed") == "downloads/dubbed"
+        assert d.from_base("downloads/dubbed") == d.BASE_DIR / "downloads" / "dubbed"
+        assert d.rel_to_base(Path(tmp)) == str(Path(tmp).resolve())
+        assert d.Job("j1", Path(tmp) / "w").meta_path == Path(tmp) / "w" / "meta.json"
+        assert d.Job("j1").work == d.WORK_ROOT / "j1"
+
+
+def test_job_id_arg():
+    """--job-id: id hợp lệ được dùng, sai định dạng báo lỗi, lệch với file project có sẵn thì báo lỗi và không ghi đè."""
+    import json
+    import sys
+
+    assert d.check_job_id("", "dub_a_0p5x") == "dub_a_0p5x"  # không truyền: giữ id suy ra
+    assert d.check_job_id("dub_a_0p5x", "dub_a_0p5x") == "dub_a_0p5x"
+    assert d.check_job_id("job-B_1", "dub_a_0p5x") == "job-B_1"  # chưa có file project: dùng id server cấp
+    for bad in ["../x", "a.b", "a b", "..", "x/y", "Việt"]:
+        try:
+            d.check_job_id(bad, "dub_a_0p5x")
+            raise AssertionError(f"phải từ chối {bad!r}")
+        except RuntimeError as e:
+            assert "không hợp lệ" in str(e)
+    try:
+        d.check_job_id("dub_b_0p5x", "dub_a_0p5x", Path("p.json"))
+        raise AssertionError("phải báo lệch")
+    except RuntimeError as e:
+        assert "lệch" in str(e)
+
+    # Chạy thật dub_video.py --project với file project có job_id khác: dừng với lỗi, file giữ nguyên.
+    with tempfile.TemporaryDirectory() as tmp:
+        proj = Path(tmp) / "p.json"
+        proj.write_text(json.dumps({"job_id": "dub_a_0p5x", "input_path": str(Path(tmp) / "a.mp4")}))
+        before = proj.read_bytes()
+        r = subprocess.run([sys.executable, str(d.BASE_DIR / "dub_video.py"), "--project", "dub_a_0p5x",
+                            "--project-file", str(proj), "--job-id", "dub_b_0p5x"],
+                           cwd=tmp, capture_output=True, text=True)
+        assert r.returncode != 0 and "lệch" in (r.stdout + r.stderr), r.stdout + r.stderr
+        assert proj.read_bytes() == before
+        r = subprocess.run([sys.executable, str(d.BASE_DIR / "dub_video.py"), "--project", "dub_a_0p5x",
+                            "--project-file", str(proj), "--job-id", "../x"], cwd=tmp, capture_output=True, text=True)
+        assert r.returncode != 0 and "không hợp lệ" in (r.stdout + r.stderr), r.stdout + r.stderr
+
+
+def _paths_in_child(env_extra, code):
+    """Chạy Python con với env cho trước (bỏ REUP_* của tiến trình cha) để module đọc lại biến lúc import."""
+    import json
+    import os
+    import sys
+
+    env = {k: v for k, v in os.environ.items() if not k.startswith("REUP_")}
+    env.update(env_extra)
+    out = subprocess.run([sys.executable, "-c", code], cwd=str(d.BASE_DIR), env=env, check=True,
+                         capture_output=True, text=True).stdout
+    return json.loads(out.strip().splitlines()[-1])
+
+
+_PATHS_CODE = """
+import json, asr, subtitles, list_channel_adb as adb, dub_video as d
+print(json.dumps({k: str(v) for k, v in {
+    "models": asr.MODELS_DIR, "asr_settings": asr.SETTINGS_JSON, "fonts": subtitles.FONTS_DIR,
+    "videos_json": adb.DEFAULT_JSON, "db": d.DB_PATH, "work": d.WORK_ROOT, "dub_projects": d.PROJECTS_DIR,
+    "projects": d.STORY_PROJECTS_DIR, "dubbed": d.DUBBED_INDEX_JSON, "voices": d.VOICES_DIR, "out": d.DUB_OUT_DIR,
+}.items()}))
+"""
+
+
+def test_reup_data_dir_default_is_repo():
+    """Không đặt REUP_DATA_DIR/REUP_MEDIA_ROOT: đường dẫn y như trước (data/ và downloads/ trong repo)."""
+    p = _paths_in_child({}, _PATHS_CODE)
+    data, base = d.BASE_DIR / "data", d.BASE_DIR
+    assert p["models"] == str(data / "asr_models") and p["asr_settings"] == str(data / "asr_settings.json")
+    assert p["db"] == str(data / "openreup.db") and p["work"] == str(data / "dub_work")
+    assert p["fonts"] == str(data / "fonts") and p["voices"] == str(data / "voices")
+    assert p["videos_json"] == str(data / "videos.json") and p["dubbed"] == str(data / "dubbed.json")
+    assert p["dub_projects"] == str(data / "dub_projects") and p["projects"] == str(data / "projects")
+    assert p["out"] == str(base / "downloads" / "dubbed")
+
+
+def test_reup_data_dir_isolates_writes():
+    """Đặt REUP_DATA_DIR: asr_models, asr_settings.json, openreup.db... nằm trong thư mục đó, data/ thật không bị ghi."""
     import os
 
+    import asr
+
+    real = d.BASE_DIR / "data"
+    watch = [real / "asr_settings.json", real / "openreup.db", real / "openreup.db-wal", real / "asr_models"]
+    before = {str(w): (w.exists() and w.stat().st_mtime_ns) for w in watch}
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        env = {"REUP_DATA_DIR": str(tmp / "data"), "REUP_MEDIA_ROOT": str(tmp / "media")}
+        p = _paths_in_child(env, _PATHS_CODE)
+        for k, v in p.items():
+            root = tmp / ("media" if k == "out" else "data")
+            assert Path(v).is_relative_to(root), (k, v)
+        assert p["models"] == str(tmp / "data" / "asr_models") and p["db"] == str(tmp / "data" / "openreup.db")
+        # Ghi thật: set-vad (cần file VAD giả) + mở DB câu thoại
+        (tmp / "data" / "asr_models").mkdir(parents=True)
+        (tmp / "data" / "asr_models" / asr.VAD_FILE).write_bytes(b"x")
+        env_run = {k: v for k, v in os.environ.items() if not k.startswith("REUP_")} | env
+        import sys
+
+        subprocess.run([sys.executable, "asr.py", "set-vad", "silero"], cwd=str(d.BASE_DIR), env=env_run,
+                       check=True, capture_output=True)
+        _paths_in_child(env, "import json, dub_video as d; d.open_db().close(); print(json.dumps({}))")
+        assert (tmp / "data" / "asr_settings.json").read_text() == '{"vad": "silero"}'
+        assert (tmp / "data" / "openreup.db").exists()
+    after = {str(w): (w.exists() and w.stat().st_mtime_ns) for w in watch}
+    assert before == after, (before, after)
+
+if __name__ == "__main__":
     # CI không cài VieNeu-TTS (nặng, kèm model): bỏ qua đúng các test được liệt kê, không bỏ ngầm test nào khác.
     skip = {s.strip() for s in os.environ.get("SKIP_TESTS", "").split(",") if s.strip()}
     for name, fn in list(globals().items()):

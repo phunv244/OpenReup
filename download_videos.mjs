@@ -14,8 +14,11 @@ import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_JSON = path.join(__dirname, "data", "videos.json");
-const DOWNLOAD_DIR = path.join(__dirname, "downloads");
+// REUP_MEDIA_ROOT / REUP_DATA_DIR: server truyền xuống khi chạy test (thư mục tạm), mặc định là repo.
+const MEDIA_ROOT = process.env.REUP_MEDIA_ROOT ? path.resolve(process.env.REUP_MEDIA_ROOT) : __dirname;
+const DATA_ROOT = process.env.REUP_DATA_DIR ? path.resolve(process.env.REUP_DATA_DIR) : path.join(__dirname, "data");
+const DEFAULT_JSON = path.join(DATA_ROOT, "videos.json");
+const DOWNLOAD_DIR = path.join(MEDIA_ROOT, "downloads");
 
 function parseArgs(argv) {
   const args = {

@@ -13,8 +13,9 @@ import tempfile
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
-BASE_DIR = Path(__file__).resolve().parent
-FONTS_DIR = BASE_DIR / "data" / "fonts"
+from reup_paths import DATA_DIR  # noqa: E402
+
+FONTS_DIR = DATA_DIR / "fonts"
 DEFAULT_FONT = "DejaVu Sans"
 SAMPLE_TEXT = "Xin chào các bạn, đây là phụ đề tiếng Việt mẫu"
 

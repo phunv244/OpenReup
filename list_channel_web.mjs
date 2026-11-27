@@ -15,7 +15,8 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, "data");
+// REUP_DATA_DIR: server truyền xuống khi chạy test (thư mục tạm), mặc định là data/ trong repo.
+const DATA_DIR = process.env.REUP_DATA_DIR ? path.resolve(process.env.REUP_DATA_DIR) : path.join(__dirname, "data");
 const PROFILE_DIR = path.join(__dirname, "chrome_profile");
 const DEFAULT_JSON = path.join(DATA_DIR, "videos.json");
 const DEFAULT_CSV = path.join(DATA_DIR, "videos.csv");

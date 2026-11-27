@@ -154,7 +154,9 @@ export function ProjectDrawer({ project, onClose }: { project: Project; onClose:
 
   async function remove() {
     if (!confirm(`Xóa dự án "${d.name}"?\n\nCác file video vẫn được giữ nguyên, chỉ mất ngữ cảnh AI của dự án.`)) return;
-    await postJSON("/api/projects/delete", { id: project.id });
+    const r = await postJSON("/api/projects/delete", { id: project.id });
+    // 409 khi dự án đang có việc lồng tiếng chạy/chờ: giữ ngăn mở, không coi như đã xóa.
+    if (!r.ok) return toast(r.error || "Không xóa được dự án", "error");
     toast("Đã xóa dự án", "success");
     onClose();
     await reload();

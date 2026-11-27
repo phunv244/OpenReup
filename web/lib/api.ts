@@ -63,7 +63,12 @@ export type Project = {
   /** Giọng đọc dùng chung cho mọi nhân vật trong dự án, chọn từ Tài nguyên → Giọng đọc. */
   voice?: string;
   voices?: string[];
+  /** Số video nguồn của dự án (không phải số lần lồng tiếng). */
   video_count?: number;
+  /** Số video đã có ít nhất 1 bản lồng tiếng. */
+  dubbed_count?: number;
+  /** Số video chưa lồng tiếng. */
+  pending_count?: number;
   videos?: Dubbed[];
   updated_at?: string;
 };

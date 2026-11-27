@@ -9,7 +9,6 @@ import { useToast } from "@/components/Toasts";
 import { EmptyState, Menu, Metric, Seg } from "@/components/ui";
 import { AddVideoModal } from "@/components/video/AddVideoModal";
 import { DubConfigModal } from "@/components/video/DubConfigModal";
-import { DubEditorModal } from "@/components/video/DubEditorModal";
 import { WorkItem, buildWorkItems } from "@/components/video/items";
 import { DeleteVideoModal, DelogoModal, MoveVideoModal } from "@/components/video/SmallModals";
 import { dubFileUrl, postJSON } from "@/lib/api";
@@ -21,7 +20,6 @@ type Filter = "all" | "new" | "partial" | "dubbed";
 type Dialog =
   | { kind: "add" }
   | { kind: "dub" | "delogo" | "move" | "delete"; v: WorkItem }
-  | { kind: "edit"; jobId: string }
   | { kind: "play"; src: string; title: string }
   | null;
 
@@ -34,7 +32,9 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
   const running = Boolean(task?.running && task.target && (task.target === v.rel_path || task.target === (d?.job_id || j?.job_id)));
   const qi = running ? -1 : (task?.queue || []).findIndex((q) => q.target && (q.target === v.rel_path || q.target === (d?.job_id || j?.job_id)));
 
-  const meta = [v.source === "bilibili" ? "Bilibili / YouTube" : "Douyin", v.resolution, fmtSize(v.size_mb), v.uploader].filter(Boolean);
+  const meta = v.missing
+    ? ["Chỉ còn bản lồng tiếng", fmtSize(v.size_mb)]
+    : [v.source === "bilibili" ? "Bilibili / YouTube" : "Douyin", v.resolution, fmtSize(v.size_mb), v.uploader].filter(Boolean);
   const playDub = () => open({ kind: "play", src: dubFileUrl(d!.mp4_file), title: `Bản Việt · ${v.title}` });
   const playOrig = () => open({ kind: "play", src: v.video_src, title: v.title });
 
@@ -42,6 +42,12 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
     const r = await postJSON("/api/source/assign", { rel_path: v.rel_path, project_id: pid });
     if (!r.ok) return toast(r.error || "Không gán được video", "error");
     toast("Đã thêm video vào dự án", "success");
+    reload();
+  }
+  async function removeDub() {
+    if (!confirm("Xóa vĩnh viễn bản lồng tiếng này?\n\nVideo gốc đã mất nên sau khi xóa sẽ không làm lại được. File MP4, phụ đề và cache của bản này sẽ bị xóa khỏi ổ.")) return;
+    const r = await postJSON("/api/dub/delete", { job_id: d!.job_id });
+    toast(r.ok ? "Đã xóa bản lồng tiếng" : r.error || "Không xóa được bản lồng tiếng", r.ok ? "success" : "error");
     reload();
   }
   async function clean() {
@@ -87,6 +93,11 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
         <div className="vrow-meta">{meta.join(" · ")}</div>
         <div className="vrow-chips when-idle">
           {!v.project_id && <span className="badge amber">Chưa gán dự án</span>}
+          {v.missing && (
+            <span className="badge red" title="Video gốc đã bị xóa khỏi ổ. Bản Việt vẫn xem và tải được, nhưng không chỉnh sửa hay lồng tiếng lại được.">
+              <Icon name="alert" size={13} /> Mất video gốc
+            </span>
+          )}
           {d && (
             <span className="badge green">
               <Icon name="check" size={13} /> Đã lồng tiếng · {(d.segment_count || 0).toLocaleString("vi")} câu
@@ -127,9 +138,9 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
               <Icon name="play" size={15} /> Bản Việt
             </button>
           )}
-          {d && (
+          {d && !v.missing && (
             <Link className="btn btn-light" href={projHref(pid, "video", `&job=${encodeURIComponent(d.job_id)}`)}>
-              <Icon name="edit" size={15} /> Chi tiết
+              <Icon name="edit" size={15} /> Chỉnh sửa
             </Link>
           )}
           {primary}
@@ -145,15 +156,17 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
               <Icon name="cc" size={15} /> Tải phụ đề SRT
             </a>
           )}
-          {(d || j) && (
+          {(d || j) && !v.missing && (
             <button type="button" onClick={() => open({ kind: "dub", v })}>
               <Icon name="mic" size={15} /> {j ? "Tùy chọn / làm lại từ đầu" : "Lồng tiếng lại"}
             </button>
           )}
-          <button type="button" onClick={playOrig}>
-            <Icon name="film" size={15} /> Xem video gốc
-          </button>
-          {(projects.length > 1 || !v.project_id) && (
+          {!v.missing && (
+            <button type="button" onClick={playOrig}>
+              <Icon name="film" size={15} /> Xem video gốc
+            </button>
+          )}
+          {!v.missing && (projects.length > 1 || !v.project_id) && (
             <button type="button" onClick={() => open({ kind: "move", v })}>
               <Icon name="folder" size={15} /> Chuyển sang dự án khác
             </button>
@@ -169,9 +182,15 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
             </button>
           ) : null}
           <hr />
-          <button type="button" className="danger" onClick={() => open({ kind: "delete", v })}>
-            <Icon name="trash" size={15} /> Xóa video
-          </button>
+          {v.missing ? (
+            <button type="button" className="danger" onClick={removeDub}>
+              <Icon name="trash" size={15} /> Xóa bản lồng tiếng
+            </button>
+          ) : (
+            <button type="button" className="danger" onClick={() => open({ kind: "delete", v })}>
+              <Icon name="trash" size={15} /> Xóa video
+            </button>
+          )}
         </Menu>
       </div>
     </article>
@@ -247,7 +266,6 @@ export default function VideosPage() {
 
       {dialog?.kind === "add" && <AddVideoModal projectId={pid} onClose={close} />}
       {dialog?.kind === "dub" && <DubConfigModal v={dialog.v} projectId={pid} onClose={close} />}
-      {dialog?.kind === "edit" && <DubEditorModal jobId={dialog.jobId} projectId={pid} onClose={close} />}
       {dialog?.kind === "delogo" && <DelogoModal v={dialog.v} onClose={close} />}
       {dialog?.kind === "move" && <MoveVideoModal v={dialog.v} onClose={close} />}
       {dialog?.kind === "delete" && <DeleteVideoModal v={dialog.v} onClose={close} />}

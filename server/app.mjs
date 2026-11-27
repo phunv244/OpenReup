@@ -1,25 +1,46 @@
 /**
  * Dựng app Fastify (chưa listen): server/index.mjs chạy thật, test gọi qua app.inject.
- * Mỗi nhóm API nằm trong một file ở server/routes/.
+ * Server ghép từ các module (server/core/loader.mjs): thêm chức năng = thêm 1 module vào MODULES.
+ * Module đã tách: server/modules/<tên>/ (index, routes, service, repo, functions). Các module còn lại bọc file route cũ
+ * ở server/routes/ (đường dẫn API giữ nguyên) và sẽ chuyển dần sang server/modules/.
  */
 import fs from "node:fs";
 import path from "node:path";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
-import { API_TOKEN, DOWNLOADS_DIR, WEB_OUT_DIR } from "./config.mjs";
+import { API_TOKEN, WEB_OUT_DIR } from "./config.mjs";
+import { loadModules } from "./core/loader.mjs";
+import downloadsRoute from "./lib/downloads-route.mjs";
 import { runMigrations } from "./lib/migrate.mjs";
-import { clearVoiceTmp } from "./lib/voices.mjs";
-import dubRoutes from "./routes/dub.mjs";
-import projectRoutes from "./routes/projects.mjs";
-import sourceRoutes from "./routes/sources.mjs";
 import taskRoutes from "./routes/tasks.mjs";
-import resourceRoutes from "./routes/resources.mjs";
-import voiceRoutes from "./routes/voices.mjs";
-import functionRoutes from "./routes/functions.mjs";
+import functionRoutes, { FUNCTIONS } from "./routes/functions.mjs";
+import dubModule from "./modules/dub/index.mjs";
+import projectModule from "./modules/project/index.mjs";
+import sourcesModule from "./modules/sources/index.mjs";
+import resourcesModule from "./modules/resources/index.mjs";
+import aiModule from "./modules/ai/index.mjs";
+
+/** Danh sách module của server. Thứ tự nạp do loader sắp theo deps. */
+export const MODULES = [
+  { name: "tasks", routes: taskRoutes },
+  sourcesModule,
+  projectModule,
+  resourcesModule,
+  dubModule,
+  aiModule,
+  // Tạm giữ toàn bộ định nghĩa hàm ở đây; mỗi module chuyển sang server/modules/ sẽ mang hàm của nó theo.
+  // deps: các module có route mà hàm riêng của module này gọi qua app.inject (list_options: /api/agy-models, /api/projects,
+  // /api/voices, /api/asr-models, /api/fonts; get_task/stop_task: /api/task*) -> thiếu module thì lỗi ngay lúc khởi động, không im lặng trả rỗng.
+  {
+    name: "functions",
+    deps: ["tasks", "ai", "project", "resources"],
+    functions: FUNCTIONS.filter((f) => !f.slot && !f.ref),
+    routes: (app, ctx) => functionRoutes(app, ctx.functions()),
+  },
+];
 
 export async function buildApp({ logger = false } = {}) {
   runMigrations();
-  clearVoiceTmp();
 
   const app = Fastify({ bodyLimit: 8_000_000, logger });
 
@@ -68,13 +89,8 @@ export async function buildApp({ logger = false } = {}) {
     setHeaders: (reply, file) =>
       reply.header("Cache-Control", file.includes(`${path.sep}_next${path.sep}static${path.sep}`) ? "public, max-age=31536000, immutable" : "no-cache"),
   });
-  // Video tải về / bản lồng tiếng (hỗ trợ tua: Range request).
-  await app.register(fastifyStatic, {
-    root: DOWNLOADS_DIR,
-    prefix: "/downloads/",
-    decorateReply: false,
-    setHeaders: (reply, file) => file.endsWith(".srt") && reply.header("Content-Type", "text/plain; charset=utf-8"),
-  });
+  // Video tải về / bản lồng tiếng (hỗ trợ tua: Range request), tra qua chỉ mục video.json: cả bố cục cũ lẫn mới.
+  await app.register(downloadsRoute);
   app.setNotFoundHandler((req, reply) => {
     if (req.method !== "GET" || req.url.startsWith("/api/") || req.url.startsWith("/downloads/")) {
       return reply.code(404).send({ ok: false, error: "Không tìm thấy" });
@@ -82,13 +98,7 @@ export async function buildApp({ logger = false } = {}) {
     return fs.existsSync(path.join(WEB_OUT_DIR, "404.html")) ? reply.code(404).sendFile("404.html") : reply.code(404).send("Not found");
   });
 
-  await app.register(taskRoutes);
-  await app.register(sourceRoutes);
-  await app.register(projectRoutes);
-  await app.register(voiceRoutes);
-  await app.register(resourceRoutes);
-  await app.register(dubRoutes);
-  await app.register(functionRoutes);
+  await loadModules(app, MODULES);
 
   return app;
 }

@@ -41,17 +41,18 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from subtitles import build_ass, build_subcover_filter, clean_style, sub_events, subtitles_filter  # noqa: F401 (tests dùng d.build_subcover_filter)
 
-BASE_DIR = Path(__file__).resolve().parent
+from reup_paths import BASE_DIR, DATA_DIR, MEDIA_ROOT  # noqa: E402
+
 VENV_BIN = BASE_DIR / ".venv" / "bin"
 if VENV_BIN.is_dir() and str(VENV_BIN) not in os.environ.get("PATH", "").split(os.pathsep):
     os.environ["PATH"] = f"{VENV_BIN}{os.pathsep}{os.environ.get('PATH', '')}"
 
-DUB_OUT_DIR = BASE_DIR / "downloads" / "dubbed"
-PROJECTS_DIR = BASE_DIR / "data" / "dub_projects"
-STORY_PROJECTS_DIR = BASE_DIR / "data" / "projects"
-DB_PATH = BASE_DIR / "data" / "openreup.db"  # câu thoại của mọi bản lồng tiếng (server.mjs đọc/sửa cùng file này)
-DUBBED_INDEX_JSON = BASE_DIR / "data" / "dubbed.json"
-WORK_ROOT = BASE_DIR / "data" / "dub_work"
+DUB_OUT_DIR = MEDIA_ROOT / "downloads" / "dubbed"
+PROJECTS_DIR = DATA_DIR / "dub_projects"
+STORY_PROJECTS_DIR = DATA_DIR / "projects"
+DB_PATH = DATA_DIR / "openreup.db"  # câu thoại của mọi bản lồng tiếng (server.mjs đọc/sửa cùng file này)
+DUBBED_INDEX_JSON = DATA_DIR / "dubbed.json"
+WORK_ROOT = DATA_DIR / "dub_work"
 AGY_BIN = shutil.which("agy") or str(Path.home() / ".local" / "bin" / "agy")
 
 SAMPLE_RATE = 24000  # track lồng tiếng: PCM 16-bit mono
@@ -325,9 +326,9 @@ def build_delogo_filter(mode: str, w: int, h: int) -> str:
 # Job: thư mục làm việc + checkpoint + tiến độ
 # ----------------------------------------------------------------------------
 class Job:
-    def __init__(self, job_id: str):
+    def __init__(self, job_id: str, work: Optional[Path] = None):
         self.job_id = job_id
-        self.work = WORK_ROOT / job_id
+        self.work = Path(work) if work else WORK_ROOT / job_id
         self.chunks_dir = self.work / "chunks"
         self.parts_dir = self.work / "parts"
         self.tts_dir = self.work / "tts"
@@ -531,10 +532,31 @@ def words_to_segments(words: List[Dict]) -> List[Dict]:
     return segments
 
 
+def story_project_path(project_id: str) -> Path:
+    """File dự án truyện: dạng thư mục <dir>/<id>/project.json (mới) hoặc <dir>/<id>.json (cũ)."""
+    pid = Path(project_id).name
+    folder = STORY_PROJECTS_DIR / pid / "project.json"
+    return folder if folder.is_file() else STORY_PROJECTS_DIR / f"{pid}.json"
+
+
+def rel_to_base(p: Path) -> str:
+    """Đường dẫn lưu vào JSON: tương đối với thư mục dự án nếu nằm trong đó, để chuyển thư mục không vỡ."""
+    p = Path(p).resolve()
+    try:
+        return str(p.relative_to(BASE_DIR))
+    except ValueError:
+        return str(p)
+
+
+def from_base(p: str) -> Path:
+    q = Path(p)
+    return (q if q.is_absolute() else BASE_DIR / q).resolve()
+
+
 def load_story_context(project_id: str) -> Dict:
     if not project_id:
         return {}
-    return read_json(STORY_PROJECTS_DIR / f"{Path(project_id).name}.json", {})
+    return read_json(story_project_path(project_id), {})
 
 
 def run_stt(
@@ -692,7 +714,7 @@ def _extract_json_object(text: str) -> Dict:
         parsed = json.loads(raw[start : end + 1])
         if isinstance(parsed, dict):
             return parsed
-    raise RuntimeError(f"Không đọc được JSON từ phản hồi AGY Proxy: {raw[:200]}")
+    raise RuntimeError(f"Không đọc được JSON từ phản hồi model dịch: {raw[:200]}")
 
 
 # ----------------------------------------------------------------------------
@@ -933,7 +955,7 @@ class Translator:
             summaries = list(self.summaries)
         if not (add_chars or add_gloss or notes_add or final):
             return
-        p = STORY_PROJECTS_DIR / f"{Path(self.project_id).name}.json"
+        p = story_project_path(self.project_id)
         proj = read_json(p, None)
         if not proj:
             return
@@ -959,7 +981,7 @@ class Translator:
 # ----------------------------------------------------------------------------
 # Bước 4: Giọng đọc tiếng Việt (VieNeu-TTS chạy trên máy) — cache theo nội dung câu
 # ----------------------------------------------------------------------------
-VOICES_DIR = BASE_DIR / "data" / "voices"
+VOICES_DIR = DATA_DIR / "voices"
 
 
 class VieNeuEngine:
@@ -1200,7 +1222,7 @@ def match_characters(segments: List[Dict], characters: List[Dict], known_zh) -> 
 
 def save_character_voices(project_id: str, voices: Dict[str, str]) -> None:
     """Ghi giọng máy vừa tự chọn vào nhân vật chưa có giọng trong dự án, để các video sau dùng lại đúng giọng đó."""
-    p = STORY_PROJECTS_DIR / f"{Path(project_id).name}.json"
+    p = story_project_path(project_id) if project_id else None
     proj = read_json(p, None) if project_id and voices else None
     if not proj:
         return
@@ -1796,8 +1818,23 @@ def assert_disk_space(target_dir: Path, need_gb: float) -> None:
 # ----------------------------------------------------------------------------
 # Luồng chính
 # ----------------------------------------------------------------------------
+
+JOB_ID_RE = re.compile(r"^[0-9A-Za-z_-]+$")  # cùng quy tắc safeJobId (server/lib/util.mjs)
+
+
+def check_job_id(given: str, existing: str, proj_path: Optional[Path] = None) -> str:
+    """Kiểm --job-id: rỗng thì dùng id có sẵn; sai định dạng hoặc lệch với job_id trong file project thì báo lỗi, không ghi đè."""
+    if not given:
+        return existing
+    if not JOB_ID_RE.match(given):
+        raise RuntimeError(f"--job-id không hợp lệ (chỉ gồm chữ/số/_/-): {given!r}")
+    if proj_path is not None and existing and existing != given:
+        raise RuntimeError(f"--job-id {given} lệch với job_id {existing} trong {proj_path}")
+    return given
+
+
 def main() -> int:
-    global JOB, RERENDER
+    global JOB, RERENDER, DUB_OUT_DIR, DUBBED_INDEX_JSON, STORY_PROJECTS_DIR
     parser = argparse.ArgumentParser(description="Dịch & Lồng tiếng Việt tự động cho video tiếng Trung")
     parser.add_argument("--input", help="Đường dẫn file MP4 gốc")
     parser.add_argument("--project", help="Job ID có sẵn để render lại sau khi sửa bản dịch")
@@ -1822,19 +1859,30 @@ def main() -> int:
     parser.add_argument("--tts-workers", type=int, default=2, help="Số luồng tạo giọng đọc")
     parser.add_argument("--encoder", choices=["auto", "nvenc", "cpu"], default="auto",
                         help="Bộ mã hóa video khi in phụ đề / xóa logo: auto (ưu tiên GPU NVENC) | nvenc | cpu")
+    # Đường dẫn do server (module dub) quyết định; bỏ trống = vị trí mặc định cũ. Xuất lại không truyền thì dùng lại
+    # out_dir/work_dir đã lưu trong file project của lần chạy trước.
+    parser.add_argument("--out-dir", default="", help="Thư mục ghi <job>.mp4 / <job>.srt (mặc định downloads/dubbed)")
+    parser.add_argument("--work-dir", default="", help="Thư mục làm việc/checkpoint của job (mặc định data/dub_work/<job>)")
+    parser.add_argument("--job-id", default="", help="Mã job do server cấp (chữ/số/_/-); rỗng = tự suy từ tên file và tốc độ")
+    parser.add_argument("--project-file", default="", help="File project lồng tiếng để đọc/ghi (mặc định data/dub_projects/<job>.json)")
+    parser.add_argument("--index-file", default="", help="File danh sách bản lồng tiếng (mặc định data/dubbed.json)")
+    parser.add_argument("--story-dir", default="", help="Thư mục chứa dự án truyện (mặc định data/projects)")
     args = parser.parse_args()
+    if args.index_file:
+        DUBBED_INDEX_JSON = from_base(args.index_file)
+    if args.story_dir:
+        STORY_PROJECTS_DIR = from_base(args.story_dir)
 
     os.nice(8)  # chạy nền nhiều giờ: nhường CPU cho máy; ffmpeg/agy con được thừa hưởng
-    DUB_OUT_DIR.mkdir(parents=True, exist_ok=True)
-    PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
 
     rerender = RERENDER = bool(args.project)
+    proj: Dict = {}
     if rerender:
-        proj_path = PROJECTS_DIR / f"{Path(args.project).name}.json"
+        proj_path = from_base(args.project_file) if args.project_file else PROJECTS_DIR / f"{Path(args.project).name}.json"
         proj = read_json(proj_path, None)
         if not proj:
             raise RuntimeError(f"Không tìm thấy project: {proj_path}")
-        job_id = proj["job_id"]
+        job_id = check_job_id(args.job_id, proj["job_id"], proj_path)
         input_mp4 = Path(proj["input_path"])
         speed = float(proj.get("speed", args.speed))
         voice = proj.get("voice") or args.voice
@@ -1870,11 +1918,22 @@ def main() -> int:
             # Tên có chữ Trung / quá dài bị rút gọn: thêm mã băm để 2 video khác nhau không đè job của nhau.
             stem += "_" + hashlib.sha1(input_mp4.name.encode("utf-8")).hexdigest()[:6]
         job_id = f"dub_{stem}_{str(speed).replace('.', 'p')}x"
+        if args.job_id:
+            job_id = check_job_id(args.job_id, job_id)
         segments = []
     if not input_mp4.exists():
         raise RuntimeError(f"Không tìm thấy video đầu vào: {input_mp4}")
 
-    job = JOB = Job(job_id)
+    if args.out_dir or proj.get("out_dir"):
+        DUB_OUT_DIR = from_base(args.out_dir or proj["out_dir"])
+    work_dir = from_base(args.work_dir or proj["work_dir"]) if (args.work_dir or proj.get("work_dir")) else None
+    proj_path = from_base(args.project_file) if args.project_file else PROJECTS_DIR / f"{job_id}.json"
+    if not rerender and args.job_id:
+        check_job_id(job_id, read_json(proj_path, {}).get("job_id") or job_id, proj_path)
+    for d in (DUB_OUT_DIR, proj_path.parent, DUBBED_INDEX_JSON.parent):
+        d.mkdir(parents=True, exist_ok=True)
+
+    job = JOB = Job(job_id, work_dir)
     for leftover in job.work.rglob("*.tmp.*"):  # file ghi dở của lần chạy bị ngắt
         leftover.unlink(missing_ok=True)
     st = input_mp4.stat()
@@ -1923,7 +1982,6 @@ def main() -> int:
     tts.voice_map = {k: v["voice"] for k, v in speakers.items()}
     out_mp4 = DUB_OUT_DIR / f"{job_id}.mp4"
     out_srt = DUB_OUT_DIR / f"{job_id}.srt"
-    proj_path = PROJECTS_DIR / f"{job_id}.json"
     untranslated = 0
     # Xuất lại một nửa: lấy nửa còn lại từ bản đã xuất (copy, không mã hóa) — cần bản đã xuất còn nguyên.
     only = args.only if rerender and out_mp4.exists() else ""
@@ -2018,6 +2076,8 @@ def main() -> int:
             "orig_duration_sec": round(duration, 1),
             "dub_duration_sec": round(duration, 1),
             "resolution": f"{media['w']}x{media['h']}",
+            "out_dir": rel_to_base(DUB_OUT_DIR),
+            "work_dir": rel_to_base(job.work),
             "updated_at": datetime.now().isoformat(timespec="seconds"),
         },
     )
@@ -2098,6 +2158,8 @@ def main() -> int:
             "cache_mb": dir_size_mb(job.work),
             "mp4_file": out_mp4.name,
             "srt_file": out_srt.name,
+            "out_dir": rel_to_base(DUB_OUT_DIR),
+            "work_dir": rel_to_base(job.work),
             "updated_at": datetime.now().isoformat(timespec="seconds"),
         }
     )

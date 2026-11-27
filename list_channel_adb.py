@@ -21,7 +21,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 
-DATA_DIR = Path(__file__).resolve().parent / "data"
+from reup_paths import DATA_DIR  # noqa: E402
+
 DEFAULT_JSON = DATA_DIR / "videos.json"
 DEFAULT_CSV = DATA_DIR / "videos.csv"
 

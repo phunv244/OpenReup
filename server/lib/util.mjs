@@ -3,7 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { DOWNLOADS_DIR, ROOT, STORY_PROJECTS_DIR } from "../config.mjs";
+import { STORY_PROJECTS_DIR } from "../config.mjs";
+import { lookupDownload, relOfPath } from "./videos.mjs";
 
 export const execFileP = promisify(execFile);
 
@@ -40,14 +41,15 @@ export const validDelogo = (v) => /^(none|top-right|top-left|both-top|\d{1,5},\d
 export const validSubcover = (v) => /^(none|\d{1,5},\d{1,5},\d{1,5},\d{1,5})$/.test(String(v));
 export const validModelId = (v) => /^[a-z0-9.-]{1,40}$/.test(String(v));
 
-/** Chỉ chấp nhận file nằm trong downloads/ (chống ../). Trả về đường dẫn tuyệt đối hoặc "". */
-export function resolveDownload(rel) {
-  const resolved = path.resolve(ROOT, String(rel || ""));
-  return resolved.startsWith(DOWNLOADS_DIR + path.sep) ? resolved : "";
-}
+/**
+ * rel_path "downloads/..." → đường dẫn thật (bố cục mới qua chỉ mục video.json, không có thì downloads/ cũ).
+ * Chỉ chấp nhận khóa nằm trong downloads/ (chống ../). Trả về đường dẫn tuyệt đối hoặc "".
+ * Cần biết file là nguồn hay bản xuất thì dùng lookupDownload (lib/videos.mjs).
+ */
+export const resolveDownload = (rel) => lookupDownload(rel)?.abs || "";
 
-/** Đường dẫn tương đối kiểu "downloads/bilibili/x.mp4" (khóa trong video_projects.json). */
-export const relOf = (full) => path.relative(ROOT, full).split(path.sep).join("/");
+/** Đường dẫn thật → rel_path kiểu "downloads/bilibili/x.mp4" (khóa trong video_projects.json), cả ở bố cục mới. */
+export const relOf = (full) => relOfPath(full);
 
 export const projectFile = (id) => path.join(STORY_PROJECTS_DIR, `${path.basename(String(id || ""))}.json`);
 
@@ -58,3 +60,6 @@ export function projectIdOf(body) {
 }
 
 export const nowIso = () => new Date().toISOString().slice(0, 19);
+
+/** Đường dẫn trả cho model: tuyệt đối (mở file) + tương đối (truyền lại vào hàm khác) + url xem trên Studio. */
+export const fileInfo = (abs) => ({ path: abs, rel_path: relOf(abs), url: "/" + relOf(abs).split("/").map(encodeURIComponent).join("/") });

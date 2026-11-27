@@ -17,8 +17,9 @@ import urllib.request
 from pathlib import Path
 from typing import Dict, List, Optional
 
-BASE_DIR = Path(__file__).resolve().parent
-MODELS_DIR = BASE_DIR / "data" / "asr_models"
+from reup_paths import DATA_DIR  # noqa: E402
+
+MODELS_DIR = DATA_DIR / "asr_models"
 SHERPA_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
 VAD_FILE = "silero_vad.onnx"
 
@@ -91,7 +92,7 @@ VAD_CATALOG: List[Dict] = [
     },
 ]
 VAD_BY_ID = {v["id"]: v for v in VAD_CATALOG}
-SETTINGS_JSON = BASE_DIR / "data" / "asr_settings.json"
+SETTINGS_JSON = DATA_DIR / "asr_settings.json"
 FIRERED_VAD_DIR = MODELS_DIR / "FireRedVAD" / "VAD"
 
 

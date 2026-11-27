@@ -1,11 +1,13 @@
-/** Dựng app trên thư mục data tạm (REUP_DATA_DIR) — không bao giờ chạm data/ thật. Gọi trước mọi import của server. */
+/** Dựng app trên thư mục tạm (REUP_DATA_DIR + REUP_MEDIA_ROOT) — không bao giờ chạm data/ hay downloads/ thật. Gọi trước mọi import của server. */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 export async function setupApp(env = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "reup-test-"));
-  Object.assign(process.env, { REUP_DATA_DIR: dir }, env);
+  // Cả data/ lẫn downloads/ (video nguồn, bản xuất downloads/dubbed) đều nằm trong thư mục tạm.
+  // AGY_BIN mặc định trỏ tới file không có: test không bao giờ gọi agy thật trên máy (CI không cài agy).
+  Object.assign(process.env, { REUP_DATA_DIR: dir, REUP_MEDIA_ROOT: dir, AGY_BIN: path.join(dir, "khong-co-agy") }, env);
   const { buildApp } = await import("../app.mjs");
   const { db } = await import("../lib/db.mjs");
   const app = await buildApp();

@@ -119,17 +119,13 @@ function listingOrder(functions) {
   return out;
 }
 
-/** functions: mọi hàm do các module khai (ctx.functions() của loader). */
-export default async function functionRoutes(app, functions) {
+/** functions: mọi hàm do các module khai (ctx.functions() của loader); listen: ctx.listen (gỡ bộ nghe khi app đóng). */
+export default async function functionRoutes(app, functions, listen) {
   const BY_NAME = new Map(functions.map((f) => [f.name, f]));
   const LISTED = listingOrder(functions);
   // Nghe tác vụ nền để chốt kết quả lần gọi; gỡ khi app đóng (dựng lại app trong cùng tiến trình không chồng bộ nghe).
-  taskEvents.on("start", onTaskStart);
-  taskEvents.on("end", onTaskEnd);
-  app.addHook("onClose", async () => {
-    taskEvents.off("start", onTaskStart);
-    taskEvents.off("end", onTaskEnd);
-  });
+  listen(taskEvents, "start", onTaskStart);
+  listen(taskEvents, "end", onTaskEnd);
   // Server bị tắt giữa chừng: các lần gọi còn "đang chạy" không bao giờ có kết quả nữa.
   stopOrphans();
 

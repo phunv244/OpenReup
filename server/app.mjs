@@ -28,7 +28,7 @@ export const MODULES = [
   dubModule,
   aiModule,
   // /api/functions: dựng từ hàm do mọi module khai (ctx.functions()), thứ tự theo FUNCTIONS trong routes/functions.mjs.
-  { name: "functions", routes: (app, ctx) => functionRoutes(app, ctx.functions()) },
+  { name: "functions", routes: (app, ctx) => functionRoutes(app, ctx.functions(), ctx.listen) },
 ];
 
 export async function buildApp({ logger = false } = {}) {

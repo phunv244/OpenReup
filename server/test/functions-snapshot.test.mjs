@@ -43,7 +43,7 @@ test("routes/functions.mjs chỉ còn chỗ giữ; chỗ giữ của module chư
   const warn = console.warn;
   console.warn = (msg) => warned.push(String(msg));
   try {
-    await functionRoutes(lone, own);
+    await functionRoutes(lone, own, () => {});
   } finally {
     console.warn = warn;
   }

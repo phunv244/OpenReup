@@ -5,9 +5,8 @@ import { Options } from "@/components/ui";
 import { Project } from "@/lib/api";
 import { useStudio } from "@/lib/studio";
 import { voiceOptions } from "@/lib/voices";
+import { OriginalAudioSlider } from "./OriginalAudioSlider";
 import type { DubDetail } from "./useDubDetail";
-
-const BG_OPTIONS: [string, string][] = [["0", "Tắt hẳn"], ["0.05", "5% — rất nhỏ"], ["0.12", "12% — rõ tiếng động nền"]];
 
 export function VoicePane({ s, proj }: { s: DubDetail; proj: Project | undefined }) {
   const { voices } = useStudio();
@@ -56,12 +55,12 @@ export function VoicePane({ s, proj }: { s: DubDetail; proj: Project | undefined
           <div className="help">Giọng đổi ở đây chỉ áp dụng cho video này. Giọng chung của dự án đặt trong Ngữ cảnh AI → Thông tin.</div>
         </div>
       )}
-      <div className="field">
-        <label htmlFor="dt-bg">Âm thanh gốc làm nền</label>
-        <select id="dt-bg" className="select" value={bg} onChange={(e) => setBg(e.target.value)}>
-          <Options list={BG_OPTIONS.some(([v]) => Number(v) === Number(bg)) ? BG_OPTIONS : [...BG_OPTIONS, [bg, `${Math.round(Number(bg) * 100)}%`]]} />
-        </select>
-      </div>
+      <OriginalAudioSlider
+        id="dt-bg"
+        label="Âm thanh gốc làm nền"
+        valuePct={Math.round(Number(bg || 0) * 100)}
+        onChangePct={(pct) => setBg(String(Number((pct / 100).toFixed(2))))}
+      />
     </>
   );
 }

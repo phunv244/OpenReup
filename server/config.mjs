@@ -74,6 +74,8 @@ export const MEDIA_ROOT = process.env.REUP_MEDIA_ROOT ? path.resolve(process.env
 export const DOWNLOADS_DIR = path.join(MEDIA_ROOT, "downloads");
 export const BILIBILI_DIR = path.join(DOWNLOADS_DIR, "bilibili");
 export const DUBBED_DIR = path.join(DOWNLOADS_DIR, "dubbed");
+export const THREADS_DIR = path.join(DOWNLOADS_DIR, "threads");
+export const THREADS_CLI = process.env.REUP_THREADS_CLI || path.join(ROOT, "packages", "threads", "dist", "cli.js");
 // REUP_PYTHON: chỉ dùng cho test (thay python bằng script giả), mặc định là .venv của repo.
 export const VENV_PYTHON = process.env.REUP_PYTHON || path.join(ROOT, ".venv", "bin", "python");
 // Script Python mà server gọi — chỗ duy nhất khai đường dẫn (pipeline/ của DevAI đổi ở đây, không sửa module).

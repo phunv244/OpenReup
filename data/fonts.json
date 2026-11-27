@@ -58,5 +58,35 @@
     "original_name": "Roboto.ttf",
     "size_kb": 477,
     "created_at": "2026-11-25T08:55:24"
+  },
+  {
+    "id": "barlow-condensed-extrabold-italic",
+    "file": "barlow-condensed-extrabold-italic.ttf",
+    "family": "Barlow Condensed",
+    "style": "ExtraBold Italic",
+    "vi": true,
+    "original_name": "BarlowCondensed-ExtraBoldItalic.ttf",
+    "size_kb": 110,
+    "created_at": "2026-11-27T22:10:38"
+  },
+  {
+    "id": "anton-regular",
+    "file": "anton-regular.ttf",
+    "family": "Anton",
+    "style": "Regular",
+    "vi": true,
+    "original_name": "Anton-Regular.ttf",
+    "size_kb": 167,
+    "created_at": "2026-11-27T22:12:54"
+  },
+  {
+    "id": "barlow-condensed-bold",
+    "file": "barlow-condensed-bold.ttf",
+    "family": "Barlow Condensed",
+    "style": "Bold",
+    "vi": true,
+    "original_name": "BarlowCondensed-Bold.ttf",
+    "size_kb": 107,
+    "created_at": "2026-11-27T22:12:54"
   }
 ]

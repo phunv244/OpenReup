@@ -160,9 +160,14 @@ def build_audio(
     audio_list = build_audio_parts(job, segments, tts, duration + 0.5, prog)
     dub_in = ["-f", "concat", "-safe", "0", "-i", str(audio_list)]
     if bg_volume > 0.001 and has_orig_audio:
+        orig_chain = (
+            f"volume={bg_volume:.3f},alimiter=limit=0.891:attack=5:release=50:level=disabled"
+            if bg_volume > 1.0
+            else f"volume={bg_volume:.3f}"
+        )
         cmd = ["-i", str(input_mp4)] + dub_in + [
             "-filter_complex",
-            f"[0:a:0]volume={bg_volume:.3f}[bg];[1:a]volume=1.35[vo];"
+            f"[0:a:0]{orig_chain}[bg];[1:a]volume=1.35[vo];"
             f"[bg][vo]amix=inputs=2:duration=first:dropout_transition=0[aout]",
             "-map", "[aout]",
         ]

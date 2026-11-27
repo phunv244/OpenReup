@@ -44,6 +44,7 @@ export const FUNCTIONS = [
   { slot: "resources" }, // create_voice, update_voice, delete_voice, download_asr_model, delete_font, list_options: server/modules/resources/functions.mjs
   { slot: "tasks" }, // get_task, stop_task, get_call, list_calls: server/modules/tasks/functions.mjs
   { slot: "ai" }, // refresh_ai_models: server/modules/ai/functions.mjs
+  { slot: "threads" }, // threads_video_pipeline, threads_reup_pipeline, threads_scrape_post, threads_list_jobs: server/modules/threads/functions.mjs
 ];
 
 const pending = new Map(); // task_id -> {callId, def, args}

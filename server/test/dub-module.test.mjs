@@ -7,10 +7,12 @@ import { after, test } from "node:test";
 import { seedJob, setupApp } from "./helpers.mjs";
 
 // Python giả: ghi lại tham số dòng lệnh rồi ngủ FAKE_SLEEP giây (để có 1 tác vụ lồng tiếng "đang chạy").
+// Ghi ra file tạm rồi mv (đổi tên là nguyên tử): `>` tạo file rỗng trước khi printf ghi, nếu ghi thẳng
+// thì startRerender có thể thấy file đã tồn tại nhưng còn rỗng/dở và đọc ra tham số rỗng.
 const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "reup-fakepy-"));
 const fakePy = path.join(binDir, "fakepy");
 const argsFile = path.join(binDir, "args.txt");
-fs.writeFileSync(fakePy, `#!/bin/sh\nprintf '%s\\n' "$@" > "${argsFile}"\nexec sleep "\${FAKE_SLEEP:-0}"\n`, { mode: 0o755 });
+fs.writeFileSync(fakePy, `#!/bin/sh\nprintf '%s\\n' "$@" > "${argsFile}.tmp" && mv "${argsFile}.tmp" "${argsFile}"\nexec sleep "\${FAKE_SLEEP:-0}"\n`, { mode: 0o755 });
 
 // setupApp trước mọi import của server: config.mjs đọc REUP_DATA_DIR lúc nạp.
 const { app, db, dir, cleanup } = await setupApp({ REUP_PYTHON: fakePy });

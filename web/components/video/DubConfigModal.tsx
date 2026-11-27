@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { DubParams, SubStyle } from "@/lib/api";
 import { asrTag, pickModel } from "@/lib/asr";
-import { fmtHours, projHref } from "@/lib/format";
+import { fmtHours } from "@/lib/format";
 import { useStudio } from "@/lib/studio";
 import { voiceOptions } from "@/lib/voices";
 import { Icon } from "../Icon";

@@ -5,7 +5,7 @@ import { Topbar } from "@/components/Shell";
 import { useToast } from "@/components/Toasts";
 import { Callout, Seg } from "@/components/ui";
 import { VoiceLibrary } from "@/components/VoiceLibrary";
-import { FontInfo, postJSON } from "@/lib/api";
+import { FontInfo, postJSON, uploadFile } from "@/lib/api";
 import { useStudio } from "@/lib/studio";
 
 type Tab = "fonts" | "voices";
@@ -70,8 +70,7 @@ export default function ResourcesPage() {
         toast(`${file.name}: chỉ nhận file ${EXTS.join(", ")}`, "error");
         continue;
       }
-      const res = await fetch(`/api/fonts/upload?name=${encodeURIComponent(file.name)}`, { method: "POST", body: file });
-      const d = await res.json().catch(() => ({}));
+      const d = await uploadFile<{ font: FontInfo }>(`/api/fonts/upload?name=${encodeURIComponent(file.name)}`, file);
       if (!d.ok) {
         toast(`${file.name}: ${d.error || "không tải lên được"}`, "error");
         continue;

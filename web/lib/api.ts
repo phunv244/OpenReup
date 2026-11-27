@@ -7,19 +7,48 @@ export async function getJSON<T = unknown>(url: string): Promise<T> {
   return res.json();
 }
 
+const AUTH_ERROR = "Máy chủ đang bật token (REUP_API_TOKEN) — giao diện chưa được cấp quyền ghi. Chạy server ở localhost hoặc mở qua đường có token.";
+
+/** Đọc JSON trả về, gắn thông báo lỗi tiếng Việt khi server không tự ghi `error`. */
+async function readResult<T>(res: Response): Promise<T & ApiResult> {
+  let data = {} as T & ApiResult;
+  try {
+    data = await res.json();
+  } catch {}
+  if (res.status === 401) data.error = AUTH_ERROR;
+  else if (!res.ok && !data.error) data.error = `Lỗi máy chủ (HTTP ${res.status})`;
+  return data;
+}
+
 export async function postJSON<T = ApiResult>(url: string, body: unknown = {}): Promise<T & ApiResult> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  let data = {} as T & ApiResult;
-  try {
-    data = await res.json();
-  } catch {}
-  if (res.status === 401) data.error = "Máy chủ đang bật token (REUP_API_TOKEN) — giao diện chưa được cấp quyền ghi. Chạy server ở localhost hoặc mở qua đường có token.";
-  else if (!res.ok && !data.error) data.error = `Lỗi máy chủ (HTTP ${res.status})`;
-  return data;
+  return readResult<T>(res);
+}
+
+/** Tải 1 file lên (thân request là nội dung file thô, tên/đuôi nằm trong query của `url`). */
+export async function uploadFile<T = ApiResult>(url: string, file: Blob): Promise<T & ApiResult> {
+  const res = await fetch(url, { method: "POST", body: file });
+  return readResult<T>(res);
+}
+
+/** Lấy dữ liệu nhị phân (ảnh khung hình, âm thanh). Có `body` thì gửi POST JSON. Lỗi thì ném Error có thông báo của server;
+ *  hủy bằng `signal` thì ném AbortError như fetch. */
+export async function getBlob(url: string, opts: { body?: unknown; signal?: AbortSignal; fallbackError?: string } = {}): Promise<Blob> {
+  const res = await fetch(
+    url,
+    opts.body === undefined
+      ? { signal: opts.signal }
+      : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(opts.body), signal: opts.signal }
+  );
+  if (!res.ok) {
+    const d = await readResult(res);
+    throw new Error(res.status === 401 ? AUTH_ERROR : d.error && !/^Lỗi máy chủ/.test(d.error) ? d.error : opts.fallbackError || d.error);
+  }
+  return res.blob();
 }
 
 /** "downloads/bilibili/a b.mp4" -> "/downloads/bilibili/a%20b.mp4" */

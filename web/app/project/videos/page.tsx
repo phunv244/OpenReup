@@ -6,13 +6,13 @@ import { PlayerModal } from "@/components/Modal";
 import { ProjectTopbar } from "@/components/ProjectTopbar";
 import { ProgressBar } from "@/components/TaskCard";
 import { useToast } from "@/components/Toasts";
-import { EmptyState, Menu, Metric, Seg } from "@/components/ui";
+import { EmptyState, Menu, Seg } from "@/components/ui";
 import { AddVideoModal } from "@/components/video/AddVideoModal";
 import { DubConfigModal } from "@/components/video/DubConfigModal";
 import { WorkItem, buildWorkItems } from "@/components/video/items";
 import { DeleteVideoModal, DelogoModal, MoveVideoModal } from "@/components/video/SmallModals";
 import { dubFileUrl, postJSON } from "@/lib/api";
-import { fmtDur, fmtHours, fmtSize, projHref } from "@/lib/format";
+import { fmtDur, fmtSize, projHref } from "@/lib/format";
 import { useProjectId } from "@/lib/project";
 import { useStudio } from "@/lib/studio";
 
@@ -110,7 +110,6 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
           )}
           {!d && !j && <span className="badge gray">Chưa lồng tiếng</span>}
           {d?.untranslated ? <span className="badge amber">{d.untranslated} câu chưa dịch</span> : null}
-          {(v.delogo !== "none" || (d?.delogo && d.delogo !== "none")) && <span className="badge blue">Đã xóa logo</span>}
           {qi >= 0 && (
             <span className="badge gray">
               <Icon name="clock" size={13} /> Trong hàng đợi · thứ {qi + 1}
@@ -199,7 +198,7 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
 
 export default function VideosPage() {
   const pid = useProjectId();
-  const { sources, dubbed, bili, system, task } = useStudio();
+  const { sources, dubbed, bili, task } = useStudio();
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -208,8 +207,8 @@ export default function VideosPage() {
   const items = buildWorkItems(sources, dubbed, bili, pid);
   const count = { all: items.length, new: 0, partial: 0, dubbed: 0 };
   items.forEach((v) => count[v.status]++);
-  const totalSec = items.reduce((a, v) => a + Number(v.duration_sec || 0), 0);
-  const totalMb = items.reduce((a, v) => a + Number(v.size_mb || 0), 0);
+  // Chỉ có 1 trạng thái (vd. mọi video đều đã lồng tiếng) thì tab lọc vô nghĩa: ẩn đi.
+  const showTabs = (["new", "partial", "dubbed"] as const).filter((k) => count[k] > 0).length > 1 || filter !== "all";
   const needle = q.trim().toLowerCase();
   const shown = items.filter(
     (v) => (filter === "all" || v.status === filter) && (!needle || v.title.toLowerCase().includes(needle) || v.name.toLowerCase().includes(needle))
@@ -220,22 +219,22 @@ export default function VideosPage() {
     <>
       <ProjectTopbar title="Video & Lồng tiếng" sub="Tải video, dịch theo ngữ cảnh dự án và lồng tiếng Việt" />
       <main className="content">
-        <div className="metrics">
-          <Metric icon="film" label="Video nguồn" value={items.length} sub={totalSec ? `Tổng ${fmtHours(totalSec)}` : ""} tone="blue" />
-          <Metric icon="mic" label="Đã lồng tiếng" value={count.dubbed} sub={count.partial ? `${count.partial} video đang dở` : ""} tone="green" />
-          <Metric icon="disk" label="Dung lượng video" value={fmtSize(totalMb)} sub={`Ổ còn trống ${system.free_gb || 0} GB`} tone="violet" />
-        </div>
         <div className="toolbar ws-toolbar">
-          <Seg<Filter>
-            value={filter}
-            onChange={setFilter}
-            items={[
-              { v: "all", label: "Tất cả ", count: count.all },
-              { v: "new", label: "Chưa làm ", count: count.new },
-              { v: "partial", label: "Đang dở ", count: count.partial },
-              { v: "dubbed", label: "Đã lồng tiếng ", count: count.dubbed },
-            ]}
-          />
+          {showTabs && (
+            <Seg<Filter>
+              value={filter}
+              onChange={setFilter}
+              label="Lọc theo trạng thái"
+              items={(
+                [
+                  ["all", "Tất cả "],
+                  ["new", "Chưa làm "],
+                  ["partial", "Đang dở "],
+                  ["dubbed", "Đã lồng tiếng "],
+                ] as [Filter, string][]
+              ).map(([v, label]) => ({ v, label, count: count[v], disabled: v !== "all" && !count[v] && filter !== v }))}
+            />
+          )}
           <input className="input" type="search" placeholder="Tìm video theo tên..." aria-label="Tìm video" value={q} onChange={(e) => setQ(e.target.value)} />
           <button className="btn btn-primary" type="button" onClick={() => setDialog({ kind: "add" })}>
             <Icon name="plus" size={16} /> Thêm video

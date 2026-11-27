@@ -73,10 +73,13 @@ export function DubScript({ jobId, video, speakers, edits, setEdits, spk, setSpk
           aria-label="Tìm câu thoại"
           onChange={(e) => setQ({ ...q, text: e.target.value, offset: 0 })}
         />
-        <label className="check" title="Chỉ hiện câu chưa có lời Việt">
-          <input type="checkbox" onChange={(e) => setQ({ ...q, only: e.target.checked ? "empty" : "", offset: 0 })} /> Chưa dịch{" "}
-          <span className="cnt">{page?.empty ?? 0}</span>
-        </label>
+        {/* Bộ lọc chỉ có ích khi còn câu chưa dịch (hoặc đang bật). */}
+        {(page?.empty || q.only === "empty") && (
+          <label className="check" title="Chỉ hiện câu chưa có lời Việt">
+            <input type="checkbox" checked={q.only === "empty"} onChange={(e) => setQ({ ...q, only: e.target.checked ? "empty" : "", offset: 0 })} /> Chưa dịch{" "}
+            <span className="cnt">{page?.empty ?? 0}</span>
+          </label>
+        )}
       </div>
       <div className="line-list" ref={table} role="list" aria-label="Danh sách câu thoại">
         {!page ? (

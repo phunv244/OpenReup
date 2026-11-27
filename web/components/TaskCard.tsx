@@ -36,10 +36,27 @@ export function ProgressBar({ task, steps = true }: { task: TaskState; steps?: b
 }
 
 /** Thẻ tiến trình: ở chân sidebar (gọn), cột phải và đầu trang Nhật ký (đủ các bước). */
+/** Dưới ngưỡng này mới cảnh báo ổ đầy; còn dư thì không hiện số dung lượng. */
+const LOW_DISK_GB = 10;
+
 export function TaskCard({ variant }: { variant: "sidebar" | "rail" | "page" }) {
-  const { task, stopTask } = useStudio();
+  const { task, stopTask, system } = useStudio();
   if (!task) return null;
-  const wrap = (node: React.ReactNode) => <div className="js-task" data-variant={variant}>{node}</div>;
+  const lowDisk = !task.running && system.total_gb > 0 && system.free_gb < LOW_DISK_GB;
+  const wrap = (node: React.ReactNode) => (
+    <div className="js-task" data-variant={variant}>
+      {node}
+      {lowDisk && (
+        <div className="task-card err disk-warn" role="status">
+          <div className="task-head">
+            <Icon name="disk" size={14} />
+            <b>Ổ cứng sắp đầy · còn {system.free_gb} GB</b>
+          </div>
+          <div className="task-result">Xóa cache hoặc video cũ trước khi lồng tiếng tiếp.</div>
+        </div>
+      )}
+    </div>
+  );
 
   if (task.running) {
     return wrap(

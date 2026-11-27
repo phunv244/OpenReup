@@ -5,7 +5,7 @@ import { Icon } from "@/components/Icon";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toasts";
 import { Callout, Options, Seg } from "@/components/ui";
-import { Voice, postJSON } from "@/lib/api";
+import { Voice, postJSON, uploadFile } from "@/lib/api";
 import { fmtDur } from "@/lib/format";
 import { useStudio } from "@/lib/studio";
 import { DEFAULT_PREVIEW_TEXT, GENDER_LABEL, playVoiceUrl } from "@/lib/voices";
@@ -121,8 +121,7 @@ function CloneVoiceModal({ onClose }: { onClose: () => void }) {
       if (src === "upload" && file) {
         setStep("upload");
         const ext = (file.name.split(".").pop() || "").toLowerCase();
-        const res = await fetch(`/api/voices/upload?ext=${encodeURIComponent(ext)}`, { method: "POST", body: file });
-        const up = await res.json().catch(() => ({}));
+        const up = await uploadFile<{ token: string }>(`/api/voices/upload?ext=${encodeURIComponent(ext)}`, file);
         if (!up.ok) throw new Error(up.error || "Không tải được file lên");
         Object.assign(body, { upload: up.token, upload_name: file.name });
       } else if (src === "url") body.url = f.url.trim();

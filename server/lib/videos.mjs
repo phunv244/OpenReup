@@ -13,9 +13,11 @@
  * Job: jobs/<job_id>/{project.json, work/, out/<job_id>.mp4|.srt}; bản xuất có rel_path "downloads/dubbed/<job_id>.mp4|.srt".
  * Job mồ côi (mất nguồn): _orphan/jobs/<job_id>/, không có video.json. Thư mục khác bắt đầu bằng "_" bị bỏ qua.
  *
- * Chỉ mục giữ trong bộ nhớ. Mỗi lần tra so "chữ ký" (tên thư mục video + ino/mtime/size của từng video.json,
- * danh sách _orphan/jobs): đổi thì dựng lại. Ghi video.json thì dùng writeVideoJson (file tạm rồi rename: ino mới,
- * không ai đọc được file ghi dở, và tự làm mới chỉ mục). Không ghi đè tại chỗ bằng writeFileSync.
+ * Chỉ mục giữ trong bộ nhớ. Quá INDEX_TTL_MS kể từ lần kiểm trước thì so "chữ ký" (tên thư mục video +
+ * ino/mtime/size của từng video.json, danh sách _orphan/jobs): đổi thì dựng lại. Trong khoảng đó mọi lần tra
+ * dùng lại chỉ mục, không đọc đĩa (một request /api/sources tra hàng trăm file chỉ kiểm chữ ký một lần).
+ * Ghi video.json thì dùng writeVideoJson (file tạm rồi rename: không ai đọc được file ghi dở, và làm mới chỉ mục
+ * ngay). Chỗ nào ghi data/videos/ bằng cách khác (sửa tay, tiến trình khác) thì thấy được sau tối đa INDEX_TTL_MS.
  *
  * Symlink: đường dẫn trả ra phải nằm thật (đã giải symlink) trong source/ hoặc out/ của chính video/job đó,
  * hay trong downloads/ ở bố cục cũ; trỏ ra ngoài thì coi như không có (null).
@@ -28,7 +30,10 @@ const ORPHAN = "_orphan";
 const OUT_EXTS = [".mp4", ".srt"];
 const JOB_ID_RE = /^[0-9A-Za-z_-]+$/;
 
-let cache = null; // { sig, byRel, byAbs, jobs }
+/** Thời gian dùng lại chỉ mục mà không kiểm chữ ký trên đĩa. */
+export const INDEX_TTL_MS = 1000;
+
+let cache = null; // { sig, at, realVideos, byRel, byAbs, jobs }
 
 const inside = (dir, p) => p.startsWith(dir + path.sep);
 
@@ -51,7 +56,7 @@ const realInside = (root, p) => inside(realish(root), realish(p));
 const toRel = (abs) => path.relative(MEDIA_ROOT, abs).split(path.sep).join("/");
 
 function emptyIndex(sig) {
-  return { sig, byRel: new Map(), byAbs: new Map(), jobs: new Map() };
+  return { sig, at: 0, realVideos: realish(VIDEOS_DIR), byRel: new Map(), byAbs: new Map(), jobs: new Map() };
 }
 
 function addJob(idx, videoDir, key, jobId) {
@@ -140,10 +145,16 @@ function signature(names) {
 }
 
 function index() {
+  const now = Date.now();
+  if (cache && now - cache.at < INDEX_TTL_MS) return cache;
   const names = readdir(VIDEOS_DIR); // null: chưa có data/videos/, chỉ có bố cục cũ
   const sig = signature(names);
-  if (cache?.sig === sig) return cache;
+  if (cache?.sig === sig) {
+    cache.at = now;
+    return cache;
+  }
   const idx = emptyIndex(sig);
+  idx.at = now;
   if (names) {
     // Thứ tự quét cố định (sắp tên) để khi trùng thì luôn giữ cùng một bản.
     for (const name of names) if (!name.startsWith("_")) addVideo(idx, name);
@@ -179,10 +190,11 @@ export const videoJobs = () => [...index().jobs.values()].map((j) => ({ ...j }))
 export function lookupDownload(rel) {
   const resolved = path.resolve(MEDIA_ROOT, String(rel || ""));
   if (!inside(DOWNLOADS_DIR, resolved)) return null;
-  const hit = index().byRel.get(toRel(resolved));
+  const idx = index();
+  const hit = idx.byRel.get(toRel(resolved));
   if (hit) {
     // Mọi thư mục từ data/videos xuống source/ hay out/ phải là thư mục thật (không symlink), và file nằm thật trong đó.
-    const root = path.join(realish(VIDEOS_DIR), path.relative(VIDEOS_DIR, hit.root));
+    const root = path.join(idx.realVideos, path.relative(VIDEOS_DIR, hit.root));
     return inside(root, realish(hit.abs)) ? { abs: hit.abs, kind: hit.kind, key: hit.key, job_id: hit.job_id } : null;
   }
   if (!realInside(DOWNLOADS_DIR, resolved)) return null; // symlink trong downloads/ trỏ ra ngoài

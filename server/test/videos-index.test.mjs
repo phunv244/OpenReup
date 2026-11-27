@@ -9,7 +9,8 @@ const { app, dir, cleanup } = await setupApp();
 after(cleanup);
 const { VIDEOS_DIR, DATA_DIR } = await import("../config.mjs");
 const await_import = await import("../lib/videos.mjs");
-const { lookupDownload, jobPaths, reloadVideoIndex } = await_import;
+const { lookupDownload, jobPaths, reloadVideoIndex, INDEX_TTL_MS } = await_import;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const { resolveDownload, relOf } = await import("../lib/util.mjs");
 
 const put = (file, body = "x") => {
@@ -83,14 +84,13 @@ test("bố cục mới: rel_path ↔ đường dẫn thật, job → {project, w
   assert.equal(relOf(OLD_OUT), "downloads/dubbed/dub_BVold_p1_a_0p5x.mp4");
 });
 
-test("thêm video mới (mtime data/videos đổi) thì chỉ mục tự đọc lại; video.json hỏng/sai bị bỏ qua, không lọt ra ngoài source/", () => {
+test("thêm video mới thì chỉ mục đọc lại; video.json hỏng/sai bị bỏ qua, không lọt ra ngoài source/", () => {
   const warned = [];
   const warn = console.warn;
   console.warn = (m) => warned.push(String(m));
   try {
     put(path.join(VIDEOS_DIR, "douyin-123", "video.json"), { key: "douyin-123", files: { "downloads/123.mp4": "source/123.mp4" }, jobs: [] });
-    // Thêm thư mục đổi mtime của data/videos/ ở cùng mili giây với lần trước thì không thấy: ép mtime khác.
-    fs.utimesSync(VIDEOS_DIR, new Date(), new Date(Date.now() + 5000));
+    reloadVideoIndex(); // ghi không qua writeVideoJson: tự thấy sau INDEX_TTL_MS (test "chỉ mục không bị cũ"), ở đây làm mới ngay
     assert.equal(resolveDownload("downloads/123.mp4"), path.join(VIDEOS_DIR, "douyin-123", "source", "123.mp4"));
 
     put(path.join(VIDEOS_DIR, "hong", "video.json"), "{không phải json");
@@ -156,21 +156,50 @@ test("symlink trỏ ra ngoài source/ hoặc downloads/ bị từ chối (realpa
   assert.equal(resolveDownload("downloads/chua-co.mp4"), path.join(v, "source", "chua-co.mp4"));
 });
 
-test("chỉ mục không bị cũ: mkdir thư mục video trước rồi mới ghi video.json (kể cả ghi tại chỗ, không rename) vẫn thấy ngay", () => {
+test("chỉ mục không bị cũ: mkdir thư mục video trước rồi mới ghi video.json tại chỗ thì thấy sau INDEX_TTL_MS; writeVideoJson thấy ngay", async () => {
   const v = path.join(VIDEOS_DIR, "douyin-999");
   fs.mkdirSync(v, { recursive: true });
   assert.equal(resolveDownload("downloads/999.mp4"), path.join(dir, "downloads", "999.mp4")); // chỉ mục đã dựng, chưa có video.json
   fs.writeFileSync(path.join(v, "video.json"), JSON.stringify({ key: "douyin-999", files: { "downloads/999.mp4": "source/999.mp4" }, jobs: [] }));
+  await sleep(INDEX_TTL_MS + 50);
   assert.equal(resolveDownload("downloads/999.mp4"), path.join(v, "source", "999.mp4"));
   // Sửa video.json đã có bằng writeVideoJson: thêm job, thấy ngay.
   const { writeVideoJson } = await_import;
   writeVideoJson("douyin-999", { key: "douyin-999", files: { "downloads/999.mp4": "source/999.mp4" }, jobs: ["dub_999_0p5x"] });
   assert.equal(jobPaths("dub_999_0p5x").key, "douyin-999");
-  // Job mồ côi mới thêm cũng thấy ngay.
+  // Job mồ côi mới thêm (không qua writeVideoJson) thấy sau INDEX_TTL_MS.
   fs.mkdirSync(path.join(VIDEOS_DIR, "_orphan", "jobs", "dub_moi_0p5x"), { recursive: true });
+  await sleep(INDEX_TTL_MS + 50);
   assert.equal(jobPaths("dub_moi_0p5x").key, "_orphan");
   // Không có thư mục tạm/file .tmp sót lại; key sai thì từ chối ghi.
   assert.deepEqual(fs.readdirSync(v), ["video.json"]);
   assert.throws(() => writeVideoJson("../x", { key: "../x" }), /video_key không hợp lệ/);
   assert.throws(() => writeVideoJson("_orphan", { key: "_orphan" }), /video_key không hợp lệ/);
+});
+
+test("hiệu năng: 300 video, 300 lần relOf + lookupDownload chỉ kiểm chữ ký trên đĩa một lần trong INDEX_TTL_MS", () => {
+  for (let i = 0; i < 300; i++) {
+    const key = `perf-${i}`;
+    put(path.join(VIDEOS_DIR, key, "source", `${i}.mp4`));
+    put(path.join(VIDEOS_DIR, key, "video.json"), { key, files: { [`downloads/perf/${i}.mp4`]: `source/${i}.mp4` }, jobs: [`dub_perf_${i}_0p5x`] });
+  }
+  reloadVideoIndex();
+  assert.equal(jobPaths("dub_perf_0_0p5x").key, "perf-0"); // dựng chỉ mục một lần
+  const stat = fs.statSync;
+  let stats = 0;
+  fs.statSync = (...a) => (stats++, stat(...a));
+  const t0 = performance.now();
+  try {
+    for (let n = 0; n < 300; n++) {
+      const i = n % 300;
+      const hit = lookupDownload(`downloads/perf/${i}.mp4`);
+      assert.equal(hit.key, `perf-${i}`);
+      assert.equal(relOf(hit.abs), `downloads/perf/${i}.mp4`);
+    }
+  } finally {
+    fs.statSync = stat;
+  }
+  const ms = performance.now() - t0;
+  assert.equal(stats, 0, "không stat từng video.json mỗi lần tra");
+  assert.ok(ms < 200, `300 lần tra mất ${ms.toFixed(0)} ms`);
 });

@@ -107,7 +107,7 @@ function VadRow({ v }: { v: VadModel }) {
 export default function ModelsPage() {
   const { asr, loaded } = useStudio();
   const g = asr.gpu;
-  const top = <Topbar title="Mô hình nhận diện" sub="Mô hình nghe lời thoại tiếng Trung — tải về và chọn khi lồng tiếng" />;
+  const top = <Topbar title="Mô hình nhận diện" />;
   // Chưa tải xong thì chưa biết có GPU / có mô hình hay không: không hiện cảnh báo hay lỗi sớm.
   if (!loaded) return top;
   return (

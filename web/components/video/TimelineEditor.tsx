@@ -90,6 +90,20 @@ export function TimelineEditor({ jobId, video, speakers, edits, setEdits, spk, s
     if (!el) return;
     el.paused ? el.play() : el.pause();
   };
+  // Phím cách = phát/dừng ở mọi chỗ trên trang, trừ khi đang gõ chữ hoặc đang đứng trên một nút/ô chọn.
+  const toggleRef = useRef(togglePlay);
+  toggleRef.current = togglePlay;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest("input, textarea, select, button, a, [contenteditable=true], [role=menu], [role=listbox]")) return;
+      e.preventDefault();
+      toggleRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const clickTrack = (e: React.MouseEvent) => {
     const el = video.current;
     if (drag || !el) return;
@@ -130,7 +144,7 @@ export function TimelineEditor({ jobId, video, speakers, edits, setEdits, spk, s
   return (
     <div className="tl-wrap">
       <div className="tl-toolbar">
-        <button className="btn btn-light btn-sm" type="button" onClick={togglePlay} title="Phát / dừng">
+        <button className="btn btn-light btn-sm" type="button" onClick={togglePlay} title="Phát / dừng (phím cách)" aria-label="Phát / dừng">
           <Icon name={playing ? "pause" : "play"} size={15} />
         </button>
         <span className="tl-time muted">

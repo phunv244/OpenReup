@@ -5,7 +5,7 @@ const STEPS: [string, React.ReactNode][] = [
   ["Tạo dự án", "Mỗi bộ truyện / phim là một dự án. Nhập bối cảnh và nhân vật để AI dịch đúng xưng hô."],
   ["Thêm video", <>Trong dự án, bấm <b>Thêm video</b> và dán link Bilibili / YouTube; hoặc tải từ <b>Kho Douyin</b>.</>],
   ["Lồng tiếng", <>Bấm <b>Lồng tiếng</b> ở video. Máy tự nhận diện lời thoại → dịch → tạo giọng Việt → xuất video.</>],
-  ["Sửa lời & xuất lại", <>Bấm <b>Sửa lời</b>, chỉnh câu chưa ưng rồi xuất lại — chỉ câu và đoạn bị sửa mới phải làm lại.</>],
+  ["Chỉnh & xuất lại", <>Bấm vào video đã lồng tiếng để mở trang chỉnh: sửa câu ở tab <b>Lời thoại</b>, đổi giọng ở <b>Giọng đọc</b>, logo và phụ đề ở <b>Hình &amp; phụ đề</b>, rồi bấm <b>Lưu &amp; chạy lại</b> — chỉ câu và đoạn bị sửa mới phải làm lại.</>],
 ];
 
 const FILES: [string, React.ReactNode][] = [
@@ -23,7 +23,7 @@ const FILES: [string, React.ReactNode][] = [
 export default function HelpPage() {
   return (
     <>
-      <Topbar title="Hướng dẫn" sub="Quy trình làm việc và mẹo xử lý video rất dài" />
+      <Topbar title="Hướng dẫn" />
       <main className="content">
         <div className="cols cols-2">
           <section className="card">
@@ -66,19 +66,19 @@ export default function HelpPage() {
               </details>
               <details className="faq">
                 <summary>Một số câu bị “chưa dịch”?</summary>
-                <p>AI lỗi tạm thời ở vài lô. Mở <b>Sửa lời</b>, tick <b>Chỉ câu chưa dịch</b> để điền tay, hoặc chọn <b>Lồng tiếng lại</b>.</p>
+                <p>AI lỗi tạm thời ở vài lô. Mở video, ở tab <b>Lời thoại</b> tick <b>Chưa dịch</b> để lọc ra và điền tay rồi bấm <b>Lưu &amp; chạy lại</b>; hoặc ở danh sách video chọn <b>⋯ → Lồng tiếng lại</b>.</p>
               </details>
               <details className="faq">
                 <summary>Video Bilibili vẫn còn logo?</summary>
-                <p>Bật <b>Xóa logo khi xuất</b> trong hộp thoại lồng tiếng hoặc <b>Sửa lời</b> (hoặc <b>⋯ → Xóa logo video gốc</b>) rồi kéo chuột quanh đúng logo.</p>
+                <p>Bật <b>Xóa logo khi xuất</b> trong hộp thoại lồng tiếng, hoặc mở video → tab <b>Hình &amp; phụ đề</b> → <b>Xóa logo</b> (hoặc <b>⋯ → Xóa logo video gốc</b>), rồi kéo chuột quanh đúng logo trên khung hình.</p>
               </details>
               <details className="faq">
                 <summary>Đổi font, màu chữ, nền, viền của phụ đề?</summary>
-                <p>Khi lồng tiếng (hoặc ở <b>Sửa lời</b>), mục <b>Kiểu phụ đề Việt</b> → <b>Tùy chỉnh</b>; ảnh xem trước vẽ trên khung hình thật. Font riêng tải lên ở mục <b>Tài nguyên</b> (cần đủ dấu tiếng Việt).</p>
+                <p>Khi lồng tiếng, hoặc mở video → tab <b>Hình &amp; phụ đề</b>: bật <b>In cứng phụ đề Việt</b>, chọn kiểu dựng sẵn hoặc tự chỉnh font, màu chữ, viền, nền; xem trước ngay trên khung hình. Font riêng tải lên ở mục <b>Tài nguyên</b> (cần đủ dấu tiếng Việt).</p>
               </details>
               <details className="faq">
                 <summary>Phụ đề Việt đè lên chữ Trung?</summary>
-                <p>Bật <b>Che phụ đề gốc</b> khi lồng tiếng (hoặc trong <b>Sửa lời</b>) rồi khoanh vùng chữ Trung: vùng đó được làm mờ và phụ đề Việt hiện ngay trong khung.</p>
+                <p>Bật <b>Che phụ đề gốc</b> khi lồng tiếng (hoặc ở tab <b>Hình &amp; phụ đề</b> của video) rồi khoanh vùng chữ Trung: vùng đó được làm mờ và phụ đề Việt hiện ngay trong khung.</p>
               </details>
               <details className="faq">
                 <summary>Nhận diện sót câu nói nhỏ / thì thầm?</summary>

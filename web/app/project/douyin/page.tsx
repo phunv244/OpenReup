@@ -25,11 +25,11 @@ export default function DouyinPage() {
   const busy = task?.running && (task.task_type === "scan_web" || task.task_type === "download");
   return (
     <>
-      <Topbar title="Kho Douyin" sub={tab[2]} />
+      <Topbar title="Kho Douyin" />
       <main className="content">
         <nav className="page-tabs" aria-label="Kho Douyin">
-          {TABS.map(([k, label]) => (
-            <Link key={k} href={projHref(pid, "douyin", `&tab=${k}`)} className={k === tab[0] ? "active" : ""}>
+          {TABS.map(([k, label, desc]) => (
+            <Link key={k} href={projHref(pid, "douyin", `&tab=${k}`)} title={desc} className={k === tab[0] ? "active" : ""}>
               {label}
             </Link>
           ))}

@@ -27,7 +27,6 @@ export default function ProjectsPage() {
     <>
       <Topbar
         title="Reup"
-        sub="Mỗi bộ truyện / phim một dự án Reup — AI nhớ nhân vật, xưng hô và mạch truyện"
         actions={
           <button className="btn btn-primary btn-sm" type="button" onClick={() => setCreating(true)}>
             <Icon name="plus" size={16} /> <span className="lbl">Tạo dự án</span>
@@ -91,7 +90,6 @@ export default function ProjectsPage() {
         ) : prefs.view === "list" ? (
           <div className="plist" role="list">
             <div className="prow prow-head" aria-hidden="true">
-              <span />
               <span>Dự án</span>
               <span className="prow-num">Video</span>
               <span className="prow-num">Đã lồng</span>

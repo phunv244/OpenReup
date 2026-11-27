@@ -34,8 +34,8 @@ function VideoRow({ v, open }: { v: WorkItem; open: (d: Dialog) => void }) {
 
   const lines = d ? `${(d.segment_count || 0).toLocaleString("vi")} câu` : "";
   const meta = v.missing
-    ? ["Chỉ còn bản lồng tiếng", fmtSize(v.size_mb), lines]
-    : [v.source === "bilibili" ? "Bilibili / YouTube" : "Douyin", v.resolution, fmtSize(v.size_mb), v.uploader, lines].filter(Boolean);
+    ? ["Chỉ còn bản lồng tiếng", lines, fmtSize(v.size_mb)].filter(Boolean)
+    : [lines, fmtSize(v.size_mb), v.uploader].filter(Boolean); // thời lượng đã nằm trên ảnh; nguồn và độ phân giải không giúp chọn video
   // Bấm cả dòng = mở trang chỉnh (khi có bản lồng tiếng và còn video gốc, kể cả chưa gán dự án); bấm ảnh = phát bản Việt / video gốc.
   const editHref = d && !v.missing ? projHref(pid, "video", `&job=${encodeURIComponent(d.job_id)}`) : "";
   const playDub = () => open({ kind: "play", src: dubFileUrl(d!.mp4_file), title: `Bản Việt · ${v.title}` });

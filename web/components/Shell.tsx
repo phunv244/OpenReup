@@ -248,8 +248,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Thanh tiêu đề của mỗi trang. */
-export function Topbar({ title, sub, actions }: { title: string; sub?: string; actions?: React.ReactNode }) {
+/** Thanh tiêu đề của mỗi trang: cao cố định 64px. `meta` (thông tin ngắn như "5:26 · 92 câu") nằm cùng hàng với tiêu đề, không thành dòng thứ hai. */
+export function Topbar({ title, meta, actions }: { title: string; meta?: string; actions?: React.ReactNode }) {
   const { task } = useStudio();
   const rail = useRail();
   const busy = Boolean(task?.running) || (task?.queue || []).length > 0;
@@ -265,7 +265,7 @@ export function Topbar({ title, sub, actions }: { title: string; sub?: string; a
       </button>
       <div className="topbar-title">
         <h1>{title}</h1>
-        {sub && <p>{sub}</p>}
+        {meta && <span className="topbar-meta">{meta}</span>}
       </div>
       {task?.running && (
         <button className="task-chip" type="button" title="Xem tiến trình" onClick={() => rail.toggle(true)}>

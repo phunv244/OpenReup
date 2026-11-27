@@ -95,16 +95,18 @@ export function DubScript({ jobId, video, speakers, edits, setEdits, spk, setSpk
                     {fmtDur(s.start) || "0:00"}
                   </button>
                   <span className="line-zh" title={s.zh}>{s.zh}</span>
+                  {/* Nhãn nhỏ "NV5" (màu nhân vật); bấm mới hiện danh sách chọn giọng — ô chọn trong suốt phủ lên nhãn. */}
                   {spkKeys.length > 0 && (
-                    <select
-                      className={`select input-sm seg-spk spk-${spkIndex(who)}`}
-                      aria-label={`Nhân vật câu ${id}`}
-                      title={speakers.find(([k]) => k === who)?.[1].name || who}
-                      value={who}
-                      onChange={(e) => setMap(spk, setSpk, id, e.target.value, s.speaker || "NV1")}
-                    >
-                      <Options list={speakers.map(([k, sp]) => [k, sp.name ? `${k} · ${sp.name}${sp.is_new ? " (mới)" : ""}` : k])} />
-                    </select>
+                    <label className={`spk-tag spk-pick spk-${spkIndex(who)}`} title={`${speakers.find(([k]) => k === who)?.[1].name || who} — bấm để đổi giọng`}>
+                      {who}
+                      <select
+                        aria-label={`Nhân vật câu ${id}`}
+                        value={who}
+                        onChange={(e) => setMap(spk, setSpk, id, e.target.value, s.speaker || "NV1")}
+                      >
+                        <Options list={speakers.map(([k, sp]) => [k, sp.name ? `${k} · ${sp.name}${sp.is_new ? " (mới)" : ""}` : k])} />
+                      </select>
+                    </label>
                   )}
                 </div>
                 <input

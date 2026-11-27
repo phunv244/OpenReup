@@ -1,14 +1,10 @@
 "use client";
-/** Một dự án ở dạng thẻ (lưới) hoặc hàng (danh sách). Bấm vào là mở; nút bánh răng mở Ngữ cảnh AI. */
+/** Một dự án ở dạng thẻ (lưới) hoặc hàng (danh sách). Bấm cả thẻ là mở (không cần biểu tượng hay nút ">" riêng); nút bánh răng mở Ngữ cảnh AI. */
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useOpenDrawer } from "@/components/Shell";
 import { Project } from "@/lib/api";
 import { projHref } from "@/lib/format";
-
-function projIcon(p: Project) {
-  return p.type?.includes("Phim") ? "film" : p.type?.includes("Review") ? "book" : "sparkles";
-}
 
 /** 1 dòng tóm tắt: chỉ nêu phần chưa xong ("3 video · 1 chưa lồng"); dự án trống ghi "Chưa có video". */
 function statLine(p: Project) {
@@ -52,9 +48,6 @@ export function ProjectCard({ p }: { p: Project }) {
   return (
     <article className="pcard" {...useOpen(p)}>
       <div className="pcard-top">
-        <div className="pcard-ico">
-          <Icon name={projIcon(p)} size={20} />
-        </div>
         <div className="pcard-head">
           <div className="pcard-title" title={p.name}>{p.name}</div>
           <span className="pcard-type">{p.type || "Truyện / Hoạt hình"}</span>
@@ -64,9 +57,6 @@ export function ProjectCard({ p }: { p: Project }) {
       <p className={`pcard-syn ${p.synopsis ? "" : "pcard-syn-empty"}`}>{p.synopsis || "Chưa có mô tả cốt truyện — thêm bối cảnh để AI dịch đúng mạch truyện hơn."}</p>
       <div className="pcard-stats">
         <span className={p.pending_count ? "warn" : ""}>{statLine(p)}</span>
-        <span className="pcard-go" aria-hidden="true">
-          <Icon name="chevron" size={16} />
-        </span>
       </div>
     </article>
   );
@@ -75,9 +65,6 @@ export function ProjectCard({ p }: { p: Project }) {
 export function ProjectRow({ p }: { p: Project }) {
   return (
     <div className="prow" {...useOpen(p)}>
-      <div className="pcard-ico prow-ico">
-        <Icon name={projIcon(p)} size={16} />
-      </div>
       <div className="prow-name">
         <b title={p.name}>{p.name}</b>
         <span>{p.type || "Truyện / Hoạt hình"}</span>

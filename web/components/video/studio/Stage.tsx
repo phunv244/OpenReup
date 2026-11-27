@@ -98,8 +98,29 @@ export function Stage({ s, jobId, pid, view, setView, video, target, setTarget }
           </div>
         )}
         <div className="cmp-pane" key="dub">
-          <video ref={video} key={stamp} className="stage-video" controls={view !== "compare"} preload="metadata" src={dubFileUrl(`${jobId}.mp4`) + `?v=${stamp}`} />
-          {view === "compare" && <span className="cmp-tag dub">Đã chỉnh</span>}
+          {/* Không dùng thanh điều khiển gốc của <video>: timeline bên dưới là thanh phát duy nhất (phát/dừng, thời gian, phím cách).
+              Bấm vào khung để phát/dừng; nút góc trên phải mở toàn màn hình. */}
+          <video
+            ref={video}
+            key={stamp}
+            className="stage-video is-main"
+            preload="metadata"
+            src={dubFileUrl(`${jobId}.mp4`) + `?v=${stamp}`}
+            onClick={(e) => (e.currentTarget.paused ? e.currentTarget.play() : e.currentTarget.pause())}
+          />
+          {view === "compare" ? (
+            <span className="cmp-tag dub">Đã chỉnh</span>
+          ) : (
+            <button
+              className="icon-btn stage-fs"
+              type="button"
+              title="Toàn màn hình"
+              aria-label="Xem toàn màn hình"
+              onClick={() => video.current?.requestFullscreen?.()}
+            >
+              <Icon name="expand" size={16} />
+            </button>
+          )}
         </div>
       </div>
       {view === "compare" && <CompareBar master={video} follower={srcVideo} audio={cmpAudio} onAudio={setCmpAudio} reset={stamp} />}

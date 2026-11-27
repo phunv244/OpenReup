@@ -88,7 +88,7 @@ export default function ResourcesPage() {
 
   return (
     <>
-      <Topbar title="Tài nguyên" sub="Font chữ và giọng đọc dùng chung cho mọi dự án" />
+      <Topbar title="Tài nguyên" />
       {/* @font-face cho chữ mẫu */}
       <style>{fonts.map((f) => `@font-face{font-family:"rf-${f.id}";src:url("/api/fonts/file?id=${f.id}")}`).join("")}</style>
       <main className="content">
@@ -104,7 +104,7 @@ export default function ResourcesPage() {
         </div>
         {!loaded ? null : tab === "voices" ? <VoiceLibrary /> : <>
         <Callout tone="info" icon="type">
-          Font tải lên ở đây dùng được cho phụ đề Việt của <b>mọi dự án</b> (chọn khi lồng tiếng hoặc ở <b>Sửa lời</b> → Kiểu phụ đề → Tùy chỉnh). Chọn font có đủ dấu
+          Font tải lên ở đây dùng được cho phụ đề Việt của <b>mọi dự án</b> (chọn khi lồng tiếng, hoặc mở video → tab <b>Hình &amp; phụ đề</b> → ô <b>Font chữ</b>). Chọn font có đủ dấu
           tiếng Việt.
         </Callout>
 

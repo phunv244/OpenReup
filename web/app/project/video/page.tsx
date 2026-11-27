@@ -79,7 +79,7 @@ function Detail() {
 
   return (
     <>
-      <Topbar title={displayTitle(info.title, bili)} sub={meta.join(" · ")} />
+      <Topbar title={displayTitle(info.title, bili)} meta={meta.join(" · ")} />
       <main className="studio">
         <Stage
           s={s}

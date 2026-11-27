@@ -80,7 +80,7 @@ function Nav() {
           </div>
         </div>
         <NavLink href={projHref(pid, "videos")} icon="film" label="Video & Lồng tiếng" active={sub === "videos" || sub === "video"}
-          count={sources.filter((s) => s.project_id === pid).length} />
+          count={proj.video_count ?? sources.filter((s) => s.project_id === pid).length} />
         <NavLink href={projHref(pid, "douyin")} icon="list" label="Kho Douyin" active={sub === "douyin"} count={videos.length} />
         <button className="nav-link" type="button" title="Ngữ cảnh AI" onClick={() => openDrawer(pid)}>
           <Icon name="brain" />

@@ -9,13 +9,20 @@ export type WorkItem = Source & {
   dub: Dubbed | null;
   job: Job | null;
   status: "new" | "partial" | "dubbed";
+  /** Bản lồng tiếng của dự án mà video gốc đã bị xóa khỏi ổ: vẫn xem/tải được, không lồng tiếng lại được. */
+  missing: boolean;
 };
 
 /** Video của dự án đang mở + video chưa gán dự án nào (để người dùng chọn đưa vào dự án). */
 export function buildWorkItems(sources: Source[], dubbed: Dubbed[], bili: BiliVideo[], pid: string): WorkItem[] {
-  const dubByTitle = new Map(dubbed.map((d) => [d.title, d]));
+  // Nhiều bản lồng tiếng cùng 1 video gốc: ưu tiên bản thuộc dự án đang mở (cùng hạng thì bản sau thắng, như trước).
+  const dubByTitle = new Map<string, Dubbed>();
+  for (const d of dubbed) {
+    const cur = dubByTitle.get(d.title);
+    if (!cur || d.project_id === pid || cur.project_id !== pid) dubByTitle.set(d.title, d);
+  }
   const biliByFile = new Map(bili.map((b) => [b.local_file, b]));
-  return sources
+  const items: WorkItem[] = sources
     .filter((s) => !s.project_id || s.project_id === pid)
     .map((s) => {
       const meta = biliByFile.get(s.name) || ({} as BiliVideo);
@@ -29,7 +36,35 @@ export function buildWorkItems(sources: Source[], dubbed: Dubbed[], bili: BiliVi
         video_src: fileUrl(s.rel_path),
         dub,
         job,
-        status: job ? "partial" : dub ? "dubbed" : "new",
+        // Đếm giống thẻ dự án (server/modules/project/service.mjs stats): có bản lồng tiếng thuộc dự án này là "đã lồng",
+        // kể cả khi còn một lượt chạy lại đang dở; bản lồng tiếng chưa gán dự án thì không tính.
+        status: dub && dub.project_id === pid ? "dubbed" : job ? "partial" : "new",
+        missing: false,
       };
     });
+  // Bản lồng tiếng thuộc dự án nhưng không còn video gốc nào trên ổ: thẻ dự án vẫn đếm nó là 1 video,
+  // nên ở đây cũng hiện 1 dòng riêng để hai nơi khớp số và bản Việt không bị ẩn mất.
+  const sourceNames = new Set(sources.map((s) => s.name));
+  for (const d of dubbed) {
+    if (d.project_id !== pid || sourceNames.has(d.title)) continue;
+    items.push({
+      source: "dubbed",
+      rel_path: `downloads/dubbed/${d.mp4_file}`,
+      name: d.title,
+      size_mb: Number(d.size_mb || 0),
+      mtime: d.updated_at ? Date.parse(d.updated_at) || 0 : 0,
+      duration_sec: Number(d.duration_sec || 0),
+      resolution: "",
+      project_id: pid,
+      job: null,
+      title: d.title,
+      uploader: "",
+      delogo: "none",
+      video_src: "",
+      dub: d,
+      status: "dubbed",
+      missing: true,
+    });
+  }
+  return items;
 }

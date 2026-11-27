@@ -59,13 +59,13 @@ data/videos/<video_key>/
     out/<job_id>.srt
 ```
 
-`data/videos/` nằm dưới `REUP_DATA_DIR`, nên test tự đi theo thư mục tạm. Nếu video quá lớn để để trong `data/`, có thể thêm biến môi trường `REUP_VIDEOS_DIR` cho riêng thư mục này (mặc định là `data/videos`).
+`data/videos/` nằm dưới `REUP_DATA_DIR`, nên test tự đi theo thư mục tạm. **Không** thêm `REUP_VIDEOS_DIR` ở giai đoạn 2 (Techlead, mục 8.1).
 
 ### 2.1 Chọn `video_key`
 
 Khóa cần ổn định: không đổi khi đổi tiêu đề, khi xóa logo, hay khi tải lại.
 
-1. Có id của nền tảng: `<nền tảng>-<id>-p<phần>`, chỉ gồm `[a-z0-9-]`. Ví dụ `bilibili-bv1nhw3z3ehh-p1`, `bilibili-4795815441340424-p1`, `douyin-<aweme_id>`. Id lấy từ `bilibili.json` / `videos.json` (`id`), hoặc từ phần đầu tên file `<id>_p<n>_…`.
+1. Có id của nền tảng: `<nền tảng>-<id>-p<phần>`, chỉ gồm `[A-Za-z0-9-]`, **giữ nguyên hoa/thường của id** (BV id là base58, phân biệt hoa thường; hạ chữ thường có thể làm 2 video trùng khóa). Ví dụ `bilibili-BV1nHW3z3EhH-p1`, `bilibili-4795815441340424-p1`, `douyin-<aweme_id>`. Id lấy từ `bilibili.json` / `videos.json` (`id`), hoặc từ phần đầu tên file `<id>_p<n>_…`.
 2. Không có id (file tự đưa vào, video thử như `BVtest1_…`): `local-<sha1(rel_path cũ)[:12]>`. Khóa được tính một lần lúc chuyển rồi ghi vào `video.json`, sau đó không tính lại.
 3. Trùng khóa (hiếm): thêm hậu tố `-2`, `-3`.
 
@@ -102,7 +102,7 @@ Code server cần đổi (giai đoạn 2, module `dub`, `sources`, lớp dùng c
 
 ## 4. Script chuyển dữ liệu cũ (`scripts/migrate-video-folders.mjs`)
 
-Chạy khi server đang tắt. Script từ chối chạy nếu có tác vụ đang chạy hoặc đang chờ (đọc trạng thái tác vụ, hoặc đơn giản là kiểm cổng 3456 có ai nghe không).
+Chạy khi **mọi** server đang tắt. Kiểm cổng 3456 là không đủ: xem mục 8.3, ý 1.
 
 1. **Dry-run (mặc định).** Đọc mọi nguồn ở mục 1, dựng kế hoạch rồi in ra:
    - mỗi `video_key` gồm những file nào (từ → tới, kích thước);
@@ -158,8 +158,86 @@ Chỉ phải sửa nếu Techlead chọn đổi `input_path` hoặc URL tĩnh. K
 
 Trang trợ giúp nên được cập nhật dòng "Bản lồng tiếng nằm ở đâu" sau khi chuyển dữ liệu, kể cả khi API không đổi.
 
-## 7. Cần Techlead quyết
+## 7. Cần Techlead quyết (đã quyết, xem 8.1)
 
 1. `data/videos/` nằm dưới `REUP_DATA_DIR`, có thêm `REUP_VIDEOS_DIR` tùy chọn. Hay đặt dưới `REUP_MEDIA_ROOT`?
 2. `/api/dub/segments` trả `input_path`/`work_dir`/`out_dir` theo dạng cũ (đề xuất, giống từng byte), hay trả đường dẫn thật mới?
 3. Chấp nhận việc kết quả `/api/functions` (đường dẫn file tuyệt đối) đổi sang chỗ mới?
+
+## 8. Techlead duyệt (2026-11-27)
+
+**Kết luận: CẦN SỬA, đã sửa ngay trong tài liệu này.** Hướng thiết kế đúng (giữ `job_id`, giữ `rel_path` làm khóa logic, đọc được cả hai bố cục, chuyển bằng `rename` có nhật ký). Sau các sửa ở 8.1–8.4, thiết kế **ĐẠT** để vào giai đoạn 2 theo đúng thứ tự ở 8.5.
+
+### 8.1 Quyết định 3 điểm ở mục 7
+
+1. **`data/videos/` nằm dưới `REUP_DATA_DIR` (`DATA_DIR/videos`). Bỏ `REUP_VIDEOS_DIR`.** Test chỉ cần `REUP_DATA_DIR` là cách ly. Thêm một biến nữa thì có thêm cách để test ghi nhầm vào dữ liệu thật, và có thể làm `videos/` và `downloads/` nằm trên hai ổ khác nhau (khi đó `rename` lỗi `EXDEV`). Khi nào cần đổi ổ thì thêm sau, kèm bước chép có kiểm tra.
+   - Hệ quả: `REUP_MEDIA_ROOT` chỉ còn giữ `downloads/` cũ (đọc cả hai bố cục, và chỗ script tải ghi vào). Test nào chỉ đặt `REUP_MEDIA_ROOT` mà quên `REUP_DATA_DIR` sẽ ghi vào `data/` thật: helper test phải đặt **cả hai**, và helper phải tự kiểm `DATA_DIR !== ROOT/data` trước khi chạy.
+2. **`/api/dub/segments` trả 3 trường theo dạng cũ** (đồng ý với PM). Lưu ý:
+   - Chiếu ngược chỉ làm ở lớp route (`dub/routes.mjs`), không ghi đè lên file.
+   - File trên đĩa (`project.json`, `work/meta.json`) giữ **đường dẫn thật mới**. Lý do: Python đọc `input_path` từ file dự án khi xuất lại (`dub_video.py:1865-1870`).
+   - Job mồ côi không có `rel_path`: trả nguyên giá trị đã lưu.
+3. **Chấp nhận `files[].path` và `project_file` của `/api/functions` đổi sang chỗ mới.** Trường `path` dùng để mở file, nên phải là đường dẫn có thật. Trả đường dẫn cũ (không còn file) thì MausBot sẽ hỏng. Để giữ nguyên thì chỉ còn cách symlink, nhưng như vậy là lại có hai chỗ cho một file. Những gì MausBot dùng để gọi tiếp thì giữ nguyên: tên hàm, tham số, `job_id`, `rel_path`, `url` (`relOf` của file xuất mới phải ra `downloads/dubbed/<job>.mp4`). Snapshot schema `/api/functions` không đổi.
+
+### 8.2 Bản kê: những chỗ đọc/ghi còn thiếu (đã đối chiếu code @ `18ac139`)
+
+| Chỗ | Vấn đề | Xử lý |
+| --- | --- | --- |
+| `dub_video.py:1865-1870` | Xuất lại đọc `input_path` (tuyệt đối) từ file dự án rồi mở file đó. Mục 4 chỉ sửa `work_dir`/`out_dir`, nên sau khi chuyển, **mọi lần xuất lại sẽ lỗi "không thấy file nguồn"**. | Bước apply phải sửa cả `input_path` trong `project.json` **và** `work/meta.json` sang đường dẫn thật mới. |
+| `store.mjs:104-122` `readDubJobs` + `dub/functions.mjs:24` `dubJobOf` | Ghép theo `meta.input_path` = `resolveDownload(rel)`. Một bên đường dẫn cũ, một bên đường dẫn mới thì trạng thái "đang dở x%" biến mất, và kết quả `dub_video` trả về `{}`. | Ghép theo `rel_path` logic: `relOf(meta.input_path)` ở cả hai phía, không so đường dẫn tuyệt đối. |
+| `dub/routes.mjs:41`, `sources/service.mjs:113`, `:121` | Chặn lồng tiếng chính bản xuất bằng `startsWith(DUBBED_DIR)`. Ở bố cục mới bản xuất nằm trong `jobs/*/out/`, nên phép kiểm này không còn chặn được. | `resolveDownload` trả thêm loại file (`source` / `output`). Các chỗ này kiểm loại file, không so tiền tố thư mục. |
+| `dub/functions.mjs:15-19` `dubResult` | Ghép cứng `DUBBED_DIR`, `DUB_PROJECTS_DIR`. | Hỏi lớp chỉ mục (8.5, commit 2). |
+| `migrate.mjs:63-86` `migrateEdgeVoices` (chạy mỗi lần khởi động) | Chỉ quét `data/dub_work/*/meta.json`. | Quét thêm `data/videos/*/jobs/*/{project.json,work/meta.json}`. |
+| `lib/tasks.mjs:131-136` | Chỉ nhận `SAVED_FILE` nằm trong `DOWNLOADS_DIR`. | Giữ nguyên. Không chuyển file **trong lúc** đang tải (xem dòng dưới). |
+| `download_bilibili.mjs:320`, `:448-469`, `:607` | Bỏ qua nếu `downloads/bilibili/<tên>.mp4` đã có; `.part`/`.part.aria2` để tải tiếp. Nếu file đã bị chuyển đi thì **tải lại từ đầu**, ra bản trùng. | Không chuyển file `.part*`. Bản tải mới ở lại `downloads/` (đọc được cả hai bố cục) cho tới commit 9. Trước khi chạy script tải, server tra chỉ mục theo id nền tảng; đã có thì báo "đã tải", không gọi script. |
+| `sources/repo.mjs:32-37` (xóa mục), xóa video nguồn | Đường dẫn xóa tính từ `DOWNLOADS_DIR`. | Xóa qua chỉ mục. Video còn job thì chỉ xóa `source/`, giữ `jobs/`. |
+
+### 8.3 Lỗ hổng làm mất dữ liệu hoặc hỏng server đang chạy
+
+1. **Server 3499 đang chạy trên chính `data/` thật.** Tiến trình pid 1021229 có `cwd` = repo, `PORT=3499`, và không đặt `REUP_DATA_DIR`/`REUP_MEDIA_ROOT`. Chỉ kiểm cổng 3456 thì script sẽ chuyển dữ liệu ngay dưới chân một server đang sống: job đang chạy ghi vào thư mục cũ, file JSON bị ghi đè. Script phải từ chối chạy nếu thấy một trong các dấu hiệu sau:
+   - (a) có tiến trình đang mở `data/openreup.db`. better-sqlite3 giữ file mở suốt, nên cách này bắt được mọi server, bất kể cổng. Quét `/proc/*/fd`.
+   - (b) có tiến trình `dub_video.py` hoặc `download_*.mjs` trong `/proc/*/cmdline`.
+   - (c) có file khóa `data/.migrating`. Script tạo file này lúc bắt đầu và xóa khi xong. Server thấy file này lúc khởi động thì từ chối chạy.
+   - Ngưỡng: bật lên là dừng, không có `--force` cho (a) và (b).
+2. **Khác ổ đĩa.** Hiện `data/` và `downloads/` cùng ổ (`/dev/sda2`), nhưng script vẫn phải so `stat.dev` giữa nguồn và đích **trước khi rename tệp đầu tiên**. Khác ổ thì dừng, không tự chép rồi xóa.
+3. **Sập giữa chừng.** `moves.jsonl` được ghi *trước* `rename`, nên dòng cuối có thể chưa thực hiện. Khi quay lui hoặc chạy lại: nếu `to` chưa có mà `from` còn thì bỏ qua dòng đó; nếu có cả `from` lẫn `to` thì dừng và báo. Mỗi job phải chuyển bằng **một** `rename` cả thư mục (`dub_work/<job>` → `jobs/<job>/work`) để không bao giờ bị nửa nọ nửa kia. File JSON ghi bằng `writeJson` (file tạm rồi `rename`). Thứ tự: chuyển media → sửa `project.json`/`meta.json` → sửa `dubbed.json` → ghi `video.json` cuối cùng. Server đọc theo từng file một (có ở chỗ mới thì đọc chỗ mới, không thì chỗ cũ), nên dừng ở bước nào cũng đọc được.
+4. **Quay lui ghi đè việc làm sau khi chuyển.** Mục 4 bước 6 chép lại JSON **và DB** từ bản sao lưu: segment nào đã sửa sau khi chuyển sẽ mất.
+   - Migrate không đụng DB, nên rollback **không** chép lại DB. Bản `VACUUM INTO` chỉ để cứu khi có sự cố.
+   - Rollback phải từ chối nếu thấy dấu hiệu có việc làm sau khi chuyển: file JSON có mtime sau lúc kết thúc apply, có thư mục job hoặc bản xuất mới không có trong `moves.jsonl`, hoặc có file `video.json` lạ. Lúc đó liệt kê ra và dừng.
+5. **`video_key` không tính lại được.** Hậu tố `-2` khiến khóa phụ thuộc thứ tự quét. Mọi chỗ tra cứu phải đi qua chỉ mục (`video.json`), không tự tính lại khóa. Bản tải mới phải tra theo id nền tảng trước khi tạo thư mục mới.
+6. **Thư mục hệ thống.** `_orphan`, `_migration` bắt đầu bằng `_`, nên hàm tính khóa không bao giờ sinh ra được. Lúc liệt kê video phải bỏ qua `_*`.
+7. **Chọn nguồn cho job, gom mồ côi.** Thứ tự tra:
+   1. `meta.input_path`;
+   2. `project.input_path` (ca `dub_qasandbox50_p1_0p5x` trỏ tới `BV1nHW3z3EhH_p1__.mp4`: phải gắn vào video đó, không cho vào `_orphan`);
+   3. `title` trong `dubbed.json`;
+   4. tên suy từ `job_id`.
+
+   Không tra ra thì cho vào `_orphan`, và trong bản kế hoạch phải ghi lý do.
+8. **So API trước/sau.** Ảnh chụp "trước" phải được lấy lúc dry-run/apply, *trước* khi chuyển, và lưu vào `_migration/`, để `--verify` so được.
+
+Rủi ro thấp, chấp nhận: `media_cache.json`/`thumbs/` mất hiệu lực (tự tạo lại); `migrateVideoProjects` chỉ chạy khi chưa có file, không chạy lại.
+
+### 8.4 `--job-id` của DevAI
+
+Đúng hướng, nhưng không gấp: file nguồn giữ nguyên tên trong `source/`, nên `jobIdFor` vẫn ra đúng id cũ. Yêu cầu:
+
+- kiểm tra theo đúng `safeJobId` (`^[0-9A-Za-z_-]+$`);
+- nếu file dự án đã có mà `job_id` khác thì báo lỗi, không ghi đè;
+- không có tham số thì giữ cách suy như cũ;
+- phải merge **trước** commit 5.
+
+### 8.5 Giai đoạn 2: các commit, theo thứ tự
+
+Mỗi commit phải qua Reviewcode và Tester rồi mới làm commit tiếp. Không chạm 3499.
+
+| # | Người làm | Commit | Điều kiện xong |
+| --- | --- | --- | --- |
+| 1 | DevBE | `lib/videos.mjs`: chỉ mục `video.json` (rel_path ↔ đường dẫn thật, job_id → `{project, work, out}`, loại file `source`/`output`), đọc cả hai bố cục; `config.mjs` thêm `VIDEOS_DIR = DATA_DIR/videos`; `resolveDownload`/`relOf` đi qua chỉ mục. | Chưa có `data/videos/` thì mọi test cũ vẫn xanh, snapshot API giữ nguyên. |
+| 2 | DevBE | `store.mjs` (`dubWorkDirs`, `dubWorkDir` với điều kiện mới, load/save/remove), `dub/service.mjs` `pathArgs`, `dub/functions.mjs` `dubResult`, các chỗ kiểm `DUBBED_DIR` ở 8.2, `readDubJobs` ghép theo `rel_path`, `migrateEdgeVoices`. | Test có fixture ở cả hai bố cục; xóa job ở bố cục mới không xóa được ra ngoài `jobs/<job>/work`. |
+| 3 | DevBE | Route `GET /downloads/*` thay cho `fastifyStatic`: Range, `Content-Type` của `.srt`, chặn `../`; `/api/dub/segments` chiếu 3 trường theo dạng cũ. | Test Range/206, `.srt`, chặn đường dẫn lạ; JSON `/api/dub/segments` giống từng byte. |
+| 4 | DevAI | `dub_video.py --job-id` (8.4) + test Python; server truyền `--job-id`. | `pytest` xanh, id không đổi. |
+| 5 | DevBE | `sources`: liệt kê từ `video.json` + bố cục cũ; `media.mjs` khóa cache theo `video_key`; xóa video qua chỉ mục. | `/api/sources` giống từng byte trên fixture. |
+| 6 | DevBE | `scripts/migrate-video-folders.mjs` **chỉ dry-run** + test dựng lại các ca lệch ở 1.3. Sau đó chạy dry-run trên dữ liệu thật (chỉ đọc) và gửi bản kế hoạch cho Techlead/PM. | Techlead duyệt bản kế hoạch. |
+| 7 | DevBE | `--apply`, `--verify`, `--rollback`, cùng mọi điều kiện ở 8.3 (khóa, quét `/proc`, so `stat.dev`, thứ tự ghi, rollback từ chối khi có việc mới) + test sập giữa chừng (cắt `moves.jsonl` ở dòng giữa). | Test: apply hai lần thì lần sau "0 việc"; rollback ra cây file giống hệt lúc đầu; sập giữa chừng rồi chạy lại vẫn ra kết quả đúng. |
+| 8 | PM giao, DevBE chạy | Chuyển dữ liệu thật: PM xin chủ dự án tắt 3499 → `--apply` → `--verify` → bật lại. Không phải commit code; ghi lại log vào `_migration/`. | `--verify` xanh, 3499 bật lại chạy được. |
+| 9 | DevBE | Bản tải mới được chuyển vào `data/videos/<key>/source/` khi tác vụ tải **kết thúc** (không chuyển giữa chừng); server tra chỉ mục theo id trước khi gọi script tải. | Tải lại một video đã có thì không tải trùng. |
+| 10 | DevBE + DevAI + DevFE | Bỏ đường đọc bố cục cũ; đổi mặc định `WORK_ROOT`/`PROJECTS_DIR`/`DUB_OUT_DIR` của Python; DevFE sửa `web/app/help/page.tsx:12-14`. | Chỉ làm sau khi bước 8 đã chạy ổn ít nhất một vòng dùng thật. |

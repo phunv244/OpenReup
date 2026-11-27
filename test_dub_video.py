@@ -10,8 +10,8 @@ from pathlib import Path
 # Mọi test ghi vào thư mục tạm (DB, dub_work/...), không đụng data/ và downloads/ thật. Phải đặt trước import dub_video.
 _TEST_ROOT = tempfile.mkdtemp(prefix="reup_pytest_")
 atexit.register(shutil.rmtree, _TEST_ROOT, ignore_errors=True)
-os.environ.setdefault("REUP_DATA_DIR", os.path.join(_TEST_ROOT, "data"))
-os.environ.setdefault("REUP_MEDIA_ROOT", os.path.join(_TEST_ROOT, "media"))
+os.environ["REUP_DATA_DIR"] = os.path.join(_TEST_ROOT, "data")
+os.environ["REUP_MEDIA_ROOT"] = os.path.join(_TEST_ROOT, "media")
 
 import dub_video as d  # noqa: E402
 

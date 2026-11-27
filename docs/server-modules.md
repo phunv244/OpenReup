@@ -51,7 +51,7 @@ Khi `ai` được nạp trước `dub`, cây route mà `printRoutes()` in ra đ�
 | `REUP_MEDIA_ROOT` | thư mục repo | Thư mục chứa `downloads/`: video tải về và bản xuất `downloads/dubbed` (`--out-dir` của `dub_video.py`). Đường dẫn `downloads/...` trong API và `video_projects.json` tính từ đây. |
 | `REUP_PYTHON` | `.venv/bin/python` | Thay Python bằng script giả |
 
-`server/test/helpers.mjs` (`setupApp`) đặt `REUP_DATA_DIR` và `REUP_MEDIA_ROOT` cùng trỏ vào một thư mục tạm trong `/tmp`. Hàm này phải chạy trước mọi import của server, vì `config.mjs` đọc các biến môi trường ngay lúc nạp. Server thật không đặt 2 biến này.
+`server/test/helpers.mjs` (`setupApp`) đặt `REUP_DATA_DIR` và `REUP_MEDIA_ROOT` cùng trỏ vào một thư mục tạm trong `/tmp`. Hàm này phải chạy trước mọi import của server, vì `config.mjs` đọc các biến môi trường ngay lúc nạp. Server thật không đặt 2 biến này. Nếu đặt, cả hai biến phải là đường dẫn tuyệt đối: script con (Python, script tải) chạy với `cwd` khác nhau nên đường dẫn tương đối sẽ trỏ sai chỗ.
 
 Script tải `download_videos.mjs` (Douyin), `download_bilibili.mjs` (Bilibili/YouTube) và `list_channel_web.mjs` chạy như tiến trình con, kế thừa env của server nên cũng ghi theo `REUP_MEDIA_ROOT` (`downloads/`) và `REUP_DATA_DIR` (`videos.json`, `bilibili.json`). `lib/tasks.mjs` tính đường dẫn `SAVED_FILE:::` từ `MEDIA_ROOT`. Còn dùng thư mục repo: `chrome_profile/` (đăng nhập Douyin) và `cookies.txt`.
 

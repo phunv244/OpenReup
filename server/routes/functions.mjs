@@ -8,56 +8,22 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { API_TOKEN, DATA_DIR, DUBBED_DIR, DUB_PROJECTS_DIR, ROOT } from "../config.mjs";
-import { P_VOICE, bool, num, str } from "../core/schema.mjs";
+import { API_TOKEN, DATA_DIR, ROOT } from "../config.mjs";
+import { P_DELOGO, P_PROJECT, P_VOICE, bool, num, str } from "../core/schema.mjs";
 import { db } from "../lib/db.mjs";
-import { readDubJobs, readDubbed } from "../lib/store.mjs";
 import { taskEvents } from "../lib/tasks.mjs";
-import { nowIso, relOf, resolveDownload } from "../lib/util.mjs";
+import { fileInfo, nowIso } from "../lib/util.mjs";
 
 const LOG_DIR = path.join(DATA_DIR, "function_logs");
 const MAX_WAIT_SEC = 3600;
 
 
-const P_DELOGO = str('Xóa logo: "none" | "top-right" | "top-left" | "both-top" | vùng pixel "x,y,w,h" trên khung hình gốc.');
-const P_SUBCOVER = str('Xóa phụ đề gốc tiếng Trung: "none" hoặc vùng pixel "x,y,w,h" bao quanh dòng phụ đề.');
-const P_PROJECT = str("Mã dự án truyện (id trong list_options.projects) để dùng chung nhân vật / thuật ngữ. Bỏ trống = không gắn dự án.");
-const P_SUB_STYLE = {
-  type: "object",
-  description: "Kiểu phụ đề Việt in cứng. Bỏ trống = mặc định (chữ trắng, nền đen 87%).",
-  properties: {
-    font: str("Tên font (family) trong list_options.fonts."),
-    size_pct: num("Cỡ chữ, % so với cỡ tự tính.", { minimum: 40, maximum: 250 }),
-    bold: bool("Chữ đậm."),
-    color: str("Màu chữ #RRGGBB."),
-    bg: str("Màu nền sau chữ #RRGGBB."),
-    bg_opacity: num("Độ đặc của nền, 0 = không nền.", { minimum: 0, maximum: 100 }),
-    outline: str("Màu viền chữ #RRGGBB."),
-    outline_width: num("Độ dày viền chữ, 0 = không viền."),
-  },
-  additionalProperties: false,
-};
 
-/** Đường dẫn trả cho model: tuyệt đối (mở file) + tương đối (truyền lại vào hàm khác) + url xem trên Studio. */
-const fileInfo = (abs) => ({ path: abs, rel_path: relOf(abs), url: "/" + relOf(abs).split("/").map(encodeURIComponent).join("/") });
-
-function dubResult(job) {
-  if (!job) return {};
-  const done = readDubbed().find((v) => v.job_id === job.job_id) || {};
-  const out = { job_id: job.job_id, project_file: path.join(DUB_PROJECTS_DIR, `${job.job_id}.json`) };
-  for (const [k, f] of [["video", done.mp4_file || `${job.job_id}.mp4`], ["subtitle", done.srt_file || `${job.job_id}.srt`]]) {
-    const abs = path.join(DUBBED_DIR, f);
-    if (fs.existsSync(abs)) out[k] = fileInfo(abs);
-  }
-  for (const k of ["title", "duration_sec", "segment_count", "untranslated", "size_mb"]) if (done[k] !== undefined) out[k] = done[k];
-  return out;
-}
-const dubJobOf = (relPath) => readDubJobs().get(resolveDownload(relPath)) || null;
 const savedResult = (a, ev) => ({ files: ev.saved_files.map(fileInfo) });
 
 /**
- * Thứ tự hàm trong GET /api/functions. { slot: "<module>" } = chỗ đặt các hàm do module đó khai (server/modules/<module>/functions.mjs);
- * hàm của module không có slot được nối vào cuối. Giữ thứ tự ổn định cho MausBot / snapshot.
+ * Thứ tự hàm trong GET /api/functions. { slot: "<module>" } = chỗ đặt mọi hàm do module đó khai (server/modules/<module>/functions.mjs);
+ * { ref: "<tên hàm>" } = chỗ đặt 1 hàm do module khai (khi hàm của module nằm xen kẽ). Hàm của module không có chỗ được nối vào cuối. Giữ thứ tự ổn định cho MausBot / snapshot.
  * route: [method, url] của API có sẵn. task: true = chạy nền (trả ngay, kết quả đến sau). nolog: không ghi nhật ký.
  * result(args, sự kiện kết thúc) -> kết quả khi tác vụ nền xong; fail(args) -> lỗi do script ghi lại (nếu có).
  */
@@ -107,102 +73,13 @@ export const FUNCTIONS = [
       project_id: P_PROJECT,
     },
   },
-  {
-    name: "dub_video",
-    description:
-      "Reup 1 video: nhận diện lời thoại tiếng Trung, dịch, lồng tiếng Việt, in phụ đề, xóa logo. Chạy nền (vài phút tới vài giờ): " +
-      "trả call_id ngay, dùng get_call để lấy video + phụ đề khi xong. Chạy lại cùng video sẽ nối tiếp từ chỗ dở.",
-    route: ["POST", "/api/dub/start"],
-    task: true,
-    result: (a) => dubResult(dubJobOf(a.rel_path)),
-    fail: (a) => dubJobOf(a.rel_path)?.error || "",
-    parameters: {
-      rel_path: str('Video nguồn, ví dụ "downloads/bilibili/abc.mp4" (lấy từ list_sources hoặc kết quả download_video).'),
-      voice: P_VOICE,
-      model: str("Mô hình nhận diện giọng nói (id trong list_options.asr_models).", { default: "sensevoice-small" }),
-      speed: num("Tốc độ phát khi nhận diện (làm chậm để nghe rõ hơn).", { default: 0.5, minimum: 0.25, maximum: 1 }),
-      bg_volume: num("Âm lượng tiếng gốc giữ lại làm nền, 0 = tắt hẳn.", { default: 0.05, minimum: 0, maximum: 1 }),
-      delogo: P_DELOGO,
-      subcover: P_SUBCOVER,
-      burn_sub: bool("In cứng phụ đề Việt lên hình (mặc định true)."),
-      agy_model: str("Model dịch của Antigravity (id trong list_options.agy_models). Bỏ trống = mặc định."),
-      sub_style: P_SUB_STYLE,
-      project_id: P_PROJECT,
-      fresh: bool("Bỏ toàn bộ tiến độ / cache cũ của video này và làm lại từ đầu."),
-    },
-    required: ["rel_path"],
-  },
-  {
-    name: "rerender_video",
-    description:
-      "Xuất lại 1 bản lồng tiếng đã có sau khi đổi cấu hình hoặc sửa lời thoại. Chỉ làm lại phần bị ảnh hưởng (hình hoặc tiếng). Chạy nền.",
-    route: ["POST", "/api/dub/rerender"],
-    task: true,
-    result: (a) => dubResult({ job_id: a.job_id }),
-    parameters: {
-      job_id: str("Mã bản lồng tiếng (job_id trong list_dubbed)."),
-      voice: P_VOICE,
-      bg_volume: num("Âm lượng tiếng gốc làm nền.", { minimum: 0, maximum: 1 }),
-      burn_sub: bool("In cứng phụ đề Việt."),
-      delogo: P_DELOGO,
-      subcover: P_SUBCOVER,
-      sub_style: P_SUB_STYLE,
-      edits: { type: "object", description: 'Sửa lời Việt theo mã câu: {"12": "lời mới"}.', additionalProperties: { type: "string" } },
-      speaker_voices: { type: "object", description: 'Đổi giọng của nhân vật: {"NV1": "vieneu:Hải Đăng"}.', additionalProperties: { type: "string" } },
-      speaker_edits: { type: "object", description: 'Đổi người nói của câu: {"12": "NV2"}.', additionalProperties: { type: "string" } },
-    },
-    required: ["job_id"],
-  },
-  {
-    name: "list_segments_outline",
-    nolog: true,
-    description: "Lấy mốc giờ + người nói của mọi câu trong 1 bản lồng tiếng (không kèm lời) — dùng để vẽ/duyệt timeline. Tối đa 4000 câu đầu.",
-    parameters: { job_id: str("Mã bản lồng tiếng (job_id trong list_dubbed).") },
-    required: ["job_id"],
-    run: async (a, get) => get(`/api/dub/outline?id=${encodeURIComponent(a.job_id)}`),
-  },
-  {
-    name: "edit_segment",
-    description: "Sửa mốc giờ (kéo đầu/cuối) hoặc người nói của 1 câu trong bản lồng tiếng. Ghi ngay; cần rerender_video để thấy trên video đã xuất.",
-    route: ["POST", "/api/dub/segment/update"],
-    parameters: {
-      job_id: str("Mã bản lồng tiếng."),
-      id: num("Mã câu (id trong list_segments_outline / get_call của dub_video)."),
-      start: num("Mốc giờ bắt đầu mới, giây."),
-      end: num("Mốc giờ kết thúc mới, giây."),
-      speaker: str("Người nói mới (mã nhân vật, ví dụ \"NV2\")."),
-    },
-    required: ["job_id", "id"],
-  },
-  {
-    name: "split_segment",
-    description: "Cắt 1 câu làm 2 tại 1 mốc giờ. Câu đầu giữ lời cũ, câu sau để trống để gõ lại lời mới.",
-    route: ["POST", "/api/dub/segment/split"],
-    parameters: {
-      job_id: str("Mã bản lồng tiếng."),
-      id: num("Mã câu cần cắt."),
-      at: num("Mốc giờ cắt, giây (phải nằm giữa câu)."),
-    },
-    required: ["job_id", "id", "at"],
-  },
-  {
-    name: "merge_segments",
-    description: "Ghép 2 câu liền kề làm 1 (nối lời Trung + Việt, giữ người nói của câu trước).",
-    route: ["POST", "/api/dub/segment/merge"],
-    parameters: {
-      job_id: str("Mã bản lồng tiếng."),
-      id: num("Mã câu thứ nhất."),
-      with_id: num("Mã câu thứ hai (cần liền kề câu thứ nhất)."),
-    },
-    required: ["job_id", "id", "with_id"],
-  },
-  {
-    name: "delete_segment",
-    description: "Xóa 1 câu khỏi bản lồng tiếng (chỉ xóa dòng lời, cần rerender_video để video khớp lại).",
-    route: ["POST", "/api/dub/segment/delete"],
-    parameters: { job_id: str("Mã bản lồng tiếng."), id: num("Mã câu cần xóa.") },
-    required: ["job_id", "id"],
-  },
+  { ref: "dub_video" }, // server/modules/dub/functions.mjs
+  { ref: "rerender_video" }, // server/modules/dub/functions.mjs
+  { ref: "list_segments_outline" }, // server/modules/dub/functions.mjs
+  { ref: "edit_segment" }, // server/modules/dub/functions.mjs
+  { ref: "split_segment" }, // server/modules/dub/functions.mjs
+  { ref: "merge_segments" }, // server/modules/dub/functions.mjs
+  { ref: "delete_segment" }, // server/modules/dub/functions.mjs
   {
     name: "delogo_video",
     description: "Xóa logo trên 1 video đã tải trong downloads/bilibili (mã hóa lại, ghi đè file). Chạy nền.",
@@ -217,28 +94,10 @@ export const FUNCTIONS = [
     required: ["local_file"],
   },
   { name: "list_sources", description: "Liệt kê video nguồn đã tải (rel_path, thời lượng, độ phân giải, trạng thái lồng tiếng).", route: ["GET", "/api/sources"], parameters: {} },
-  { name: "list_dubbed", description: "Liệt kê các bản lồng tiếng đã xuất (job_id, file mp4 / srt, cấu hình đã dùng).", route: ["GET", "/api/dubbed"], parameters: {} },
-  {
-    name: "assign_video_project",
-    description: "Gán 1 bản lồng tiếng (job_id) vào 1 dự án Reup, để dùng chung nhân vật / thuật ngữ / mạch truyện.",
-    route: ["POST", "/api/dub/assign"],
-    parameters: { job_id: str("Mã bản lồng tiếng (job_id trong list_dubbed)."), project_id: str("Mã dự án (id trong list_options.projects). Bỏ trống = gỡ khỏi dự án.") },
-    required: ["job_id"],
-  },
-  {
-    name: "clean_dub_cache",
-    description: "Xóa cache tạm (âm thanh giọng đã tổng hợp + hình đã mã hóa) của 1 bản lồng tiếng để lấy lại ổ cứng. Bản lồng tiếng cuối cùng vẫn được giữ.",
-    route: ["POST", "/api/dub/clean"],
-    parameters: { job_id: str("Mã bản lồng tiếng (job_id trong list_dubbed).") },
-    required: ["job_id"],
-  },
-  {
-    name: "delete_dub_job",
-    description: "Xóa hẳn 1 bản lồng tiếng (file video/phụ đề xuất ra + toàn bộ dữ liệu câu thoại). Không thể hoàn tác.",
-    route: ["POST", "/api/dub/delete"],
-    parameters: { job_id: str("Mã bản lồng tiếng (job_id trong list_dubbed).") },
-    required: ["job_id"],
-  },
+  { ref: "list_dubbed" }, // server/modules/dub/functions.mjs
+  { ref: "assign_video_project" }, // server/modules/dub/functions.mjs
+  { ref: "clean_dub_cache" }, // server/modules/dub/functions.mjs
+  { ref: "delete_dub_job" }, // server/modules/dub/functions.mjs
   { slot: "project" }, // list_projects, create_project, update_project, delete_project: server/modules/project/functions.mjs
   {
     name: "create_voice",
@@ -419,7 +278,11 @@ function listingOrder(functions) {
   const put = (f) => placed.has(f.name) || (placed.add(f.name), out.push(f));
   for (const item of FUNCTIONS) {
     if (item.slot) functions.filter((f) => f.module === item.slot).forEach(put);
-    else put(functions.find((f) => f.name === item.name));
+    else {
+      // Chỗ giữ của hàm mà module không khai (module chưa nạp / đổi tên): bỏ qua, không làm lỗi /api/functions.
+      const f = functions.find((x) => x.name === (item.ref || item.name));
+      if (f) put(f);
+    }
   }
   functions.forEach(put);
   return out;

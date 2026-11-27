@@ -29,7 +29,7 @@ export const MODULES = [
   { name: "resources", routes: resourceRoutes },
   dubModule,
   // Tạm giữ toàn bộ định nghĩa hàm ở đây; mỗi module chuyển sang server/modules/ sẽ mang hàm của nó theo.
-  { name: "functions", functions: FUNCTIONS.filter((f) => !f.slot), routes: (app, ctx) => functionRoutes(app, ctx.functions()) },
+  { name: "functions", functions: FUNCTIONS.filter((f) => !f.slot && !f.ref), routes: (app, ctx) => functionRoutes(app, ctx.functions()) },
 ];
 
 export async function buildApp({ logger = false } = {}) {

@@ -58,3 +58,6 @@ export function projectIdOf(body) {
 }
 
 export const nowIso = () => new Date().toISOString().slice(0, 19);
+
+/** Đường dẫn trả cho model: tuyệt đối (mở file) + tương đối (truyền lại vào hàm khác) + url xem trên Studio. */
+export const fileInfo = (abs) => ({ path: abs, rel_path: relOf(abs), url: "/" + relOf(abs).split("/").map(encodeURIComponent).join("/") });

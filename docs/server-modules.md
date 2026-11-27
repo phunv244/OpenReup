@@ -8,7 +8,7 @@ Thêm chức năng = thêm 1 thư mục `server/modules/<tên>/` rồi thêm mod
 | `routes.mjs` | `routes(app, ctx, service)`: chỉ đọc request, gọi service, trả JSON |
 | `service.mjs` | Nghiệp vụ; lỗi do input ném `Error` có `statusCode` |
 | `repo.mjs` | Đọc/ghi file JSON / DB của module |
-| `functions.mjs` | Hàm `/api/functions` của module; đặt `{ slot: "<tên>" }` trong `server/routes/functions.mjs` để giữ thứ tự |
+| `functions.mjs` | Hàm `/api/functions` của module; đặt `{ slot: "<tên>" }` (cả nhóm) hoặc `{ ref: "<tên hàm>" }` (từng hàm nằm xen kẽ) trong `server/routes/functions.mjs` để giữ thứ tự |
 
 - Module khác chỉ dùng service qua `ctx.get(tên)` và phải khai tên đó trong `deps`.
 - Đổi `/api/functions` có chủ đích: `UPDATE_SNAPSHOT=1 npm run test:api`, rồi báo FE/MausBot.

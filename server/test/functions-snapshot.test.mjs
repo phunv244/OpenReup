@@ -28,3 +28,19 @@ test("POST /api/functions/call gọi được hàm qua registry của loader", a
   const bad = await app.inject({ method: "POST", url: "/api/functions/call", payload: { name: "khong_co" } });
   assert.match(bad.json().error, /Không có hàm "khong_co"\. Các hàm: download_video/);
 });
+
+test("hàm lồng tiếng do module dub khai; chỗ giữ của hàm không có trong registry bị bỏ qua", async () => {
+  const Fastify = (await import("fastify")).default;
+  const { DUB_FUNCTIONS } = await import("../modules/dub/functions.mjs");
+  const { default: functionRoutes, FUNCTIONS } = await import("../routes/functions.mjs");
+  assert.equal(DUB_FUNCTIONS.length, 11);
+  assert.ok(FUNCTIONS.some((f) => f.ref === "dub_video") && !FUNCTIONS.some((f) => f.name === "dub_video"));
+  // Registry thiếu toàn bộ hàm của module dub (module chưa nạp): /api/functions vẫn trả các hàm còn lại.
+  const own = FUNCTIONS.filter((f) => f.name);
+  const lone = Fastify();
+  await functionRoutes(lone, own);
+  const res = await lone.inject({ method: "GET", url: "/api/functions" });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.deepEqual(res.json().functions.map((f) => f.function.name), own.map((f) => f.name));
+  await lone.close();
+});

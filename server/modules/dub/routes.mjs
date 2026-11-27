@@ -6,7 +6,7 @@ import { db, inTransaction } from "../../lib/db.mjs";
 import { checkSubStyle } from "../../lib/fonts.mjs";
 import { dubBusyError, spawnTask, task, taskEvents } from "../../lib/tasks.mjs";
 import { fail, resolveDownload, safeJobId, validDelogo, validModelId, validSubcover, validVoice } from "../../lib/util.mjs";
-import { lookupDownload } from "../../lib/videos.mjs";
+import { legacyJobFields, lookupDownload } from "../../lib/videos.mjs";
 import { dubRepo } from "./repo.mjs";
 
 const { removeDubWorkDir, loadDubProject, removeDubJob, saveDubProject, updateDubbed } = dubRepo;
@@ -97,7 +97,7 @@ export default async function dubRoutes(app, ctx, dub) {
     const items = db
       .prepare(`SELECT id, start_s AS start, end_s AS "end", zh, vi, speaker FROM segments WHERE ${where.join(" AND ")} ORDER BY start_s, id LIMIT ? OFFSET ?`)
       .all(...params, limit, offset);
-    return { ...proj, total: totals.total, empty: totals.empty, matched, offset, items, timeline_dirty: timelineRev(jobId) > 0 };
+    return { ...legacyJobFields(jobId, proj), total: totals.total, empty: totals.empty, matched, offset, items, timeline_dirty: timelineRev(jobId) > 0 };
   });
 
   app.post("/api/dub/rerender", async (req, reply) => {

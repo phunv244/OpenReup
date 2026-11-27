@@ -24,7 +24,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { DOWNLOADS_DIR, DUBBED_DIR, MEDIA_ROOT, VIDEOS_DIR } from "../config.mjs";
+import { DOWNLOADS_DIR, DUB_WORK_DIR, DUBBED_DIR, MEDIA_ROOT, ROOT, VIDEOS_DIR } from "../config.mjs";
 
 const ORPHAN = "_orphan";
 const OUT_EXTS = [".mp4", ".srt"];
@@ -188,6 +188,7 @@ export const videoJobs = () => [...index().jobs.values()].map((j) => ({ ...j }))
  * nằm ngoài downloads/ (chống ../). key = "" khi file đang ở bố cục cũ.
  */
 export function lookupDownload(rel) {
+  if (String(rel || "").includes("\0")) return null;
   const resolved = path.resolve(MEDIA_ROOT, String(rel || ""));
   if (!inside(DOWNLOADS_DIR, resolved)) return null;
   const idx = index();
@@ -214,4 +215,31 @@ export function relOfPath(full) {
 export function jobPaths(jobId) {
   const hit = index().jobs.get(jobId);
   return hit ? { key: hit.key, project: hit.project, work: hit.work, out: hit.out } : null;
+}
+
+/**
+ * /api/dub/segments trả input_path / work_dir / out_dir theo dạng cũ khi job ở bố cục mới (mục 8.1 ý 2): chỉ đổi
+ * trường đang trỏ đúng chỗ mới của chính job đó (nguồn trong chỉ mục, jobs/<job>/work, jobs/<job>/out), giữ kiểu
+ * lưu (tuyệt đối, hoặc tương đối theo thư mục dự án như dub_video.py rel_to_base). Không ghi gì xuống file.
+ * Job chưa chuyển, hay giá trị trỏ chỗ khác (job mồ côi không có rel_path nguồn) thì trả nguyên.
+ */
+export function legacyJobFields(jobId, proj) {
+  const jp = jobPaths(jobId);
+  if (!jp) return proj;
+  const out = { ...proj };
+  const remap = (field, from, to) => {
+    const v = proj[field];
+    if (typeof v !== "string" || !v) return;
+    const abs = path.resolve(ROOT, v);
+    const target = to(abs, from);
+    if (!target) return;
+    out[field] = path.isAbsolute(v) ? target : path.relative(ROOT, target);
+  };
+  remap("input_path", null, (abs) => {
+    const hit = index().byAbs.get(abs);
+    return hit?.kind === "source" ? path.join(MEDIA_ROOT, hit.rel) : "";
+  });
+  remap("work_dir", jp.work, (abs, from) => (abs === from ? path.join(DUB_WORK_DIR, jobId) : ""));
+  remap("out_dir", jp.out, (abs, from) => (abs === from ? DUBBED_DIR : ""));
+  return out;
 }

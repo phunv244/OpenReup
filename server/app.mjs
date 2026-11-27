@@ -8,8 +8,9 @@ import fs from "node:fs";
 import path from "node:path";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
-import { API_TOKEN, DOWNLOADS_DIR, WEB_OUT_DIR } from "./config.mjs";
+import { API_TOKEN, WEB_OUT_DIR } from "./config.mjs";
 import { loadModules } from "./core/loader.mjs";
+import downloadsRoute from "./lib/downloads-route.mjs";
 import { runMigrations } from "./lib/migrate.mjs";
 import taskRoutes from "./routes/tasks.mjs";
 import functionRoutes, { FUNCTIONS } from "./routes/functions.mjs";
@@ -88,13 +89,8 @@ export async function buildApp({ logger = false } = {}) {
     setHeaders: (reply, file) =>
       reply.header("Cache-Control", file.includes(`${path.sep}_next${path.sep}static${path.sep}`) ? "public, max-age=31536000, immutable" : "no-cache"),
   });
-  // Video tải về / bản lồng tiếng (hỗ trợ tua: Range request).
-  await app.register(fastifyStatic, {
-    root: DOWNLOADS_DIR,
-    prefix: "/downloads/",
-    decorateReply: false,
-    setHeaders: (reply, file) => file.endsWith(".srt") && reply.header("Content-Type", "text/plain; charset=utf-8"),
-  });
+  // Video tải về / bản lồng tiếng (hỗ trợ tua: Range request), tra qua chỉ mục video.json: cả bố cục cũ lẫn mới.
+  await app.register(downloadsRoute);
   app.setNotFoundHandler((req, reply) => {
     if (req.method !== "GET" || req.url.startsWith("/api/") || req.url.startsWith("/downloads/")) {
       return reply.code(404).send({ ok: false, error: "Không tìm thấy" });

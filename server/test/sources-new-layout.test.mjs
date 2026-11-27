@@ -74,6 +74,24 @@ test("GET /api/sources: video.json ghi file đã mất trên đĩa thì không l
   reloadVideoIndex();
 });
 
+test("GET /api/sources: file nguồn trong chỉ mục là symlink ra ngoài thì không liệt kê, kể cả bản cũ cùng rel_path", async () => {
+  const k = "bilibili-BVsym-p1";
+  const rel = "downloads/bilibili/BVsym_p1_.mp4";
+  const outside = path.join(dir, "ngoai.mp4");
+  put(outside, "ngoai");
+  put(path.join(dir, rel), "ban-cu");
+  put(path.join(VIDEOS_DIR, k, "video.json"), { key: k, files: { [rel]: "source/BVsym_p1_.mp4" }, jobs: [] });
+  fs.mkdirSync(path.join(VIDEOS_DIR, k, "source"), { recursive: true });
+  fs.symlinkSync(outside, path.join(VIDEOS_DIR, k, "source", "BVsym_p1_.mp4"));
+  reloadVideoIndex();
+  const res = await get("/api/sources");
+  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(res.json().sources.some((s) => s.rel_path === rel), false);
+  fs.rmSync(path.join(VIDEOS_DIR, k), { recursive: true });
+  fs.rmSync(path.join(dir, rel));
+  reloadVideoIndex();
+});
+
 test("GET /api/thumb: bố cục mới trả thumb.jpg trong thư mục video", async () => {
   const res = await get(`/api/thumb?rel=${encodeURIComponent(NEW_REL)}`);
   assert.equal(res.statusCode, 200);

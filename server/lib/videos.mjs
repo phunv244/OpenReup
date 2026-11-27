@@ -181,15 +181,16 @@ export function writeVideoJson(key, data) {
 }
 
 /**
- * Mọi file nguồn ở bố cục mới đã qua kiểm symlink như lookupDownload: [{ rel, abs, key }], sắp theo rel.
- * File ghi trong video.json mà đã mất trên đĩa vẫn có ở đây: bên gọi tự stat.
+ * Mọi file nguồn có trong chỉ mục: [{ rel, abs, key }], sắp theo rel. abs = "" khi mục không qua kiểm symlink như
+ * lookupDownload (rel đó vẫn thuộc chỉ mục: bản cũ cùng rel trong downloads/ cũng không dùng được). File ghi trong
+ * video.json mà đã mất trên đĩa vẫn có ở đây: bên gọi tự stat.
  */
 export function videoSources() {
   const out = [];
   for (const e of index().byRel.values()) {
     if (e.kind !== "source") continue;
     const hit = lookupDownload(e.rel);
-    if (hit) out.push({ rel: e.rel, abs: hit.abs, key: hit.key });
+    out.push({ rel: e.rel, abs: hit ? hit.abs : "", key: e.key });
   }
   return out.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
 }

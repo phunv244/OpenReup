@@ -112,7 +112,7 @@ export function createSourceService(repo, { dub, project, tasks }) {
       const indexed = new Set();
       for (const { rel, abs } of videoSources()) {
         indexed.add(rel);
-        const st = listed(rel) && repo.statFile(abs);
+        const st = abs && listed(rel) && repo.statFile(abs);
         if (st) await add(rel, abs, st);
       }
       for (const dir of [BILIBILI_DIR, DOWNLOADS_DIR]) {

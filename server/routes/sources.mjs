@@ -2,11 +2,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  BILIBILI_DIR, BILIBILI_JSON, DATA_JSON, DEFAULT_CHANNEL_URL, DOWNLOADS_DIR, DUBBED_DIR, DUB_WORK_DIR, ROOT,
+  BILIBILI_DIR, BILIBILI_JSON, DATA_JSON, DEFAULT_CHANNEL_URL, DOWNLOADS_DIR, DUBBED_DIR, ROOT,
 } from "../config.mjs";
 import { ensureThumb, extractFrame, flushMediaCache, mediaKey, probeMedia } from "../lib/media.mjs";
 import {
-  readDubJobs, readVideoProjects, readVideosData, removeDubJob, removeFromBiliIndex, setVideoProject,
+  readDubJobs, readVideoProjects, readVideosData, removeDubJob, removeDubWorkDir, removeFromBiliIndex, setVideoProject,
 } from "../lib/store.mjs";
 import { dubBusyError, spawnTask, task } from "../lib/tasks.mjs";
 import {
@@ -159,13 +159,13 @@ export default async function sourceRoutes(app) {
     const body = req.body || {};
     const resolved = resolveDownload(body.rel_path);
     if (!resolved || resolved.startsWith(DUBBED_DIR + path.sep)) return fail(reply, 400, "Đường dẫn file không hợp lệ.");
-    if (task.proc && task.target && path.resolve(ROOT, task.target) === resolved) {
+    if (task.proc && task.target && resolveDownload(task.target) === resolved) {
       return fail(reply, 409, "Video này đang được xử lý. Hãy dừng tiến trình trước khi xóa.");
     }
     if (body.delete_dubbed && dubBusyError()) return fail(reply, 409, dubBusyError());
     // Job lồng tiếng đang dở của file này cũng vô dụng khi file nguồn mất.
     const pending = readDubJobs().get(resolved);
-    if (pending && pending.status !== "done") fs.rmSync(path.join(DUB_WORK_DIR, pending.job_id), { recursive: true, force: true });
+    if (pending && pending.status !== "done") removeDubWorkDir(safeJobId(pending.job_id));
 
     if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) fs.unlinkSync(resolved);
     fs.rmSync(resolved.replace(/\.mp4$/i, ".info.json"), { force: true });

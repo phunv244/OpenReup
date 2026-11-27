@@ -8,7 +8,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { API_TOKEN, DATA_DIR, ROOT } from "../config.mjs";
+import { API_TOKEN, BILIBILI_DIR, DATA_DIR } from "../config.mjs";
 import { P_DELOGO, P_PROJECT, P_VOICE, bool, num, str } from "../core/schema.mjs";
 import { db } from "../lib/db.mjs";
 import { taskEvents } from "../lib/tasks.mjs";
@@ -85,7 +85,7 @@ export const FUNCTIONS = [
     description: "Xóa logo trên 1 video đã tải trong downloads/bilibili (mã hóa lại, ghi đè file). Chạy nền.",
     route: ["POST", "/api/bilibili/delogo"],
     task: true,
-    result: (a) => ({ files: [fileInfo(path.join(ROOT, "downloads", "bilibili", path.basename(String(a.local_file))))] }),
+    result: (a) => ({ files: [fileInfo(path.join(BILIBILI_DIR, path.basename(String(a.local_file))))] }),
     parameters: {
       local_file: str("Tên file trong downloads/bilibili."),
       delogo: P_DELOGO,

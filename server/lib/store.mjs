@@ -40,14 +40,20 @@ export function dubWorkDirs() {
 }
 
 /**
- * Thư mục làm việc của 1 job để xóa. Chỉ nhận thư mục thật (đã giải symlink) nằm bên trong data/dub_work/;
+ * Thư mục làm việc của 1 job để xóa. Chỉ nhận thư mục thật (đã giải symlink) nằm bên trong data/dub_work/ và mang đúng tên job;
  * work_dir trỏ ra ngoài (data/projects, chính data/dub_work, symlink ra ngoài…) hoặc không tồn tại → null, không xóa gì.
  */
 export function dubWorkDir(jobId) {
   const dir = dubWorkDirs().get(jobId) || path.join(DUB_WORK_DIR, jobId);
-  if (!fs.existsSync(dir) || !fs.existsSync(DUB_WORK_DIR)) return null;
-  const real = fs.realpathSync(dir);
-  return real.startsWith(fs.realpathSync(DUB_WORK_DIR) + path.sep) ? real : null;
+  let real, root;
+  try {
+    real = fs.realpathSync(dir);
+    root = fs.realpathSync(DUB_WORK_DIR);
+  } catch {
+    return null; // thư mục không có / vừa bị xóa giữa chừng
+  }
+  // Phải đúng thư mục của chính job này: work_dir của job A không được trỏ sang thư mục job B.
+  return real.startsWith(root + path.sep) && path.basename(real) === jobId ? real : null;
 }
 
 /** Xóa thư mục làm việc (cache/checkpoint) của 1 job, chỉ khi nó nằm trong data/dub_work/. */

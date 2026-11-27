@@ -25,7 +25,10 @@ export const STORY_PROJECTS_DIR = path.join(DATA_DIR, "projects");
 export const THUMBS_DIR = path.join(DATA_DIR, "thumbs");
 export const MEDIA_CACHE_JSON = path.join(DATA_DIR, "media_cache.json");
 export const TASK_LOG = path.join(DATA_DIR, "last_task.log");
-export const DOWNLOADS_DIR = path.join(ROOT, "downloads");
+// REUP_MEDIA_ROOT: chỉ dùng cho test — thư mục chứa downloads/ (video tải về + bản xuất downloads/dubbed), mặc định là repo.
+// Đường dẫn tương đối "downloads/..." (khóa trong video_projects.json, rel_path của API) luôn tính từ MEDIA_ROOT.
+export const MEDIA_ROOT = process.env.REUP_MEDIA_ROOT ? path.resolve(process.env.REUP_MEDIA_ROOT) : ROOT;
+export const DOWNLOADS_DIR = path.join(MEDIA_ROOT, "downloads");
 export const BILIBILI_DIR = path.join(DOWNLOADS_DIR, "bilibili");
 export const DUBBED_DIR = path.join(DOWNLOADS_DIR, "dubbed");
 // REUP_PYTHON: chỉ dùng cho test (thay python bằng script giả), mặc định là .venv của repo.

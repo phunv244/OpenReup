@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { DOWNLOADS_DIR, ROOT, STORY_PROJECTS_DIR } from "../config.mjs";
+import { DOWNLOADS_DIR, MEDIA_ROOT, STORY_PROJECTS_DIR } from "../config.mjs";
 
 export const execFileP = promisify(execFile);
 
@@ -42,12 +42,12 @@ export const validModelId = (v) => /^[a-z0-9.-]{1,40}$/.test(String(v));
 
 /** Chỉ chấp nhận file nằm trong downloads/ (chống ../). Trả về đường dẫn tuyệt đối hoặc "". */
 export function resolveDownload(rel) {
-  const resolved = path.resolve(ROOT, String(rel || ""));
+  const resolved = path.resolve(MEDIA_ROOT, String(rel || ""));
   return resolved.startsWith(DOWNLOADS_DIR + path.sep) ? resolved : "";
 }
 
 /** Đường dẫn tương đối kiểu "downloads/bilibili/x.mp4" (khóa trong video_projects.json). */
-export const relOf = (full) => path.relative(ROOT, full).split(path.sep).join("/");
+export const relOf = (full) => path.relative(MEDIA_ROOT, full).split(path.sep).join("/");
 
 export const projectFile = (id) => path.join(STORY_PROJECTS_DIR, `${path.basename(String(id || ""))}.json`);
 

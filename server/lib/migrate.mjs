@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  DEFAULT_VOICE, DOWNLOADS_DIR, DUBBED_JSON, DUB_PROJECTS_DIR, DUB_WORK_DIR, ROOT, STORY_PROJECTS_DIR, VIDEO_PROJECTS_JSON,
+  DEFAULT_VOICE, DOWNLOADS_DIR, DUBBED_JSON, DUB_PROJECTS_DIR, DUB_WORK_DIR, MEDIA_ROOT, ROOT, STORY_PROJECTS_DIR, VIDEO_PROJECTS_JSON,
 } from "../config.mjs";
 import { db, inTransaction } from "./db.mjs";
 import { readJson, safeJobId, writeJson } from "./util.mjs";
@@ -45,7 +45,7 @@ function migrateVideoProjects() {
   for (const d of readJson(DUBBED_JSON, { videos: [] }).videos || []) {
     if (!d.project_id || !d.title) continue;
     for (const rel of [`downloads/bilibili/${d.title}`, `downloads/${d.title}`]) {
-      if (fs.existsSync(path.join(ROOT, rel))) map[rel] = d.project_id;
+      if (fs.existsSync(path.join(MEDIA_ROOT, rel))) map[rel] = d.project_id;
     }
   }
   writeJson(VIDEO_PROJECTS_JSON, map);

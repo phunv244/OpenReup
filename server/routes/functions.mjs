@@ -275,15 +275,22 @@ function checkArgs(def, args) {
 function listingOrder(functions) {
   const out = [];
   const placed = new Set();
+  const missing = [];
   const put = (f) => placed.has(f.name) || (placed.add(f.name), out.push(f));
   for (const item of FUNCTIONS) {
-    if (item.slot) functions.filter((f) => f.module === item.slot).forEach(put);
-    else {
-      // Chỗ giữ của hàm mà module không khai (module chưa nạp / đổi tên): bỏ qua, không làm lỗi /api/functions.
+    if (item.slot) {
+      const own = functions.filter((f) => f.module === item.slot);
+      if (!own.length) missing.push(`slot "${item.slot}"`);
+      own.forEach(put);
+    } else {
+      // Chỗ giữ của hàm mà module không khai (module chưa nạp / gõ sai tên): bỏ qua, không làm lỗi /api/functions.
       const f = functions.find((x) => x.name === (item.ref || item.name));
       if (f) put(f);
+      else missing.push(`"${item.ref || item.name}"`);
     }
   }
+  // Gõ sai tên trong { ref } thì hàm thật bị dời xuống cuối danh sách: báo ngay lúc khởi động.
+  if (missing.length) console.warn(`[functions] Chỗ giữ trong FUNCTIONS không có hàm tương ứng (bị bỏ qua): ${missing.join(", ")}`);
   functions.forEach(put);
   return out;
 }

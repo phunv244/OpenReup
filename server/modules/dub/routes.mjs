@@ -9,7 +9,7 @@ import { dubBusyError, spawnTask, task, taskEvents } from "../../lib/tasks.mjs";
 import { fail, resolveDownload, safeJobId, validDelogo, validModelId, validSubcover, validVoice } from "../../lib/util.mjs";
 import { dubRepo } from "./repo.mjs";
 
-const { dubWorkDir, loadDubProject, removeDubJob, saveDubProject, updateDubbed } = dubRepo;
+const { removeDubWorkDir, loadDubProject, removeDubJob, saveDubProject, updateDubbed } = dubRepo;
 
 const dubPy = path.join(ROOT, "dub_video.py");
 const send = (reply, result) => reply.code(result.ok ? 200 : 409).send(result);
@@ -278,7 +278,7 @@ export default async function dubRoutes(app, ctx, dub) {
   app.post("/api/dub/clean", async (req, reply) => {
     const jobId = safeJobId(req.body?.job_id);
     if (dubBusyError()) return fail(reply, 409, dubBusyError());
-    if (jobId) fs.rmSync(dubWorkDir(jobId), { recursive: true, force: true });
+    if (jobId) removeDubWorkDir(jobId);
     updateDubbed((vids) => vids.forEach((v) => v.job_id === jobId && (v.cache_mb = 0)));
     return { ok: true };
   });

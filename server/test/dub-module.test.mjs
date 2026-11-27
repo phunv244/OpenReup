@@ -148,4 +148,52 @@ test("jobIdFor khớp job_id dub_video.py đã tạo cho các video thật", () 
     ["BV1wyxS62Etu_p1_sec_000000-000800_1-398.mp4", 0.65, "dub_BV1wyxS62Etu_p1_sec_000000-00080_423aa4_0p65x"],
   ]) assert.equal(jobIdFor(`/x/${name}`, speed), want);
   assert.equal(jobIdFor("/x/a.mp4", 1), "dub_a_1p0x");
+  // Path.stem của Python 3.13 (dub_video.py chạy bằng .venv 3.13): "foo." giữ dấu chấm → bị rút gọn → thêm mã băm.
+  assert.equal(jobIdFor("/x/foo.", 0.5), "dub_foo_6ba62a_0p5x");
+  assert.equal(jobIdFor("/x/.foo", 0.5), "dub_foo_777070_0p5x");
+});
+
+test("jobIdFor giải symlink như Path(input).resolve() của Python: lấy tên file đích", () => {
+  const { jobIdFor } = createDubService({});
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "reup-link-"));
+  try {
+    fs.writeFileSync(path.join(tmp, "BVthat.mp4"), "");
+    fs.symlinkSync(path.join(tmp, "BVthat.mp4"), path.join(tmp, "link.mp4"));
+    assert.equal(jobIdFor(path.join(tmp, "link.mp4"), 0.65), "dub_BVthat_0p65x");
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("xóa cache/job chỉ xóa thư mục nằm trong data/dub_work: work_dir trỏ ra ngoài bị từ chối, không xóa gì", async () => {
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "reup-outside-"));
+  fs.writeFileSync(path.join(outside, "keep.txt"), "x");
+  fs.mkdirSync(path.join(dir, "dub_work", "job_ok"), { recursive: true });
+  fs.symlinkSync(outside, path.join(dir, "dub_work", "job_link"));
+  fs.mkdirSync(path.join(dir, "projects"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "projects", "p.json"), "{}");
+  const cases = {
+    job_projects: path.join(dir, "projects"),
+    job_root: path.join(dir, "dub_work"),
+    job_dotdot: path.join(dir, "dub_work", "..", "projects"),
+    job_abs: outside,
+    job_link: path.join(dir, "dub_work", "job_link"),
+  };
+  writeJson("dubbed.json", { videos: [...Object.entries(cases).map(([job_id, work_dir]) => ({ job_id, work_dir })), { job_id: "job_ok", work_dir: path.join(dir, "dub_work", "job_ok") }] });
+  try {
+    for (const jobId of Object.keys(cases)) {
+      assert.equal((await post("/api/dub/clean", { job_id: jobId })).statusCode, 200);
+      assert.equal((await post("/api/dub/delete", { job_id: jobId })).statusCode, 200);
+    }
+    assert.ok(fs.existsSync(path.join(dir, "projects", "p.json")), "data/projects bị xóa");
+    assert.ok(fs.existsSync(path.join(dir, "dub_work", "job_ok")), "data/dub_work bị xóa");
+    assert.ok(fs.existsSync(path.join(outside, "keep.txt")), "thư mục ngoài (qua symlink / đường dẫn tuyệt đối) bị xóa");
+    // Thư mục hợp lệ trong data/dub_work vẫn xóa được.
+    assert.equal((await post("/api/dub/clean", { job_id: "job_ok" })).statusCode, 200);
+    assert.ok(!fs.existsSync(path.join(dir, "dub_work", "job_ok")));
+  } finally {
+    fs.rmSync(outside, { recursive: true, force: true });
+    fs.rmSync(path.join(dir, "dub_work"), { recursive: true, force: true });
+    fs.rmSync(path.join(dir, "dubbed.json"), { force: true });
+  }
 });

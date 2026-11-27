@@ -1,15 +1,25 @@
 /** Nghiệp vụ lồng tiếng dùng chung cho module khác: danh sách bản lồng tiếng, nguồn, dự án đang bận, tham số đường dẫn cho dub_video.py. */
 import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import { DUBBED_DIR, DUBBED_JSON, DUB_PROJECTS_DIR, DUB_WORK_DIR, ROOT, STORY_PROJECTS_DIR } from "../../config.mjs";
 
 /** str(float) của Python cho tốc độ (1 -> "1.0", 0.65 -> "0.65"). */
 const pyFloat = (x) => (Number.isInteger(x) ? `${x}.0` : String(x));
 
-/** job_id mà dub_video.py tạo cho 1 video nguồn (giữ khớp với nhánh --input trong dub_video.py). */
+/** Path.stem của Python 3.13: "foo." và ".foo" giữ nguyên, khác path.parse().name của Node. */
+const pyStem = (name) => {
+  const i = name.lastIndexOf(".");
+  return i > 0 && i < name.length - 1 ? name.slice(0, i) : name;
+};
+
+/**
+ * job_id mà dub_video.py tạo cho 1 video nguồn (giữ khớp với nhánh --input trong dub_video.py).
+ * Python gọi Path(input).resolve(): file nguồn là symlink thì lấy tên file đích.
+ */
 export function jobIdFor(inputAbs, speed) {
-  const name = path.basename(inputAbs);
-  const stem = path.parse(name).name;
+  const name = path.basename(fs.existsSync(inputAbs) ? fs.realpathSync(inputAbs) : inputAbs);
+  const stem = pyStem(name);
   let s = stem.replace(/[^0-9a-zA-Z_-]+/g, "_").slice(0, 32).replace(/^_+|_+$/g, "") || "video";
   if (s !== stem) s += "_" + crypto.createHash("sha1").update(name, "utf8").digest("hex").slice(0, 6);
   return `dub_${s}_${pyFloat(Math.max(0.25, Math.min(1.5, speed))).replace(".", "p")}x`;

@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  BILIBILI_JSON, DATA_DIR, DATA_JSON, DEFAULT_CHANNEL_URL, DOWNLOADS_DIR, DUBBED_DIR, DUBBED_JSON, DUB_PROJECTS_DIR,
+  BILIBILI_JSON, DATA_JSON, DEFAULT_CHANNEL_URL, DOWNLOADS_DIR, DUBBED_DIR, DUBBED_JSON, DUB_PROJECTS_DIR,
   DUB_WORK_DIR, ROOT, VIDEO_PROJECTS_JSON,
 } from "../config.mjs";
 import { db } from "./db.mjs";
@@ -39,10 +39,21 @@ export function dubWorkDirs() {
   return out;
 }
 
-/** Thư mục làm việc của 1 job. Chỉ nhận đường dẫn nằm trong DATA_DIR (không bao giờ xóa nhầm ngoài data/). */
+/**
+ * Thư mục làm việc của 1 job để xóa. Chỉ nhận thư mục thật (đã giải symlink) nằm bên trong data/dub_work/;
+ * work_dir trỏ ra ngoài (data/projects, chính data/dub_work, symlink ra ngoài…) hoặc không tồn tại → null, không xóa gì.
+ */
 export function dubWorkDir(jobId) {
   const dir = dubWorkDirs().get(jobId) || path.join(DUB_WORK_DIR, jobId);
-  return dir.startsWith(DATA_DIR + path.sep) ? dir : path.join(DUB_WORK_DIR, jobId);
+  if (!fs.existsSync(dir) || !fs.existsSync(DUB_WORK_DIR)) return null;
+  const real = fs.realpathSync(dir);
+  return real.startsWith(fs.realpathSync(DUB_WORK_DIR) + path.sep) ? real : null;
+}
+
+/** Xóa thư mục làm việc (cache/checkpoint) của 1 job, chỉ khi nó nằm trong data/dub_work/. */
+export function removeDubWorkDir(jobId) {
+  const dir = dubWorkDir(jobId);
+  if (dir) fs.rmSync(dir, { recursive: true, force: true });
 }
 
 /* ---------- Douyin ---------- */
@@ -113,7 +124,7 @@ export function removeDubJob(jobId) {
   ]) {
     fs.rmSync(p, { force: true });
   }
-  fs.rmSync(dubWorkDir(jobId), { recursive: true, force: true });
+  removeDubWorkDir(jobId);
   db.prepare("DELETE FROM segments WHERE job_id = ?").run(jobId);
   db.prepare("DELETE FROM timeline_dirty WHERE job_id = ?").run(jobId);
   updateDubbed((vids) => vids.filter((v) => v.job_id !== jobId));

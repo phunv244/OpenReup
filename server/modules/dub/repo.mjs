@@ -1,6 +1,6 @@
 import path from "node:path";
 /** Đọc/ghi dữ liệu lồng tiếng: data/dubbed.json, data/dub_projects/<job>.json, thư mục làm việc <work_dir>/meta.json. */
-import { dubWorkDir, dubWorkDirs, loadDubProject, readDubJobs, readDubbed, removeDubJob, saveDubProject, updateDubbed } from "../../lib/store.mjs";
+import { dubWorkDirs, removeDubWorkDir, loadDubProject, readDubJobs, readDubbed, removeDubJob, saveDubProject, updateDubbed } from "../../lib/store.mjs";
 import { queue, task } from "../../lib/tasks.mjs";
 import { readJson, relOf } from "../../lib/util.mjs";
 
@@ -11,7 +11,7 @@ export const dubRepo = {
   saveDubProject,
   removeDubJob,
   readDubJobs,
-  dubWorkDir,
+  removeDubWorkDir,
 
   /** job_id → video nguồn (rel) của bản lồng tiếng, đọc meta.json theo work_dir (dubbed.json) hoặc data/dub_work/<job>. */
   readDubSources() {

@@ -50,7 +50,7 @@ export function MoveVideoModal({ v, onClose }: { v: WorkItem; onClose: () => voi
   const others = projects.filter((p) => p.id !== v.project_id);
   const [pid, setPid] = useState(others[0]?.id || "");
   async function move() {
-    const d = await postJSON("/api/source/assign", { rel_path: v.rel_path, project_id: pid });
+    const d = await postJSON("/api/source/assign", { rel_path: v.rel_path, project_id: pid, move: true });
     if (!d.ok) return toast(d.error || "Không chuyển được video", "error");
     toast(`Đã chuyển sang dự án "${projects.find((p) => p.id === pid)?.name}"`, "success");
     onClose();

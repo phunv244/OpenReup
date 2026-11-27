@@ -5,7 +5,7 @@ const STEPS: [string, React.ReactNode][] = [
   ["Tạo dự án", "Mỗi bộ truyện / phim là một dự án. Nhập bối cảnh và nhân vật để AI dịch đúng xưng hô."],
   ["Thêm video", <>Trong dự án, bấm <b>Thêm video</b> và dán link Bilibili / YouTube; hoặc tải từ <b>Kho Douyin</b>.</>],
   ["Lồng tiếng", <>Bấm <b>Lồng tiếng</b> ở video. Máy tự nhận diện lời thoại → dịch → tạo giọng Việt → xuất video.</>],
-  ["Chỉnh & xuất lại", <>Bấm vào video đã lồng tiếng để mở trang chỉnh: sửa câu ở tab <b>Lời thoại</b>, đổi giọng ở <b>Giọng đọc</b>, logo và phụ đề ở <b>Hình &amp; phụ đề</b>, rồi bấm <b>Lưu &amp; chạy lại</b> — chỉ câu và đoạn bị sửa mới phải làm lại.</>],
+  ["Chỉnh & xuất lại", <>Bấm vào video đã lồng tiếng để mở trang chỉnh: sửa câu ở tab <b>Lời thoại</b>, đổi giọng ở <b>Giọng đọc</b>, logo và phụ đề ở <b>Hình &amp; phụ đề</b>, rồi bấm <b>Lưu &amp; chạy lại</b> — chỉ câu và đoạn bị sửa mới phải làm lại. Nhấn <kbd>Phím cách</kbd> để phát / dừng video (không cuộn trang; không áp dụng khi đang gõ chữ hoặc ở tab <b>Hình &amp; phụ đề</b>).</>],
 ];
 
 const FILES: [string, React.ReactNode][] = [

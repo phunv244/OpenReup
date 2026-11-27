@@ -1329,7 +1329,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .font-row:first-child { border-top: 0; }
 .font-main { flex: 1; min-width: 0; }
 .font-name { font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.font-sample { font-size: var(--fs-title); margin-top: 4px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.font-sample { font-size: var(--fs-title); color: var(--text); letter-spacing: -0.005em; margin-top: 4px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .font-sub { font-size: var(--fs-sub); color: var(--muted); margin-top: 2px; }
 .drop-zone {
   display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 22px; margin: 14px 18px; text-align: center;
@@ -1556,7 +1556,6 @@ body.resizing .sidebar, body.resizing .main { transition: none; }
 .font-row .icon-btn.danger, .voice-row .icon-btn.danger { opacity: 0.55; transition: opacity 0.15s; }
 .font-row:hover .icon-btn.danger, .voice-row:hover .icon-btn.danger, .icon-btn.danger:focus-visible { opacity: 1; }
 @media (hover: none) { .font-row .icon-btn.danger, .voice-row .icon-btn.danger { opacity: 1; } }
-.font-sample { font-size: var(--fs-title); color: var(--text); letter-spacing: -0.005em; }
 .drop-zone { background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
 .model-card { transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease); }
 .model-card:hover { box-shadow: var(--shadow-md); }
@@ -1565,7 +1564,6 @@ body.resizing .sidebar, body.resizing .main { transition: none; }
 @media (max-width: 640px) {
   .pcard { padding: 16px 16px 12px; border-radius: 16px; }
   .font-row { padding: 12px 14px; gap: 10px; }
-  .font-sample { font-size: var(--fs-title); }
   .drop-zone { margin: 12px 14px; padding: 18px; }
   .card-head { flex-wrap: wrap; gap: 8px; }
   .topbar-actions { gap: 4px; }
@@ -1580,3 +1578,4 @@ body.resizing .sidebar, body.resizing .main { transition: none; }
   .voice-actions .icon-btn.danger { margin-left: auto; }
 }
 .rail-log-foot { margin-top: 6px; font-size: var(--fs-sub); }
+kbd { font: 500 var(--fs-sub)/1 var(--font-mono, ui-monospace, monospace); padding: 2px 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 6px; background: var(--surface-2); color: var(--text); white-space: nowrap; }

@@ -34,9 +34,11 @@ type Props = {
   detailHost?: HTMLElement | null;
   /** Gọi khi chọn 1 khối — trang cha dùng để mở đúng tab lời thoại. */
   onSelect?: () => void;
+  /** Tắt phím cách phát/dừng (vd. đang ở tab "Hình & phụ đề", khung video bị ẩn — phát sẽ chỉ nghe tiếng mà không thấy hình). */
+  spaceOff?: boolean;
 };
 
-export function TimelineEditor({ jobId, video, speakers, edits, setEdits, spk, setSpk, onStructuralChange, detailHost, onSelect }: Props) {
+export function TimelineEditor({ jobId, video, speakers, edits, setEdits, spk, setSpk, onStructuralChange, detailHost, onSelect, spaceOff = false }: Props) {
   const toast = useToast();
   const [outline, setOutline] = useState<Outline | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
@@ -93,9 +95,11 @@ export function TimelineEditor({ jobId, video, speakers, edits, setEdits, spk, s
   // Phím cách = phát/dừng ở mọi chỗ trên trang, trừ khi đang gõ chữ hoặc đang đứng trên một nút/ô chọn.
   const toggleRef = useRef(togglePlay);
   toggleRef.current = togglePlay;
+  const spaceOffRef = useRef(spaceOff);
+  spaceOffRef.current = spaceOff;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== "Space" || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (spaceOffRef.current || e.code !== "Space" || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t?.closest("input, textarea, select, button, a, [contenteditable=true], [role=menu], [role=listbox]")) return;
       e.preventDefault();

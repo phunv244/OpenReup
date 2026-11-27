@@ -148,6 +148,7 @@ function Detail() {
             onStructuralChange={s.onStructuralChange}
             detailHost={detailHost}
             onSelect={() => setTab("script")}
+            spaceOff={view === "frame"}
           />
         </section>
       </main>

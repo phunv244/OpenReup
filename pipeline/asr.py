@@ -17,7 +17,10 @@ import urllib.request
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from reup_paths import DATA_DIR  # noqa: E402
+if __package__ in (None, ""):  # chạy bằng đường dẫn file (server: python pipeline/<script>.py) → import gói từ gốc repo
+    sys.path[0] = str(Path(__file__).resolve().parent.parent)
+
+from pipeline.paths import DATA_DIR  # noqa: E402
 
 MODELS_DIR = DATA_DIR / "asr_models"
 SHERPA_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"

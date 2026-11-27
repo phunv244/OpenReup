@@ -28,7 +28,7 @@ Thêm chức năng = thêm 1 thư mục `server/modules/<tên>/` rồi thêm mod
 
 `ai` chỉ giữ phần server tự làm với AI: danh sách model dịch của Antigravity (gọi `agy models`, cache, gom theo mức suy nghĩ) và kiểm tra id model. Những phần dưới đây cố ý không chuyển vào:
 
-- Dịch và nhận diện giọng nói chạy trong `dub_video.py`, do module `dub` khởi chạy; server không gọi model nào trực tiếp. Tách ra thì `ai` chỉ còn bọc lại việc chạy script của `dub`.
+- Dịch và nhận diện giọng nói chạy trong `pipeline/` (điều phối bởi `pipeline/dub_video.py`, đường dẫn script lấy từ hằng số `PY_SCRIPTS` trong `config.mjs`), do module `dub` khởi chạy; server không gọi model nào trực tiếp. Tách ra thì `ai` chỉ còn bọc lại việc chạy script của `dub`.
 - Mô hình nhận diện (`/api/asr-models*`, hàm `download_asr_model`) là tài nguyên tải về máy giống font và giọng đọc, nên ở lại `resources` (đã duyệt ở `a6b5c40`).
 - `list_options` gom giá trị hợp lệ của nhiều module (giọng, mô hình nhận diện, model dịch, dự án, font) qua HTTP (không import module khác), nằm ở `resources`. `get_task`, `stop_task`, `get_call`, `list_calls` thuộc module `tasks`.
 - Hàm `/api/functions` duy nhất của `ai` là `refresh_ai_models` (gọi `/api/agy-models/refresh`); danh sách sau khi làm mới đọc lại qua `list_options.agy_models`.
@@ -43,7 +43,7 @@ Khi `ai` được nạp trước `dub`, cây route mà `printRoutes()` in ra đ�
 - [x] `project` lấy bản lồng tiếng qua `ctx.get("dub")`, không import thẳng `lib/store` phần lồng tiếng.
 - [ ] Bước 6: sau khi `rename` thư mục video, cập nhật `work_dir`/`out_dir` trong file project của job và trong `dubbed.json`.
 - [ ] Thư mục làm việc của job phải giữ đúng tên `<jobId>` khi đổi chỗ (ví dụ `<thư mục video>/<jobId>/`). `dubWorkDir` (`lib/store.mjs`) chỉ nhận thư mục có `basename(realpath) === jobId` nằm trong `data/dub_work/`; đặt tên khác hoặc dời ra ngoài thì `/api/dub/clean`, `/api/dub/delete` và lệnh xóa video nguồn lặng lẽ không xóa gì. Bước 6 phải mở rộng điều kiện gốc cho phép (không chỉ `data/dub_work/`) cùng lúc với việc dời thư mục.
-- [x] `dub_video.py` mở SQLite theo `REUP_DATA_DIR` (`<REUP_DATA_DIR>/openreup.db`), qua `reup_paths.py`.
+- [x] `pipeline/dub_video.py` mở SQLite theo `REUP_DATA_DIR` (`<REUP_DATA_DIR>/openreup.db`), qua `pipeline/paths.py`.
 
 ## Thư mục dữ liệu khi chạy test
 
@@ -57,4 +57,4 @@ Khi `ai` được nạp trước `dub`, cây route mà `printRoutes()` in ra đ�
 
 Script tải `download_videos.mjs` (Douyin), `download_bilibili.mjs` (Bilibili/YouTube) và `list_channel_web.mjs` chạy như tiến trình con, kế thừa env của server nên cũng ghi theo `REUP_MEDIA_ROOT` (`downloads/`) và `REUP_DATA_DIR` (`videos.json`, `bilibili.json`). `lib/tasks.mjs` tính đường dẫn `SAVED_FILE:::` từ `MEDIA_ROOT`. Còn dùng thư mục repo: `chrome_profile/` (đăng nhập Douyin) và `cookies.txt`.
 
-Script Python (`dub_video.py`, `asr.py`, `subtitles.py`, `voice_tool.py`, `list_channel_adb.py`) lấy thư mục từ `reup_paths.py`, đọc cùng `REUP_DATA_DIR`/`REUP_MEDIA_ROOT` như `config.mjs` (mặc định `data/` và thư mục repo, server thật không đổi). Server chạy script con với `...process.env` nên script tự theo thư mục tạm của test: `asr.py set-vad/download` ghi `asr_models/` + `asr_settings.json`, `dub_video.py` mở `openreup.db`, đọc `voices/`, `projects/`, `dubbed.json`, `dub_work/` và xuất mặc định vào `<REUP_MEDIA_ROOT>/downloads/dubbed`, `subtitles.py` tìm font trong `fonts/`. Thư mục script cụ thể vẫn ghi đè được qua `--out-dir`, `--work-dir`, `--index-file`... `test_dub_video.py` (`test_reup_data_dir_*`) kiểm cả hai trường hợp có và không đặt biến.
+Script Python (`pipeline/dub_video.py`, `pipeline/asr.py`, `pipeline/subtitles.py`, `pipeline/voice_tool.py`, `list_channel_adb.py`) lấy thư mục từ `pipeline/paths.py`, đọc cùng `REUP_DATA_DIR`/`REUP_MEDIA_ROOT` như `config.mjs` (mặc định `data/` và thư mục repo, server thật không đổi). Server chạy script con với `...process.env` nên script tự theo thư mục tạm của test: `asr.py set-vad/download` ghi `asr_models/` + `asr_settings.json`, `dub_video.py` mở `openreup.db`, đọc `voices/`, `projects/`, `dubbed.json`, `dub_work/` và xuất mặc định vào `<REUP_MEDIA_ROOT>/downloads/dubbed`, `subtitles.py` tìm font trong `fonts/`. Thư mục script cụ thể vẫn ghi đè được qua `--out-dir`, `--work-dir`, `--index-file`... `pipeline/tests/test_dub_video.py` (`test_reup_data_dir_*`) kiểm cả hai trường hợp có và không đặt biến.

@@ -13,7 +13,11 @@ const fakeAgy = path.join(binDir, "agy");
 fs.writeFileSync(fakeAgy, `#!${process.execPath}\nif (process.argv[2] !== "models") process.exit(2);\nprocess.stdout.write(require("node:fs").readFileSync(${JSON.stringify(OUT)}, "utf8"));\n`, { mode: 0o755 });
 fs.writeFileSync(OUT, "Fetching models...\ngemini-4-neon-high\tGemini 4 Neon (High)\ngemini-4-neon-low\tGemini 4 Neon (Low)\nclaude-x\tClaude X\n");
 
-const { app, dir, cleanup } = await setupApp({ AGY_BIN: fakeAgy });
+// python giả: `asr.py list` trả danh sách rỗng — list_options cần /api/asr-models chạy được cả trên CI (không có .venv).
+const fakePy = path.join(binDir, "fakepy");
+fs.writeFileSync(fakePy, `#!/bin/sh\necho '{"models": []}'\n`, { mode: 0o755 });
+
+const { app, dir, cleanup } = await setupApp({ AGY_BIN: fakeAgy, REUP_PYTHON: fakePy });
 after(async () => {
   await cleanup();
   fs.rmSync(binDir, { recursive: true, force: true });

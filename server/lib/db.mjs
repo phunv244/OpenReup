@@ -18,6 +18,9 @@ function openDb() {
   d.exec(`CREATE TABLE IF NOT EXISTS function_calls (
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, args TEXT NOT NULL, status TEXT NOT NULL,
     task_id INTEGER, result TEXT, error TEXT, log_file TEXT, created_at TEXT NOT NULL, ended_at TEXT)`);
+  // Timeline bị split/merge/delete/kéo mốc giờ sau lần xuất gần nhất: lần xuất lại kế tiếp phải làm cả hình lẫn tiếng.
+  // rev tăng mỗi lần sửa; xuất xong chỉ xóa nếu chưa có sửa mới trong lúc chạy. Không để trong JSON project vì dub_video.py ghi đè file đó.
+  d.exec("CREATE TABLE IF NOT EXISTS timeline_dirty (job_id TEXT PRIMARY KEY, rev INTEGER NOT NULL) WITHOUT ROWID");
   // lower() của SQLite chỉ hiểu ASCII: tìm "đây" phải khớp cả "Đây".
   d.function("lc", { deterministic: true }, (v) => String(v ?? "").toLowerCase());
   return d;

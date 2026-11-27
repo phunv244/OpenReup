@@ -28,7 +28,8 @@ export const TASK_LOG = path.join(DATA_DIR, "last_task.log");
 export const DOWNLOADS_DIR = path.join(ROOT, "downloads");
 export const BILIBILI_DIR = path.join(DOWNLOADS_DIR, "bilibili");
 export const DUBBED_DIR = path.join(DOWNLOADS_DIR, "dubbed");
-export const VENV_PYTHON = path.join(ROOT, ".venv", "bin", "python");
+// REUP_PYTHON: chỉ dùng cho test (thay python bằng script giả), mặc định là .venv của repo.
+export const VENV_PYTHON = process.env.REUP_PYTHON || path.join(ROOT, ".venv", "bin", "python");
 export const WEB_OUT_DIR = path.join(ROOT, "web", "out"); // bản build của giao diện Next.js
 export const PORT = Number(process.env.PORT || 3456);
 export const HOST = process.env.HOST || "127.0.0.1";

@@ -97,6 +97,7 @@ export function removeDubJob(jobId) {
   }
   fs.rmSync(path.join(DUB_WORK_DIR, jobId), { recursive: true, force: true });
   db.prepare("DELETE FROM segments WHERE job_id = ?").run(jobId);
+  db.prepare("DELETE FROM timeline_dirty WHERE job_id = ?").run(jobId);
   updateDubbed((vids) => vids.filter((v) => v.job_id !== jobId));
 }
 

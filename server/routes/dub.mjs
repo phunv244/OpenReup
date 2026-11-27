@@ -6,11 +6,25 @@ import { db, inTransaction } from "../lib/db.mjs";
 import { getAgyModels, validAgyModel } from "../lib/agy.mjs";
 import { checkSubStyle } from "../lib/fonts.mjs";
 import { loadDubProject, readDubbed, removeDubJob, saveDubProject, updateDubbed } from "../lib/store.mjs";
-import { dubBusyError, spawnTask, task } from "../lib/tasks.mjs";
+import { dubBusyError, spawnTask, task, taskEvents } from "../lib/tasks.mjs";
 import { fail, resolveDownload, safeJobId, validDelogo, validModelId, validSubcover, validVoice } from "../lib/util.mjs";
 
 const dubPy = path.join(ROOT, "dub_video.py");
 const send = (reply, result) => reply.code(result.ok ? 200 : 409).send(result);
+
+// Cờ "timeline đã đổi" (bảng timeline_dirty): đặt sau mỗi lần split/merge/delete/update câu, xóa khi lần xuất lại toàn phần chạy xong.
+const markTimelineDirty = (jobId) =>
+  db.prepare("INSERT INTO timeline_dirty (job_id, rev) VALUES (?, 1) ON CONFLICT(job_id) DO UPDATE SET rev = rev + 1").run(jobId);
+const timelineRev = (jobId) => db.prepare("SELECT rev FROM timeline_dirty WHERE job_id = ?").get(jobId)?.rev ?? 0;
+// task_id → {jobId, rev} của các lần xuất lại toàn phần đang chờ kết thúc.
+const pendingFullRender = new Map();
+taskEvents.on("end", ({ task_id, exit_code }) => {
+  const p = pendingFullRender.get(task_id);
+  if (!p) return;
+  pendingFullRender.delete(task_id);
+  // Lỗi/bị dừng thì giữ cờ; có sửa mới trong lúc chạy (rev tăng) thì cũng giữ.
+  if (exit_code === 0) db.prepare("DELETE FROM timeline_dirty WHERE job_id = ? AND rev <= ?").run(p.jobId, p.rev);
+});
 
 export default async function dubRoutes(app) {
   app.get("/api/dubbed", async () => {
@@ -121,7 +135,9 @@ export default async function dubRoutes(app) {
       (body.voice && body.voice !== proj.voice) ||
       (body.bg_volume !== undefined && Number(body.bg_volume) !== Number(proj.bg_volume)) ||
       Object.entries(spkVoices).some(([spk, v]) => speakers[spk].voice !== String(v));
-    const only = videoChange && !audioChange ? "video" : audioChange && !videoChange ? "audio" : "";
+    // Timeline đổi (câu bị cắt/ghép/xóa/dời giờ) thì cả phụ đề in lẫn tiếng đều cũ: bắt buộc làm lại toàn bộ.
+    const dirtyRev = timelineRev(jobId);
+    const only = dirtyRev ? "" : videoChange && !audioChange ? "video" : audioChange && !videoChange ? "audio" : "";
     for (const [spk, v] of Object.entries(spkVoices)) speakers[spk].voice = String(v);
     if (body.voice) proj.voice = String(body.voice);
     if (body.bg_volume !== undefined) proj.bg_volume = Number(body.bg_volume) || 0;
@@ -130,7 +146,9 @@ export default async function dubRoutes(app) {
     if (body.subcover !== undefined) proj.subcover = String(body.subcover);
     if (body.sub_style !== undefined) proj.sub_style = subStyle.style; // null = quay về kiểu mặc định
     saveDubProject(jobId, proj);
-    return send(reply, spawnTask("dub_rerender", VENV_PYTHON, ["-u", dubPy, "--project", jobId, ...(only ? ["--only", only] : [])], jobId));
+    const started = spawnTask("dub_rerender", VENV_PYTHON, ["-u", dubPy, "--project", jobId, ...(only ? ["--only", only] : [])], jobId);
+    if (started.ok && dirtyRev) pendingFullRender.set(started.task_id, { jobId, rev: dirtyRev });
+    return send(reply, started);
   });
 
   // Toàn bộ câu thoại để vẽ thanh timeline (tối đa 4000 câu đầu — đủ cho video thường, video siêu dài dùng bảng tìm kiếm bên dưới).
@@ -171,6 +189,7 @@ export default async function dubRoutes(app) {
       params.push(String(body.speaker));
     }
     db.prepare(`UPDATE segments SET ${sets.join(", ")} WHERE job_id = ? AND id = ?`).run(...params, jobId, id);
+    markTimelineDirty(jobId);
     return { ok: true, id, start, end };
   });
 
@@ -190,6 +209,7 @@ export default async function dubRoutes(app) {
     inTransaction(() => {
       db.prepare("UPDATE segments SET end_s = ? WHERE job_id = ? AND id = ?").run(at, jobId, id);
       db.prepare("INSERT INTO segments (job_id, id, start_s, end_s, zh, vi, speaker) VALUES (?, ?, ?, ?, '', '', ?)").run(jobId, newId, at, row.end, row.speaker);
+      markTimelineDirty(jobId);
     });
     return { ok: true, first_id: id, second_id: newId, at };
   });
@@ -218,6 +238,7 @@ export default async function dubRoutes(app) {
         second.end_s, [first.zh, second.zh].filter(Boolean).join(" "), [first.vi, second.vi].filter(Boolean).join(" "), jobId, first.id
       );
       db.prepare("DELETE FROM segments WHERE job_id = ? AND id = ?").run(jobId, second.id);
+      markTimelineDirty(jobId);
     });
     return { ok: true, id: first.id };
   });
@@ -232,6 +253,7 @@ export default async function dubRoutes(app) {
     if (task.proc && task.type.startsWith("dub_")) return fail(reply, 409, "Đang có tiến trình lồng tiếng chạy. Hãy chờ xong hoặc dừng trước.");
     const info = db.prepare("DELETE FROM segments WHERE job_id = ? AND id = ?").run(jobId, id);
     if (!info.changes) return fail(reply, 404, "Không tìm thấy câu này.");
+    markTimelineDirty(jobId);
     return { ok: true };
   });
 

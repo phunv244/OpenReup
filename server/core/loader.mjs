@@ -3,7 +3,8 @@
  *   { name, deps?: [tên module], init?(ctx) -> service, routes?(app, ctx), functions?: [định nghĩa hàm cho /api/functions] }
  * - Thứ tự nạp sắp theo deps; thiếu phụ thuộc, phụ thuộc vòng, trùng tên module/hàm -> lỗi ngay lúc khởi động.
  * - Module chỉ lấy service của module khác qua ctx.get(tên), và chỉ với tên đã khai trong deps.
- * - ctx.functions(): mọi hàm do các module khai, theo thứ tự nạp (module "functions" dùng để dựng /api/functions).
+ * - ctx.get(tên) báo lỗi ngay nếu module đó không có service (không có init hoặc init trả undefined).
+ * - ctx.functions(): mảng đóng băng gồm mọi hàm do các module khai, theo thứ tự nạp (module "functions" dùng để dựng /api/functions).
  */
 
 const NAME_RE = /^[a-z][a-z0-9-]*$/;
@@ -45,13 +46,18 @@ export async function loadModules(app, mods) {
     }
   }
 
+  // Bản đóng băng: module không sửa được danh sách hàm chung (thêm/xóa/sửa định nghĩa).
+  const frozen = Object.freeze(functions.map((f) => Object.freeze(f)));
+
   const services = new Map();
   const ctxOf = (m) => ({
     get(name) {
       if (!(m.deps || []).includes(name)) throw new Error(`Module "${m.name}" gọi ctx.get("${name}") nhưng chưa khai "${name}" trong deps.`);
-      return services.get(name);
+      const svc = services.get(name);
+      if (svc === undefined) throw new Error(`Module "${m.name}" gọi ctx.get("${name}") nhưng "${name}" không có service (thiếu init hoặc init không trả gì).`);
+      return svc;
     },
-    functions: () => functions,
+    functions: () => frozen,
   });
 
   for (const m of ordered) {
@@ -59,5 +65,5 @@ export async function loadModules(app, mods) {
     services.set(m.name, m.init ? await m.init(ctx) : undefined);
     if (m.routes) await app.register(async (scoped) => m.routes(scoped, ctx));
   }
-  return { services, functions };
+  return { services, functions: frozen };
 }

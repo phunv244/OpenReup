@@ -518,7 +518,7 @@ export default async function functionRoutes(app, functions) {
 
   app.get("/api/functions", async () => ({
     ok: true,
-    functions: FUNCTIONS.map((f) => ({
+    functions: functions.map((f) => ({
       type: "function",
       function: {
         name: f.name,

@@ -48,3 +48,18 @@ test("gom functions của mọi module theo thứ tự nạp; trùng tên hàm -
   assert.deepEqual(functions.map((f) => f.name), ["f1", "f2"]);
   await assert.rejects(loadModules(Fastify(), [{ name: "a", functions: [{ name: "f" }] }, { name: "b", functions: [{ name: "f" }] }]), /Hàm "f" khai ở cả module "a" và "b"/);
 });
+
+test("ctx.get báo lỗi ngay khi module phụ thuộc không có service", async () => {
+  await assert.rejects(
+    loadModules(Fastify(), [{ name: "a", routes: () => {} }, { name: "b", deps: ["a"], init: (ctx) => ctx.get("a") }]),
+    /Module "b" gọi ctx.get\("a"\) nhưng "a" không có service/
+  );
+});
+
+test("ctx.functions() đóng băng: module không sửa được danh sách hàm chung", async () => {
+  let got;
+  await loadModules(Fastify(), [{ name: "a", functions: [{ name: "f1" }], init: (ctx) => ((got = ctx.functions()), {}) }]);
+  assert.ok(Object.isFrozen(got) && Object.isFrozen(got[0]));
+  assert.throws(() => got.push({ name: "x" }), TypeError);
+  assert.throws(() => { got[0].name = "x"; }, TypeError);
+});

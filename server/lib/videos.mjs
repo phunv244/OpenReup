@@ -180,6 +180,46 @@ export function writeVideoJson(key, data) {
   reloadVideoIndex();
 }
 
+/**
+ * Mọi file nguồn ở bố cục mới đã qua kiểm symlink như lookupDownload: [{ rel, abs, key }], sắp theo rel.
+ * File ghi trong video.json mà đã mất trên đĩa vẫn có ở đây: bên gọi tự stat.
+ */
+export function videoSources() {
+  const out = [];
+  for (const e of index().byRel.values()) {
+    if (e.kind !== "source") continue;
+    const hit = lookupDownload(e.rel);
+    if (hit) out.push({ rel: e.rel, abs: hit.abs, key: hit.key });
+  }
+  return out.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+}
+
+/** data/videos/<key>/thumb.jpg nếu là file thật nằm thật trong thư mục video đó (không đi theo symlink ra ngoài), không thì "". */
+export function videoThumb(key) {
+  if (!key || key.startsWith("_")) return "";
+  const file = path.join(VIDEOS_DIR, key, "thumb.jpg");
+  try {
+    if (!fs.statSync(file).isFile()) return "";
+  } catch {
+    return "";
+  }
+  // Như lookupDownload: thư mục video phải là thư mục thật (không symlink) và ảnh nằm thật trong đó.
+  return inside(path.join(index().realVideos, key), realish(file)) ? file : "";
+}
+
+/**
+ * Bỏ khỏi video.json của key các mục files trỏ tới một trong absList (sau khi đã xóa file nguồn). Ghi qua writeVideoJson.
+ * Không có mục nào khớp thì không ghi gì.
+ */
+export function forgetVideoFiles(key, absList) {
+  const file = path.join(VIDEOS_DIR, key, "video.json");
+  const v = JSON.parse(fs.readFileSync(file, "utf8"));
+  const drop = new Set(absList.map((p) => path.resolve(p)));
+  const files = Object.fromEntries(Object.entries(v.files || {}).filter(([, f]) => !drop.has(path.resolve(path.dirname(file), String(f)))));
+  if (Object.keys(files).length === Object.keys(v.files || {}).length) return;
+  writeVideoJson(key, { ...v, files });
+}
+
 /** Mọi job ở bố cục mới: [{ key, job_id, project, work, out }]. */
 export const videoJobs = () => [...index().jobs.values()].map((j) => ({ ...j }));
 

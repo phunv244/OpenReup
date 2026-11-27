@@ -145,7 +145,7 @@ function signature(names) {
 }
 
 function index() {
-  const now = Date.now();
+  const now = performance.now();
   if (cache && now - cache.at < INDEX_TTL_MS) return cache;
   const names = readdir(VIDEOS_DIR); // null: chưa có data/videos/, chỉ có bố cục cũ
   const sig = signature(names);

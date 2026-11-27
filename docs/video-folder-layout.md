@@ -241,3 +241,5 @@ Mỗi commit phải qua Reviewcode và Tester rồi mới làm commit tiếp. Kh
 | 8 | PM giao, DevBE chạy | Chuyển dữ liệu thật: PM xin chủ dự án tắt 3499 → `--apply` → `--verify` → bật lại. Không phải commit code; ghi lại log vào `_migration/`. | `--verify` xanh, 3499 bật lại chạy được. |
 | 9 | DevBE | Bản tải mới được chuyển vào `data/videos/<key>/source/` khi tác vụ tải **kết thúc** (không chuyển giữa chừng); server tra chỉ mục theo id trước khi gọi script tải. | Tải lại một video đã có thì không tải trùng. |
 | 10 | DevBE + DevAI + DevFE | Bỏ đường đọc bố cục cũ; đổi mặc định `WORK_ROOT`/`PROJECTS_DIR`/`DUB_OUT_DIR` của Python; DevFE sửa `web/app/help/page.tsx:12-14`. | Chỉ làm sau khi bước 8 đã chạy ổn ít nhất một vòng dùng thật. |
+
+Ghi chú commit 3 (`ec9ca8e`): header của `/downloads/*` giữ nguyên cho mọi request hợp lệ (content-type, accept-ranges, Range → 206, 416, cache, etag, HEAD, 404). Có một thay đổi: đường dẫn chứa byte rỗng (`%00`, ví dụ `/downloads/bilibili/a%00.mp4`) trước trả **403** (thân 32 byte, từ `@fastify/static`), nay trả **404** như mọi đường dẫn không tra được. Symlink trong `downloads/` cũ trỏ ra ngoài cũng trả 404 thay vì được phục vụ.

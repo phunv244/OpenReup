@@ -151,13 +151,20 @@ test("POST /api/source/delete: video.json hỏng sau khi dựng chỉ mục thì
   put(VIDEO_PROJECTS_JSON, { [rel]: "du-an-x" });
   reloadVideoIndex();
   assert.equal((await get("/api/sources")).json().sources.find((s) => s.rel_path === rel)?.project_id, "du-an-x");
-  // Hỏng ngay sau khi chỉ mục đã dựng (trong INDEX_TTL_MS chỉ mục chưa đọc lại).
-  fs.writeFileSync(path.join(VIDEOS_DIR, k, "video.json"), "{hong");
+  // Làm hỏng video.json sau khi chỉ mục đã dựng mà giữ nguyên chữ ký (cùng inode, cỡ, mtime): chỉ mục không dựng
+  // lại dù đã quá INDEX_TTL_MS, nên test không phụ thuộc tốc độ máy.
+  const vj = path.join(VIDEOS_DIR, k, "video.json");
+  const st = fs.statSync(vj);
+  const bad = "{hong".padEnd(st.size, " ");
+  fs.writeFileSync(vj, bad);
+  fs.utimesSync(vj, st.atimeMs / 1000, st.mtimeMs / 1000);
+  assert.equal(fs.statSync(vj).mtimeMs, st.mtimeMs);
+  assert.equal(fs.statSync(vj).ino, st.ino);
   const res = await app.inject({ method: "POST", url: "/api/source/delete", payload: { rel_path: rel } });
   assert.equal(res.statusCode, 200, res.body);
   assert.equal(fs.existsSync(src), false);
   assert.equal(rel in JSON.parse(fs.readFileSync(VIDEO_PROJECTS_JSON, "utf8")), false);
-  assert.equal(fs.readFileSync(path.join(VIDEOS_DIR, k, "video.json"), "utf8"), "{hong");
+  assert.equal(fs.readFileSync(vj, "utf8"), bad);
   fs.rmSync(path.join(VIDEOS_DIR, k), { recursive: true });
   reloadVideoIndex();
 });

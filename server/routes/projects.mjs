@@ -41,6 +41,8 @@ export default async function projectRoutes(app) {
       characters: Array.isArray(body.characters) ? body.characters : [],
       glossary: Array.isArray(body.glossary) ? body.glossary : [],
       episode_notes: {},
+      voice: body.voice && validVoice(body.voice) ? String(body.voice) : "",
+      voices: [],
       created_at: now,
       updated_at: now,
     };
@@ -60,13 +62,14 @@ export default async function projectRoutes(app) {
       type: body.type !== undefined ? String(body.type) : old.type,
       style: body.style !== undefined ? String(body.style) : old.style,
       synopsis: body.synopsis !== undefined ? String(body.synopsis) : old.synopsis,
-      // Giọng riêng của nhân vật (bước phân vai dùng khi lồng tiếng nhiều giọng): giọng không hợp lệ thì bỏ trống = máy tự chọn.
+      // Nhân vật không còn giọng riêng: cả dự án dùng chung 1 giọng (field `voice` dưới đây).
       characters: Array.isArray(body.characters)
-        ? body.characters.map((c) => ({ ...c, voice: c?.voice && validVoice(c.voice) ? String(c.voice) : "" }))
+        ? body.characters.map(({ zh, vi, pronouns, role, personality }) => ({ zh, vi, pronouns, role, personality }))
         : old.characters || [],
       glossary: Array.isArray(body.glossary) ? body.glossary : old.glossary || [],
       episode_notes: body.episode_notes && typeof body.episode_notes === "object" ? body.episode_notes : old.episode_notes || {},
-      // Giọng đọc của dự án, giọng đầu tiên là giọng chính
+      // Giọng đọc dùng chung cho mọi nhân vật trong dự án, chọn ở Tài nguyên → Giọng đọc.
+      voice: body.voice !== undefined ? (validVoice(body.voice) ? String(body.voice) : "") : old.voice || "",
       voices: Array.isArray(body.voices) ? [...new Set(body.voices.map(String).filter(validVoice))].slice(0, 30) : old.voices || [],
       updated_at: nowIso(),
     };

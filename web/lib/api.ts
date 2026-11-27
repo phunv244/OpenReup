@@ -17,7 +17,8 @@ export async function postJSON<T = ApiResult>(url: string, body: unknown = {}): 
   try {
     data = await res.json();
   } catch {}
-  if (!res.ok && !data.error) data.error = `Lỗi máy chủ (HTTP ${res.status})`;
+  if (res.status === 401) data.error = "Máy chủ đang bật token (REUP_API_TOKEN) — giao diện chưa được cấp quyền ghi. Chạy server ở localhost hoặc mở qua đường có token.";
+  else if (!res.ok && !data.error) data.error = `Lỗi máy chủ (HTTP ${res.status})`;
   return data;
 }
 
@@ -44,8 +45,8 @@ export type TaskState = {
   history: HistoryItem[];
 };
 
-/** voice: giọng riêng khi lồng tiếng nhiều giọng ("" = máy tự chọn); personality: tính cách (AI tự ghi từ lời thoại, sửa được). */
-export type Character = { zh: string; vi: string; pronouns?: string; role?: string; voice?: string; personality?: string };
+/** personality: tính cách (AI tự ghi từ lời thoại, sửa được). Giọng đọc dùng chung cho mọi nhân vật, xem Project.voice. */
+export type Character = { zh: string; vi: string; pronouns?: string; role?: string; personality?: string };
 /** Nhóm giọng trong 1 video: name/zh = nhân vật trong truyện mà bước phân vai đoán ra; is_new = chưa có trong ngữ cảnh trước video này. */
 export type Speaker = { voice: string; lines?: number; f0?: number; name?: string; zh?: string; is_new?: boolean };
 export type GlossItem = { zh: string; vi: string };
@@ -59,6 +60,8 @@ export type Project = {
   characters?: Character[];
   glossary?: GlossItem[];
   episode_notes?: Record<string, string>;
+  /** Giọng đọc dùng chung cho mọi nhân vật trong dự án, chọn từ Tài nguyên → Giọng đọc. */
+  voice?: string;
   voices?: string[];
   video_count?: number;
   videos?: Dubbed[];

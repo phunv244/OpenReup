@@ -19,9 +19,11 @@ Toàn bộ pipeline được thiết kế để chạy nhiều ngày liên tục
 | Tải video | `yt-dlp` + `aria2c` 16 kết nối (CDN Bilibili bóp mỗi kết nối ~1 MB/s), tự nối tiếp file `.part`, tự thử lại 5 lần, ước tính dung lượng và kiểm tra ổ cứng **trước** khi tải | `downloads/bilibili/` |
 | Nhận diện | Giải mã từng khối ~10 phút (cắt tại khoảng lặng, không cắt đôi câu), mỗi khối xong là ghi checkpoint | `data/dub_work/<job>/chunks/` |
 | Dịch | 3 lô chạy song song ngay khi khối vừa nhận diện xong; lỗi mạng thì thử lại, lô hỏng không làm mất cả video | cùng file khối |
-| Giọng đọc | 12 luồng chạy nền, cache theo nội dung câu (câu trùng / câu không sửa không phải tạo lại) | `tts/` |
+| Giọng đọc | Trên GPU chạy gộp lô (`infer_batch`), trên CPU chạy đa luồng; cache theo nội dung câu (câu trùng / câu không sửa không phải tạo lại) | `tts/` |
 | Track tiếng | Dựng theo từng phần FLAC khớp timeline chính xác từng mẫu | `audio/` |
-| Xuất video | Mã hóa theo từng phần 10 phút, cache theo nội dung phụ đề; trộn tiếng chạy song song | `parts/` |
+| Xuất video | Tự dùng **GPU NVIDIA NVENC (`h264_nvenc`)** khi khả dụng (tự lùi về `libx264` nếu không có); mã hóa từng phần 10 phút, cache theo nội dung phụ đề; trộn tiếng chạy song song | `parts/` |
+
+- **Luân chuyển GPU tuần tự cho card 4 GB VRAM (như GTX 1650):** Các bước dùng GPU chạy nối tiếp nhau và tự xả sạch VRAM (`unload` + `cuda.empty_cache`) sau mỗi bước: **Nhận diện (Whisper CUDA)** → **Dịch (Cloud `agy`, 0 VRAM)** → **Giọng đọc (VieNeu CUDA theo lô)** → **Xuất video (`h264_nvenc`)**, không bao giờ nạp chồng 2 mô hình lên VRAM cùng lúc.
 
 - **Dừng / mất điện / mất mạng:** bấm **Tiếp tục** ở video đó, mọi công đoạn chạy tiếp từ chỗ đang dở.
 - **Sửa 1 câu rồi xuất lại:** chỉ tạo lại giọng của câu đó và mã hóa lại đúng phần 10 phút chứa nó.
@@ -106,3 +108,30 @@ Mở trình duyệt tại **http://localhost:3456**.
   npm run dev:api
   npm run dev:web
   ```
+
+## Cho model gọi hàm (function calling / MCP)
+
+Mọi thao tác chính của Studio có sẵn dạng hàm kèm JSON Schema tham số, để model tự tải video, cấu hình và reup.
+
+| Hàm | Việc làm |
+|---|---|
+| `download_video` | Tải Bilibili / YouTube: `url`, `quality`, `playlist`, `playlist_items`, `section`, `delogo`, `perf`, `project_id` |
+| `douyin_scan_channel`, `douyin_download` | Quét kênh và tải video Douyin |
+| `dub_video` | Reup 1 video: `rel_path`, `voice`, `model`, `speed`, `bg_volume`, `delogo`, `subcover`, `burn_sub`, `multi_voice`, `agy_model`, `sub_style`, `project_id`, `fresh` |
+| `rerender_video` | Xuất lại sau khi đổi cấu hình / sửa lời thoại |
+| `delogo_video` | Xóa logo trên video đã tải |
+| `list_sources`, `list_dubbed`, `list_options` | Video nguồn, bản đã xuất, các giá trị hợp lệ (giọng, mô hình, dự án, font) |
+| `get_task`, `stop_task`, `get_call`, `list_calls` | Theo dõi / dừng tác vụ, xem kết quả và nhật ký lần gọi |
+
+- `GET /api/functions`: danh sách hàm theo định dạng `tools` của OpenAI.
+- `POST /api/functions/call` với `{"name": "...", "arguments": {...}, "wait_sec": 0}`: chạy hàm.
+- `GET /api/functions/calls`, `GET /api/functions/calls/<call_id>`: nhật ký lần gọi.
+
+Tác vụ dài (tải, lồng tiếng) chạy nền: hàm trả `call_id` ngay, gọi `get_call` (thêm `wait_sec` để chờ) để lấy kết quả.
+Kết quả luôn kèm đường dẫn file (`path`, `rel_path`, `url`); khi lỗi, `error` chứa nguyên văn thông báo và `log_file` trỏ tới nhật ký đầy đủ trong `data/function_logs/`.
+
+Dùng qua MCP (Claude Code, agy CLI...), khi Studio đang chạy:
+
+```json
+{ "mcpServers": { "openreup": { "command": "node", "args": ["/đường/dẫn/OpenReup/mcp-server.mjs"] } } }
+```

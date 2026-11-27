@@ -39,10 +39,10 @@ function Nav() {
     return (
       <nav className="nav" aria-label="Điều hướng dự án">
         <Link className="sb-back" href="/">
-          <Icon name="back" size={15} /> Tất cả dự án
+          <Icon name="back" size={15} /> Tất cả Reup
         </Link>
         <div className="sb-proj">
-          <div className="sb-proj-label">Dự án</div>
+          <div className="sb-proj-label">Reup · Dự án</div>
           <div className="sb-proj-name" title={proj.name}>
             {proj.name}
           </div>
@@ -61,7 +61,7 @@ function Nav() {
   }
   return (
     <nav className="nav" aria-label="Điều hướng chính">
-      <NavLink href="/" icon="folder" label="Dự án" count={projects.length} active={path === "/" || path.startsWith("/project")} />
+      <NavLink href="/" icon="folder" label="Reup" count={projects.length} active={path === "/" || path.startsWith("/project")} />
       <NavLink href="/resources/" icon="type" label="Tài nguyên" active={path === "/resources"} count={fonts.length + voices.clones.length} />
       <NavLink href="/models/" icon="brain" label="Mô hình nhận diện" active={path === "/models"} count={asr.models.filter((m) => m.installed).length} />
       <NavLink href="/logs/" icon="terminal" label="Nhật ký" active={path === "/logs"} />

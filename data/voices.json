@@ -47,5 +47,15 @@
     "gender": "female",
     "source": "Tạo từ giọng VieNeu (đổi cao độ)",
     "created_at": "2026-11-25T16:10:00"
+  },
+  {
+    "slug": "co-gai-cute",
+    "name": "Cô gái cute",
+    "gender": "female",
+    "f0": 246,
+    "source": "Tải lên: CapCut_TTS_Cute Female_D20261125_T153545.mp3",
+    "start": 0.02,
+    "end": 7.97,
+    "created_at": "2026-11-25T15:38:45"
   }
 ]

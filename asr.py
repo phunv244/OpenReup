@@ -201,11 +201,13 @@ def download_vad(vid: str) -> None:
             if not uv:
                 raise RuntimeError("Cần cài: uv pip install --python .venv/bin/python torch --index-url "
                                    "https://download.pytorch.org/whl/cpu && uv pip install --python .venv/bin/python fireredvad")
-            log("[Mô hình] Đang cài PyTorch bản CPU (~200 MB tải về) và fireredvad...")
-            log("@@PROGRESS " + json.dumps({"pct": 10, "label": "Đang cài PyTorch CPU..."}, ensure_ascii=False))
-            # Bản CPU: bản mặc định trên PyPI kèm CUDA nặng ~2,5 GB. Máy có GPU muốn dùng CUDA thì cài vieneu[cuda] trước.
-            subprocess.run([uv, "pip", "install", "--python", sys.executable, "torch",
-                            "--index-url", "https://download.pytorch.org/whl/cpu"], check=True)
+            if importlib.util.find_spec("torch") is None:
+                log("[Mô hình] Đang cài PyTorch bản CPU (~200 MB tải về)...")
+                log("@@PROGRESS " + json.dumps({"pct": 10, "label": "Đang cài PyTorch CPU..."}, ensure_ascii=False))
+                # Bản CPU: chỉ cài khi chưa có torch (nếu đã cài vieneu[cuda] thì giữ nguyên bản CUDA).
+                subprocess.run([uv, "pip", "install", "--python", sys.executable, "torch",
+                                "--index-url", "https://download.pytorch.org/whl/cpu"], check=True)
+            log("[Mô hình] Đang cài fireredvad...")
             subprocess.run([uv, "pip", "install", "--python", sys.executable, "fireredvad"], check=True)
         from huggingface_hub import snapshot_download
 
@@ -350,6 +352,13 @@ def _recognize(rec, samples, start: float, t0: float) -> List[Dict]:
 
 
 _firered = None
+
+
+def release_models() -> None:
+    """Giải phóng bộ nhận diện sherpa-onnx và bộ lọc VAD khỏi bộ nhớ sau khi xong bước nhận diện."""
+    global _firered
+    _cache.clear()
+    _firered = None
 
 
 def firered_chunks(audio, sr: int = 16000):

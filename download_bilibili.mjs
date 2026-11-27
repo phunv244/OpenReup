@@ -17,9 +17,19 @@ import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const VENV_BIN = path.join(__dirname, ".venv", "bin");
+if (fs.existsSync(VENV_BIN) && !(process.env.PATH || "").split(path.delimiter).includes(VENV_BIN)) {
+  process.env.PATH = `${VENV_BIN}${path.delimiter}${process.env.PATH || ""}`;
+}
 const OUT_DIR = path.join(__dirname, "downloads", "bilibili");
 const META_JSON = path.join(__dirname, "data", "bilibili.json");
 const MIN_FREE_GB = 5;
+
+function normalizeVideoUrl(rawUrl) {
+  const s = String(rawUrl || "").trim();
+  // Bilibili giao diện quốc tế (/en/video/BV..., /vi/video/BV...) khiến yt-dlp rơi về generic extractor và báo lỗi đuôi .html
+  return s.replace(/^(https?:\/\/(?:www\.|m\.)?bilibili\.com)\/[a-z]{2}(?:-[a-z]{2})?\/(video\/)/i, "$1/$2");
+}
 
 function parseArgs(argv) {
   const args = {
@@ -29,7 +39,7 @@ function parseArgs(argv) {
     section: "",
     outDir: OUT_DIR,
     quality: "best",
-    delogo: "top-right",
+    delogo: "none",
     delogoFile: "",
     perf: "balanced", // eco | balanced | fast
   };
@@ -46,6 +56,7 @@ function parseArgs(argv) {
     else if (a === "--perf" && argv[i + 1]) args.perf = argv[++i];
     else if (!a.startsWith("--") && !args.url) args.url = a;
   }
+  args.url = normalizeVideoUrl(args.url);
   return args;
 }
 
@@ -99,14 +110,24 @@ function saveHistory(videos) {
  * Streaming command runner that does NOT accumulate unlimited stdout into RAM.
  * Only retains lines starting with `SAVED_FILE:::`.
  */
-function runStreamingCmd(cmd, args, { niceLevel = 0, onLine = null } = {}) {
+function runStreamingCmd(cmd, args, { niceLevel = 0, onLine = null, onSavedFile = null } = {}) {
   return new Promise((resolve, reject) => {
     const finalCmd = niceLevel > 0 ? "nice" : cmd;
     const finalArgs = niceLevel > 0 ? ["-n", String(niceLevel), cmd, ...args] : args;
 
     const proc = spawn(finalCmd, finalArgs, { cwd: __dirname });
+    proc.on("error", reject); // thiếu yt-dlp / nice (ENOENT): báo lỗi thay vì crash cả tiến trình
     const savedFiles = [];
     let partial = "";
+
+    const handleSaved = (fp) => {
+      savedFiles.push(fp);
+      if (onSavedFile) {
+        try {
+          onSavedFile(fp);
+        } catch {}
+      }
+    };
 
     proc.stdout.on("data", (buf) => {
       const chunk = buf.toString("utf8");
@@ -117,7 +138,7 @@ function runStreamingCmd(cmd, args, { niceLevel = 0, onLine = null } = {}) {
       for (const line of lines) {
         if (onLine) onLine(line);
         else if (line.startsWith("SAVED_FILE:::")) {
-          savedFiles.push(line.slice("SAVED_FILE:::".length).trim());
+          handleSaved(line.slice("SAVED_FILE:::".length).trim());
         }
       }
     });
@@ -126,10 +147,14 @@ function runStreamingCmd(cmd, args, { niceLevel = 0, onLine = null } = {}) {
     });
     proc.on("close", (code) => {
       if (partial.startsWith("SAVED_FILE:::")) {
-        savedFiles.push(partial.slice("SAVED_FILE:::".length).trim());
+        handleSaved(partial.slice("SAVED_FILE:::".length).trim());
       }
       if (code === 0) resolve({ savedFiles });
-      else reject(new Error(`${cmd} thoát với mã lỗi ${code}`));
+      else {
+        const err = new Error(`${cmd} thoát với mã lỗi ${code}`);
+        err.savedFiles = savedFiles;
+        reject(err);
+      }
     });
   });
 }
@@ -408,21 +433,213 @@ function hasAria2() {
   return cachedAria2;
 }
 
+const BILI_MIRROR_FALLBACKS = [
+  "upos-sz-mirrorcosov.bilivideo.com",
+  "upos-sz-mirroraliov.bilivideo.com",
+  "upos-sz-mirrorhw.bilivideo.com",
+  "upos-sz-mirrorcos.bilivideo.com",
+];
+
+function hasPendingAria2State(dir) {
+  try {
+    return fs.existsSync(dir) && fs.readdirSync(dir).some((f) => f.endsWith(".part.aria2"));
+  } catch {
+    return false;
+  }
+}
+
 /**
- * CDN Bilibili bóp mỗi kết nối còn ~1 MB/s sau vài giây đầu. Đo trên video 5 tiếng (45 giây mỗi cách):
- *   yt-dlp mặc định 38 MB · --http-chunk-size 10M 181 MB · aria2c 8 kết nối 244 MB · aria2c 16 kết nối 409 MB.
- * Nên: có aria2c thì tải 16 kết nối; chưa cài (hoặc aria2c lỗi 2 lần liền, vd CDN trả 412) thì chia khúc 10 MB.
+ * Sửa tự động lỗi CDN Akamai (`upos-hz-mirrorakam.akamaized.net`) làm hỏng cache một mảnh 1 MB lẻ (`Got EOF` ở 99%):
+ * Giải mã file nhị phân `.part.aria2` để tìm đúng các mảnh 1 MB còn thiếu (`bit === 0`), tải các mảnh đó từ mirror dự phòng
+ * của Bilibili (`upos-sz-mirrorcosov.bilivideo.com`...), ghi trực tiếp vào đúng vị trí offset của `.part`, đổi tên thành
+ * `.mp4` hoàn chỉnh của video stream và xóa `.part.aria2` để yt-dlp ghép ngay với audio `.m4a`!
  */
-function downloaderArgs(attempt) {
-  if (hasAria2() && attempt <= 2) {
+async function healStuckAria2Parts(outDir, baseUrl) {
+  if (!fs.existsSync(outDir)) return 0;
+  const ariaFiles = fs.readdirSync(outDir).filter((f) => f.endsWith(".part.aria2"));
+  if (!ariaFiles.length) return 0;
+
+  let healed = 0;
+  for (const ariaName of ariaFiles) {
+    const ariaPath = path.join(outDir, ariaName);
+    const partPath = ariaPath.slice(0, -".aria2".length); // ...f100023.mp4.part
+    if (!fs.existsSync(partPath)) continue;
+
+    // Trích format_id và số tập (p2, p3...) từ tên file: BV17djG63EV5_p7_p7_...f100023.mp4.part
+    const mFmt = /\.f(\d+)\.[a-z0-9]+\.part$/i.exec(partPath);
+    const mPart = /^[A-Za-z0-9]+_p(\d+)_/.exec(ariaName);
+    if (!mFmt) continue;
+    const fmtId = mFmt[1];
+    const partNum = mPart ? Number(mPart[1]) : 1;
+
+    let buf;
+    try {
+      buf = fs.readFileSync(ariaPath);
+    } catch {
+      continue;
+    }
+    const infoHashLen = buf.readUInt32BE(6);
+    let off = 10 + infoHashLen;
+    const pieceLen = buf.readUInt32BE(off);
+    off += 4;
+    const totalLen = Number(buf.readBigUInt64BE(off));
+    off += 8;
+    off += 8; // uploadLen
+    const bitfieldLen = buf.readUInt32BE(off);
+    off += 4;
+    const bitfield = buf.subarray(off, off + bitfieldLen);
+
+    const totalPieces = Math.ceil(totalLen / pieceLen);
+    const missing = [];
+    for (let i = 0; i < totalPieces; i++) {
+      if (!(bitfield[Math.floor(i / 8)] & (1 << (7 - (i % 8))))) missing.push(i);
+    }
+
+    // Chỉ can thiệp vá nhanh khi file đã tải >95% và chỉ bị kẹt vài mảnh lẻ trên Akamai (<= 32 mảnh)
+    if (missing.length > 32) continue;
+
+    if (missing.length > 0) {
+      console.log(
+        `[CDN Heal] Phát hiện ${path.basename(partPath)} kẹt ${missing.length}/${totalPieces} mảnh trên CDN chính — đang lấy mảnh thiếu qua CDN dự phòng...`
+      );
+      let rawStreamUrl = "";
+      try {
+        const pageUrl = baseUrl.includes("bilibili.com")
+          ? `${baseUrl.split("?")[0].replace(/\/?$/, "/")}?p=${partNum}`
+          : baseUrl;
+        rawStreamUrl = execFileSync("yt-dlp", ["-f", fmtId, "--get-url", pageUrl], {
+          encoding: "utf8",
+          timeout: 30_000,
+          stdio: ["ignore", "pipe", "ignore"],
+        })
+          .trim()
+          .split(/\r?\n/)[0];
+      } catch {
+        continue;
+      }
+      if (!rawStreamUrl) continue;
+
+      const origHost = new URL(rawStreamUrl).host;
+      const candidateUrls = [
+        ...BILI_MIRROR_FALLBACKS.filter((h) => h !== origHost).map((h) => rawStreamUrl.replace(origHost, h)),
+        rawStreamUrl,
+      ];
+
+      const fd = fs.openSync(partPath, "r+");
+      let allPatched = true;
+      try {
+        for (const idx of missing) {
+          const start = idx * pieceLen;
+          const end = Math.min(totalLen, start + pieceLen) - 1;
+          const expectedLen = end - start + 1;
+          let patched = false;
+
+          for (const u of candidateUrls) {
+            try {
+              const res = await fetch(u, {
+                headers: {
+                  "User-Agent":
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+                  Referer: "https://www.bilibili.com/",
+                  Range: `bytes=${start}-${end}`,
+                },
+                signal: AbortSignal.timeout(60_000), // CDN treo thì thử host kế tiếp
+              });
+              if (res.status === 206) {
+                const chunk = Buffer.from(await res.arrayBuffer());
+                if (chunk.length === expectedLen) {
+                  fs.writeSync(fd, chunk, 0, chunk.length, start);
+                  patched = true;
+                  break;
+                }
+              }
+            } catch {}
+          }
+          if (!patched) {
+            allPatched = false;
+            break;
+          }
+        }
+      } finally {
+        fs.closeSync(fd);
+      }
+      if (!allPatched) continue;
+    }
+
+    // Kiểm tra kích thước chuẩn xác 100%, gỡ đuôi .part và xóa .aria2 để yt-dlp dùng ghép luôn
+    const finalStreamPath = partPath.slice(0, -".part".length);
+    const st = fs.statSync(partPath);
+    if (st.size === totalLen) {
+      fs.renameSync(partPath, finalStreamPath);
+      fs.unlinkSync(ariaPath);
+      healed++;
+      console.log(`[CDN Heal] Đã khôi phục hoàn chỉnh 100%: ${path.basename(finalStreamPath)}`);
+    }
+  }
+  return healed;
+}
+
+/**
+ * CDN Bilibili bóp mỗi kết nối còn ~1 MB/s sau vài giây đầu.
+ * QUAN TRỌNG: Khi trên đĩa đã có file `.part.aria2`, file `.part` đã được aria2c ghi tới mảnh cuối
+ * (độ dài file trên đĩa = 100% dung lượng thật dù còn lỗ hổng ở giữa). Nếu chuyển sang yt-dlp thuần
+ * (`--http-chunk-size 10M`), yt-dlp sẽ gửi `Range: bytes=<full_size>-` và bị lỗi `HTTP 416`!
+ * Vì vậy nếu có `.part.aria2` hoặc có aria2c: luôn giữ aria2c, giảm số luồng ở các vòng sau + bật `--lowest-speed-limit`
+ * để tự ngắt các kết nối bị CDN Akamai treo/EOF ở mảnh cuối.
+ */
+function downloaderArgs(attempt, outDir) {
+  if (hasAria2() && (attempt <= 2 || hasPendingAria2State(outDir))) {
+    const conns = attempt <= 2 ? 16 : 4;
     return [
       "--downloader",
       "aria2c",
       "--downloader-args",
-      "aria2c:-x 16 -s 16 -k 1M --file-allocation=none --summary-interval=3 --console-log-level=warn --retry-wait=3 --max-tries=10",
+      `aria2c:-x ${conns} -s ${conns} -k 1M --disable-ipv6=true --connect-timeout=15 --timeout=20 --lowest-speed-limit=15K --file-allocation=none --summary-interval=3 --console-log-level=warn --retry-wait=5 --max-tries=25`,
     ];
   }
   return ["--http-chunk-size", "10M"];
+}
+
+function registerSavedVideo(mp4Path, args) {
+  if (!fs.existsSync(mp4Path)) return null;
+  const filename = path.basename(mp4Path);
+  const stat = fs.statSync(mp4Path);
+  const infoPath = mp4Path.replace(/\.mp4$/i, ".info.json");
+  let info = {};
+  if (fs.existsSync(infoPath)) {
+    try {
+      info = JSON.parse(fs.readFileSync(infoPath, "utf8"));
+    } catch {}
+  }
+  const probed = probeVideo(mp4Path);
+  const baseTitle = info.title || filename;
+  const titleWithSec = args.section ? `${baseTitle} [${args.section}]` : baseTitle;
+
+  const entry = {
+    id: info.id || filename.split("_")[0],
+    title: titleWithSec,
+    uploader: info.uploader || "",
+    duration_sec: probed.duration || (info.duration ? Math.round(info.duration) : 0),
+    resolution:
+      (probed.w && probed.h ? `${probed.w}x${probed.h}` : "") ||
+      info.resolution ||
+      "",
+    thumbnail: info.thumbnail || "",
+    webpage_url: info.webpage_url || args.url,
+    size_mb: Number((stat.size / (1024 * 1024)).toFixed(2)),
+    delogo: args.delogo || "none",
+    local_file: filename,
+    downloaded_at: new Date().toISOString().slice(0, 19),
+  };
+
+  const history = loadHistory();
+  const byFile = new Map(history.map((v) => [v.local_file, v]));
+  byFile.set(filename, entry);
+  const updated = [...byFile.values()].sort((a, b) =>
+    (b.downloaded_at || "").localeCompare(a.downloaded_at || "")
+  );
+  saveHistory(updated);
+  return entry;
 }
 
 function normalizeSection(sec) {
@@ -508,25 +725,37 @@ async function main() {
       : "[Tăng tốc] Chưa cài aria2c — tải kiểu chia khúc 10 MB (chậm hơn ~2 lần). Cài thêm: sudo apt install aria2"
   );
 
-  // Tải vài chục GB khó tránh rớt mạng: thử lại cả lệnh, yt-dlp tự nối tiếp file .part đang dở.
+  // Tải vài chục GB khó tránh rớt mạng: thử lại cả lệnh, yt-dlp + aria2c tự nối tiếp file .part đang dở.
   const niceLevel = args.perf === "eco" ? 15 : 5;
-  const MAX_TRIES = 5;
+  const MAX_TRIES = 6;
   const saved = new Set();
+  const onSavedFile = (fp) => {
+    saved.add(fp);
+    // Lưu ngay tiêu đề + metadata vào bilibili.json ngay khi xong từng tập (không cần chờ hết playlist)
+    if (!args.delogo || args.delogo === "none") {
+      registerSavedVideo(fp, args);
+    }
+  };
+
   for (let attempt = 1; ; attempt++) {
     try {
-      const cmdArgs = [...downloaderArgs(attempt), ...ytdlpArgs];
-      (await runStreamingCmd("yt-dlp", cmdArgs, { niceLevel })).savedFiles.forEach((f) => saved.add(f));
+      if (attempt > 1 || hasPendingAria2State(args.outDir)) {
+        await healStuckAria2Parts(args.outDir, args.url);
+      }
+      const cmdArgs = [...downloaderArgs(attempt, args.outDir), ...ytdlpArgs];
+      (await runStreamingCmd("yt-dlp", cmdArgs, { niceLevel, onSavedFile })).savedFiles.forEach((f) => saved.add(f));
       break;
     } catch (err) {
-      if (attempt >= MAX_TRIES) throw err;
-      console.log(`[Thử lại] Lần ${attempt}/${MAX_TRIES} bị gián đoạn (${err.message}). Tự nối tiếp sau 15 giây...`);
-      await new Promise((r) => setTimeout(r, 15_000));
+      (err.savedFiles || []).forEach((f) => saved.add(f));
+      // Thử vá ngay các mảnh .aria2 bị kẹt trên Akamai trước khi vào vòng kế tiếp
+      const healed = await healStuckAria2Parts(args.outDir, args.url);
+      if (attempt >= MAX_TRIES && !healed) throw err;
+      const waitSec = Math.min(60, 5 * 2 ** (attempt - 1)); // 5, 10, 20, 40, 60 giây
+      console.log(`[Thử lại] Lần ${attempt}/${MAX_TRIES} bị gián đoạn (${err.message}). Tự nối tiếp sau ${waitSec} giây...`);
+      await new Promise((r) => setTimeout(r, waitSec * 1000));
     }
   }
   const savedFiles = [...saved];
-
-  const history = loadHistory();
-  const byFile = new Map(history.map((v) => [v.local_file, v]));
 
   for (const mp4Path of savedFiles) {
     if (!fs.existsSync(mp4Path)) continue;
@@ -535,44 +764,13 @@ async function main() {
       await removeLogoInPlace(mp4Path, args.delogo, args.perf);
     }
 
-    const filename = path.basename(mp4Path);
-    const stat = fs.statSync(mp4Path);
-    const infoPath = mp4Path.replace(/\.mp4$/i, ".info.json");
-    let info = {};
-    if (fs.existsSync(infoPath)) {
-      try {
-        info = JSON.parse(fs.readFileSync(infoPath, "utf8"));
-      } catch {}
+    const entry = registerSavedVideo(mp4Path, args);
+    if (entry) {
+      console.log(`[OK] Đã lưu: ${entry.local_file} (${entry.size_mb} MB | ${entry.resolution} | delogo=${entry.delogo})`);
     }
-    const probed = probeVideo(mp4Path);
-
-    const baseTitle = info.title || filename;
-    const titleWithSec = args.section ? `${baseTitle} [${args.section}]` : baseTitle;
-
-    const entry = {
-      id: info.id || filename.split("_")[0],
-      title: titleWithSec,
-      uploader: info.uploader || "",
-      duration_sec: probed.duration || (info.duration ? Math.round(info.duration) : 0),
-      resolution:
-        (probed.w && probed.h ? `${probed.w}x${probed.h}` : "") ||
-        info.resolution ||
-        "",
-      thumbnail: info.thumbnail || "",
-      webpage_url: info.webpage_url || args.url,
-      size_mb: Number((stat.size / (1024 * 1024)).toFixed(2)),
-      delogo: args.delogo || "none",
-      local_file: filename,
-      downloaded_at: new Date().toISOString().slice(0, 19),
-    };
-    byFile.set(filename, entry);
-    console.log(`[OK] Đã lưu: ${filename} (${entry.size_mb} MB | ${entry.resolution} | delogo=${entry.delogo})`);
   }
 
-  const updated = [...byFile.values()].sort((a, b) =>
-    (b.downloaded_at || "").localeCompare(a.downloaded_at || "")
-  );
-  saveHistory(updated);
+  const updated = loadHistory();
   console.log(`[Done] Tổng cộng ${updated.length} video Bilibili/YouTube trong thư viện.`);
 }
 
